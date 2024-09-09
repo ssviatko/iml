@@ -44,3 +44,8 @@ char *mem_driver_buffer()
 {
 	return g_shm_ptr;
 }
+
+void mem_driver_write(uint32_t a_address, uint8_t a_byte)
+{
+	g_shm_ptr[a_address] = a_byte;
+}
