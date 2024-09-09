@@ -8,6 +8,10 @@ static int get_shm(char **a_shm_ptr)
 	int l_shmid;
 	char *l_shm_ptr;
 	key_t l_key = ftok("token", 'A');
+	if (l_key == -1) {
+		fprintf(stderr, "ftok error\n");
+		exit(-1);
+	}
 	if ((l_shmid = shmget(l_key, SHM_SIZE, SHM_MODE | IPC_CREAT)) < 0) {
 		fprintf(stderr, "shmget error\n");
 		exit(-1);
