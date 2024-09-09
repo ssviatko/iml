@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MemUtil</class>
+ <widget class="QDialog" name="MemUtil">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>531</width>
+    <height>344</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Memory Utilities</string>
+  </property>
+  <widget class="QPushButton" name="btnRefresh">
+   <property name="geometry">
+    <rect>
+     <x>220</x>
+     <y>10</y>
+     <width>131</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Refresh Controls</string>
+   </property>
+  </widget>
+  <widget class="QWidget" name="layoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>10</y>
+     <width>171</width>
+     <height>60</height>
+    </rect>
+   </property>
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="0" column="0">
+     <widget class="QPushButton" name="btnPeek">
+      <property name="text">
+       <string>Peek</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="1">
+     <widget class="QPushButton" name="btnPoke">
+      <property name="text">
+       <string>Poke</string>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="0">
+     <widget class="QLineEdit" name="lePPAddress"/>
+    </item>
+    <item row="1" column="1">
+     <widget class="QLineEdit" name="lePPByte"/>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QTabWidget" name="tabWidget">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>80</y>
+     <width>511</width>
+     <height>251</height>
+    </rect>
+   </property>
+   <property name="currentIndex">
+    <number>2</number>
+   </property>
+   <widget class="QWidget" name="tabVideo">
+    <attribute name="title">
+     <string>Video</string>
+    </attribute>
+    <widget class="QPushButton" name="btnRandVid">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>10</y>
+       <width>141</width>
+       <height>26</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Randomize Video</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btnChars">
+     <property name="geometry">
+      <rect>
+       <x>180</x>
+       <y>10</y>
+       <width>141</width>
+       <height>26</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Fill Characters</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="leVIDMODE">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>40</y>
+       <width>41</width>
+       <height>26</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>0</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btnPokeVIDMODE">
+     <property name="geometry">
+      <rect>
+       <x>70</x>
+       <y>40</y>
+       <width>121</width>
+       <height>26</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Poke VID_MODE</string>
+     </property>
+    </widget>
+    <widget class="QComboBox" name="comboBox">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>70</y>
+       <width>291</width>
+       <height>26</height>
+      </rect>
+     </property>
+     <item>
+      <property name="text">
+       <string>Lo-res (120x68, 16 color, mode 0)</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Med-res (240x136, 16 color, mode 1)</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Hi-res (480 x 272, 16 color, mode 2)</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Lo-res full (120x68, 4096 color, mode 4)</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Med-res full (240x136, 4096 color, mode 5)</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Hi-res full (480x272, 4096 color, mode 6)</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Text (40x17, mode 8)</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Text (80x34, mode 9)</string>
+      </property>
+     </item>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="tabMemory">
+    <attribute name="title">
+     <string>Memory</string>
+    </attribute>
+    <widget class="QWidget" name="">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>10</y>
+       <width>141</width>
+       <height>146</height>
+      </rect>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout">
+      <item>
+       <widget class="QCheckBox" name="btnShadowIO">
+        <property name="text">
+         <string>SHADOW_IO</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="btnShadowE4">
+        <property name="text">
+         <string>SHADOW_E4</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="btnWPZEROPAGE">
+        <property name="text">
+         <string>WP_ZEROPAGE</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="btnWPE4ROM">
+        <property name="text">
+         <string>WP_E400_ROM</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="btnWPX1CROM">
+        <property name="text">
+         <string>WP_X1C_ROM</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+    <widget class="QWidget" name="layoutWidget">
+     <property name="geometry">
+      <rect>
+       <x>160</x>
+       <y>10</y>
+       <width>311</width>
+       <height>124</height>
+      </rect>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_2" columnstretch="3,1,3,1">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>SHADOW_67</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="leShadow67"/>
+      </item>
+      <item row="0" column="2">
+       <widget class="QLineEdit" name="leShadow67Address">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QPushButton" name="btnSetShadow67">
+        <property name="text">
+         <string>Set</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>SHADOW_89</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="leShadow89"/>
+      </item>
+      <item row="1" column="2">
+       <widget class="QLineEdit" name="leShadow89Address">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="3">
+       <widget class="QPushButton" name="btnSetShadow89">
+        <property name="text">
+         <string>Set</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>SHADOW_AB</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="leShadowAB"/>
+      </item>
+      <item row="2" column="2">
+       <widget class="QLineEdit" name="leShadowABAddress">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="3">
+       <widget class="QPushButton" name="btnSetShadowAB">
+        <property name="text">
+         <string>Set</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>SHADOW_CD</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="leShadowCD"/>
+      </item>
+      <item row="3" column="2">
+       <widget class="QLineEdit" name="leShadowCDAddress">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="3">
+       <widget class="QPushButton" name="btnSetShadowCD">
+        <property name="text">
+         <string>Set</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="tabConsole">
+    <attribute name="title">
+     <string>Console</string>
+    </attribute>
+    <widget class="QWidget" name="">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>10</y>
+       <width>311</width>
+       <height>61</height>
+      </rect>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_3" columnstretch="3,1,3">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_5">
+        <property name="text">
+         <string>KEYQ_WAITING</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="leWaiting">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QPushButton" name="btnDequeue">
+        <property name="text">
+         <string>KEYQ_DEQUEUE</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>KEYQ_SIZE</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="leSize">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="btnClear">
+        <property name="text">
+         <string>KEYQ_CLEAR</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+    <widget class="QWidget" name="">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>80</y>
+       <width>480</width>
+       <height>124</height>
+      </rect>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_4" columnstretch="3,1,3,3">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_10">
+        <property name="text">
+         <string>CON_COLOR</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="leColor"/>
+      </item>
+      <item row="0" column="2">
+       <widget class="QPushButton" name="btnColor">
+        <property name="text">
+         <string>Poke CON_COLOR</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QPushButton" name="btnCLS">
+        <property name="text">
+         <string>CON_CLS</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_9">
+        <property name="frameShape">
+         <enum>QFrame::NoFrame</enum>
+        </property>
+        <property name="text">
+         <string>CON_CHAROUT</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="leCharout"/>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="btnCharout">
+        <property name="text">
+         <string>Poke CON_CHAROUT</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="3">
+       <widget class="QPushButton" name="btnRegister">
+        <property name="text">
+         <string>CON_REGISTER</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_7">
+        <property name="text">
+         <string>CON_CURSORH</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="leCH"/>
+      </item>
+      <item row="2" column="2">
+       <widget class="QPushButton" name="btnCH">
+        <property name="text">
+         <string>Poke CON_CURSORH</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_8">
+        <property name="text">
+         <string>CON_CURSORV</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="leCV"/>
+      </item>
+      <item row="3" column="2">
+       <widget class="QPushButton" name="btnCV">
+        <property name="text">
+         <string>Poke CON_CURSORV</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="3">
+       <widget class="QCheckBox" name="btnCursor">
+        <property name="text">
+         <string>CON_CURSOR</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="3">
+       <widget class="QPushButton" name="btnCR">
+        <property name="text">
+         <string>CON_CR</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </widget>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
