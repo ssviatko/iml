@@ -17,7 +17,10 @@ void ctrlc()
 	msg.address = IO_CMD_SERVERDEAD;
 	msg.byte = 0;
 	io_driver_post_forward(&msg);
-	sleep(1); // wait for client to receiver SERVERDEAD
+	struct timespec ts;
+	ts.tv_sec = 0;
+	ts.tv_nsec = 500000000; // 500ms
+	nanosleep(&ts, NULL); // wait for client to receiver SERVERDEAD
 	io_driver_shutdown();
 	exit(0);
 }
@@ -34,6 +37,7 @@ void randvideo()
 
 int main(int argc, char **argv)
 {
+	struct timespec ts;
 	srand(time(NULL));
 
 	// handle SIGINT
@@ -56,9 +60,11 @@ int main(int argc, char **argv)
 	msg.address = IO_CMD_SERVERALIVE;
 	msg.byte = 0;
 	io_driver_post_forward(&msg);
+	printf("waiting for client to connect...\n");
 	while (io_driver_wait_backchannel(&msg) == -1) {
-		printf("waiting for client to connect...\n");
-		sleep(1);
+		ts.tv_sec = 0;
+		ts.tv_nsec = 20000000;
+		nanosleep(&ts, NULL);
 	}
 	if (msg.address == IO_CMD_CLIENTALIVE) {
 		printf("client alive. running server.\n");
@@ -78,7 +84,7 @@ int main(int argc, char **argv)
 		msg.address = IO_CMD_VIDEODIRTY;
 		msg.byte = 0x80;
 		io_driver_post_forward(&msg);
-		sleep(1);
+		sleep(2);
 	}
 	ctrlc(); // just use the ctrlc handler to shut everything down
 	return 0;
