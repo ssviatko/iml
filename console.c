@@ -57,12 +57,6 @@ void draw(void)
 	XSetForeground(dpy, gc, whiteColor);
 	XDrawLine(dpy, osb, gc, 10, 60, 180, 20);
 
-//	char xds[80];
-//	for (int i=0; i<5; i++) {
-//		sprintf(xds,"Hello, World! Number %d",i);
-//		//printf("Drawing %s\n",xds);
-//		XDrawString(dpy, osb, gc, 20, 135+(i*14), xds, strlen(xds));
-//	}
 	XFlush(dpy);
 }
 
@@ -129,7 +123,7 @@ int main(int argc, char **argv)
 	XSelectInput(dpy, w, StructureNotifyMask | ExposureMask | ButtonPressMask | PointerMotionMask | KeyPressMask | KeyReleaseMask | ButtonReleaseMask);
 
 	// create off-screen bitmap
-	osb = XCreatePixmap(dpy, w, 640, 480, 24);
+	osb = XCreatePixmap(dpy, w, DEFAULTX * g_scale, DEFAULTY * g_scale, 24);
 	
 	Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", 1);
 	XSetWMProtocols(dpy, w, &wm_delete, 1);
@@ -192,73 +186,97 @@ int main(int argc, char **argv)
 	redraw();
 		
 	// wait for an event
+	int x11_fd = ConnectionNumber(dpy);
+	fd_set in_fds;
+	
 	while (runFlag == 1)
 	{
-		XEvent e;
-		XNextEvent(dpy, &e);
-		//KeySym key_symbol = XKeycodeToKeysym(dpy, e.xkey.keycode, 0);
-		KeySym key_symbol;
-		char xlat[10];
-		if ((e.type == KeyPress) || (e.type == KeyRelease))
-			XLookupString(&e.xkey, xlat, 10, &key_symbol, NULL);
+		FD_ZERO(&in_fds);
+		FD_SET(x11_fd, &in_fds);
 
-		switch(e.type)
-		{
-			case ConfigureNotify:
-				printf("ConfigureNotify event\n");
-				break;
-			case Expose:
-				redraw();
-				printf("Expose event\n");
-				break;
-			case KeyPress:
-				switch(key_symbol) {
-					case XK_Shift_L:
-					case XK_Shift_R:
-						ShiftState = 1;
-						break;
-					case XK_Control_L:
-					case XK_Control_R:
-						ControlState = 1;
-						break;
-					case XK_Alt_L:
-					case XK_Alt_R:
-						AltState = 1;
-						break;
-					default:
-					printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
-				}
-				break;
-			case KeyRelease:
-				switch(key_symbol) {
-					case XK_Shift_L:
-					case XK_Shift_R:
-						ShiftState = 0;
-						break;
-					case XK_Control_L:
-					case XK_Control_R:
-						ControlState = 0;
-						break;
-					case XK_Alt_L:
-					case XK_Alt_R:
-						AltState = 0;
-						break;
-				}
-				break;
-			case ButtonPress:
-				printf("Button %d at: X%d, Y%d\n",e.xbutton.button,e.xbutton.x,e.xbutton.y);
-				break;
-			case ClientMessage:
-				char *str = XGetAtomName(dpy,e.xclient.message_type);
-				printf("ClientMessage: %s\n",str);
-				if (!strcmp(str,"WM_PROTOCOLS"))
-					runFlag = 0;
-				XFree(str);
-				break;
+        // Set our timer.  1/30th of a second
+		struct timeval tv;
+		tv.tv_usec = 33000;
+		tv.tv_sec = 0;
+
+		// Wait for X Event or a Timer
+		int num_ready_fds = select(x11_fd + 1, &in_fds, NULL, NULL, &tv);
+		if (num_ready_fds > 0) {
+//			printf("Event Received!\n");
+		} else if (num_ready_fds == 0) {
+			// Handle timer here
+//			printf("33ms timeout\n");
+		} else {
+			fprintf(stderr, "An error occured with X fd_set timeout mechanism.\n");
+		}
+		
+		while (XPending(dpy)) {
+			XEvent e;
+			XNextEvent(dpy, &e);
+			//KeySym key_symbol = XKeycodeToKeysym(dpy, e.xkey.keycode, 0);
+			KeySym key_symbol;
+			char xlat[10];
+			if ((e.type == KeyPress) || (e.type == KeyRelease))
+				XLookupString(&e.xkey, xlat, 10, &key_symbol, NULL);
+
+			switch(e.type)
+			{
+				case ConfigureNotify:
+					printf("ConfigureNotify event\n");
+					break;
+				case Expose:
+					redraw();
+					printf("Expose event\n");
+					break;
+				case KeyPress:
+					switch(key_symbol) {
+						case XK_Shift_L:
+						case XK_Shift_R:
+							ShiftState = 1;
+							break;
+						case XK_Control_L:
+						case XK_Control_R:
+							ControlState = 1;
+							break;
+						case XK_Alt_L:
+						case XK_Alt_R:
+							AltState = 1;
+							break;
+						default:
+						printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+					}
+					break;
+				case KeyRelease:
+					switch(key_symbol) {
+						case XK_Shift_L:
+						case XK_Shift_R:
+							ShiftState = 0;
+							break;
+						case XK_Control_L:
+						case XK_Control_R:
+							ControlState = 0;
+							break;
+						case XK_Alt_L:
+						case XK_Alt_R:
+							AltState = 0;
+							break;
+					}
+					break;
+				case ButtonPress:
+					printf("Button %d at: X%d, Y%d\n",e.xbutton.button,e.xbutton.x,e.xbutton.y);
+					break;
+				case ClientMessage:
+					char *str = XGetAtomName(dpy,e.xclient.message_type);
+//					printf("ClientMessage: %s\n",str);
+					if (!strcmp(str,"WM_PROTOCOLS"))
+						runFlag = 0;
+					XFree(str);
+					break;
+			}
 		}
 	}
 
-	printf("Freeing resources...\n");
+	printf("Shutting down X Windows...\n");
 	XFreePixmap(dpy, osb);
 	XFreeGC(dpy, gc);
 	XCloseDisplay(dpy);
