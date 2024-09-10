@@ -5,9 +5,20 @@
 #include <stdio.h>
 #include <signal.h>
 #include <time.h>
+#include <getopt.h>
 
 #include "mem_driver.h"
 #include "io_driver.h"
+
+#define DEFAULTX 480
+#define DEFAULTY 272
+
+struct option g_options[] = {
+	{ "scale", required_argument, NULL, 's' },
+	{ NULL, 0, NULL, 0 }
+};
+
+unsigned int g_scale = 2;
 
 // X globals
 Display *dpy;
@@ -30,7 +41,7 @@ void ctrlc()
 
 void draw(void)
 {
-	XFillRectangle(dpy, osb, gc, 0, 0, 640, 480);
+	XFillRectangle(dpy, osb, gc, 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale);
 	
 	for (int i=0; i<256; i++)
 	{
@@ -57,11 +68,26 @@ void draw(void)
 
 void redraw(void)
 {
-	XCopyArea(dpy, osb, w, gc, 0, 0, 640, 480, 0, 0);
+	XCopyArea(dpy, osb, w, gc, 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale, 0, 0);
 }
 
 int main(int argc, char **argv)
 {
+	int opt;
+	while ((opt = getopt_long(argc, argv, "s:", g_options, NULL)) != -1) {
+		switch (opt) {
+		case 's':
+			g_scale = atoi(optarg);
+			break;
+		}
+	}
+	
+	// sanity check the scale
+	if ((g_scale < 1) || (g_scale > 8)) {
+		fprintf(stderr, "scale value must be between 1-8.\n");
+		exit(-1);
+	}
+	
 	// handle SIGINT
 	struct sigaction sa;
 	sa.sa_handler = ctrlc;
@@ -73,6 +99,11 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 
+	printf("starting up memory and io driver..\n");
+	mem_driver_startup();
+	io_driver_startup();
+	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
+	
 	// start up X
 	int runFlag=1;
 	int ShiftState = 0, ControlState = 0, AltState = 0;
@@ -83,15 +114,15 @@ int main(int argc, char **argv)
 	whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
 
 	printf("Creating window...\n");
-	w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 640, 480, 0, blackColor, blackColor);
+	w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale, 0, blackColor, blackColor);
 
 	// constrict window to set size
 	XSizeHints sizehints;
-	sizehints.flags=PSize|PMinSize|PMaxSize;
-	sizehints.min_width=640;
-	sizehints.max_width=640;
-	sizehints.min_height=480;
-	sizehints.max_height=480;
+	sizehints.flags = PSize | PMinSize | PMaxSize;
+	sizehints.min_width = DEFAULTX * g_scale;
+	sizehints.max_width = DEFAULTX * g_scale;
+	sizehints.min_height = DEFAULTY * g_scale;
+	sizehints.max_height = DEFAULTY * g_scale;
 	XSetWMNormalHints(dpy,w,&sizehints);
 
 	// we want to get MapNotify events
@@ -121,12 +152,7 @@ int main(int argc, char **argv)
 			break;
 	}
 
-	printf("starting up memory and io driver..\n");
-	mem_driver_startup();
-	io_driver_startup();
-	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
-	
-	struct timespec ts;
+//	struct timespec ts;
 	io_message_t msg;
 	// wait indefinitely for SERVERALIVE. Nothing to do if the server isn't there
 //	printf("waiting for server to appear...\n");
@@ -200,7 +226,7 @@ int main(int argc, char **argv)
 						AltState = 1;
 						break;
 					default:
-					printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n",key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+					printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
 				}
 				break;
 			case KeyRelease:
