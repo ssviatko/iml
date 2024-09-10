@@ -2,31 +2,18 @@
 #include <X11/keysym.h> // for Keysym stuff
 #include <X11/Xutil.h> // for XLookupString
 #include <assert.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include <stdio.h>
-#include <signal.h>
-#include <time.h>
+#include <string.h>
 
-#include "mem_driver.h"
-#include "io_driver.h"
+#define NIL (0)
 
-// X globals
 Display *dpy;
 int blackColor, whiteColor;
 Window w;
 GC gc;
 Pixmap osb;
-
-void ctrlc()
-{
-	printf("shutting down memory driver...\n");
-	mem_driver_shutdown();
-	// send CLIENTDEAD
-	io_message_t msg;
-	msg.address = IO_CMD_CLIENTDEAD;
-	msg.byte = 0;
-	io_driver_post_backchannel(&msg);
-	exit(0);
-}
 
 void draw(void)
 {
@@ -60,23 +47,11 @@ void redraw(void)
 	XCopyArea(dpy, osb, w, gc, 0, 0, 640, 480, 0, 0);
 }
 
-int main(int argc, char **argv)
+int main(void)
 {
-	// handle SIGINT
-	struct sigaction sa;
-	sa.sa_handler = ctrlc;
-	sigemptyset(&sa.sa_mask);
-	sigaddset(&sa.sa_mask, SIGINT);
-	sa.sa_flags = 0;
-	if (sigaction(SIGINT, &sa, NULL) < 0) {
-		fprintf(stderr, "fatal error: can't catch SIGINT");
-		exit(-1);
-	}
-
-	// start up X
 	int runFlag=1;
 	int ShiftState = 0, ControlState = 0, AltState = 0;
-	dpy = XOpenDisplay(0);
+	dpy = XOpenDisplay(NIL);
 	assert(dpy);
 
 	blackColor = BlackPixel(dpy, DefaultScreen(dpy));
@@ -104,15 +79,24 @@ int main(int argc, char **argv)
 	XSetWMProtocols(dpy, w, &wm_delete, 1);
 
 	// set the window's title
-	XStoreName(dpy, w, "IML Console");
+	XStoreName(dpy, w, "Xlib Program");
 	
 	// "map" the window (make it appear)
 	printf("Mapping window...\n");
 	XMapWindow(dpy, w);
 
-	gc = XCreateGC(dpy, osb, 0, 0);
+	gc = XCreateGC(dpy, osb, 0, NIL);
 
-	// wait for window to get mapped
+//	// load font
+//	XFontStruct *font_info = NIL;
+//	char *font_name = "-adobe-courier-medium-r-normal-*-12-*";
+//	font_info = XLoadQueryFont(dpy, font_name);
+//	if (font_info == NIL) {
+//		printf("XLoadQueryFont: failed loading font %s\n",font_name);
+//		exit(1);
+//	}
+//	XSetFont(dpy, gc, font_info->fid);
+
 	for(;;)
 	{
 		XEvent e;
@@ -121,47 +105,6 @@ int main(int argc, char **argv)
 			break;
 	}
 
-	printf("starting up memory and io driver..\n");
-	mem_driver_startup();
-	io_driver_startup();
-	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
-	
-	struct timespec ts;
-	io_message_t msg;
-	// wait indefinitely for SERVERALIVE. Nothing to do if the server isn't there
-//	printf("waiting for server to appear...\n");
-//	while (io_driver_wait_forward(&msg) == -1) {
-//		ts.tv_sec = 0;
-//		ts.tv_nsec = 20000000; // 20ms
-//		nanosleep(&ts, NULL);
-//	}
-//	if (msg.address != IO_CMD_SERVERALIVE) {
-//		fprintf(stderr, "expected IO_CMD_SERVERALIVE from server!\n");
-//		exit(-1);
-//	}
-	// send CLIENTALIVE
-	msg.address = IO_CMD_CLIENTALIVE;
-	msg.byte = 0;
-	io_driver_post_backchannel(&msg);
-	
-	// retrieve commands from server
-//	while (1) {
-//		printf("waiting for command from server...\n");
-//		while (io_driver_wait_forward(&msg) == -1) {
-//			ts.tv_sec = 0;
-//			ts.tv_nsec = 20000000; // 20ms
-//			nanosleep(&ts, NULL);
-//		}
-//		printf("received %04X/%02X from server.\n", msg.address, msg.byte);
-//		if (msg.address == IO_CMD_SERVERDEAD) {
-//			printf("server died!\n");
-//			break;
-//		}
-//		unsigned char *mem = (unsigned char *)mem_driver_buffer();
-//		printf("video: %02X %02X %02X %02X %02X %02X\n", mem[VIDSTART + 0], mem[VIDSTART + 1], mem[VIDSTART + 2],
-//			mem[VIDSTART + 3], mem[VIDSTART + 4], mem[VIDSTART + 5]);
-//	}
-	
 	draw();
 	redraw();
 		
@@ -236,8 +179,6 @@ int main(int argc, char **argv)
 	XFreePixmap(dpy, osb);
 	XFreeGC(dpy, gc);
 	XCloseDisplay(dpy);
-	printf("shutting down memory driver...\n");
-	mem_driver_shutdown();
-
 	return 0;
 }
+
