@@ -6,8 +6,6 @@
 
 #include "memio_driver.h"
 
-int g_countdown = 6;
-
 void ctrlc()
 {
 	printf("shutting down memory and io driver...\n");
@@ -23,59 +21,9 @@ void ctrlc()
 	exit(0);
 }
 
-void randvideo()
-{
-	size_t i;
-	unsigned char *mem = mem_driver_buffer();
-
-	g_countdown--;
-	if (g_countdown == 0) {
-		g_countdown = 6;
-		switch (mem[IOSTART + IO_VIDMODE]) {
-			case 0:
-				mem_driver_write(IOSTART + IO_VIDMODE, 1);
-				break;
-			case 1:
-				mem_driver_write(IOSTART + IO_VIDMODE, 2);
-				break;
-			case 2:
-				mem_driver_write(IOSTART + IO_VIDMODE, 4);
-				break;
-			case 4:
-				mem_driver_write(IOSTART + IO_VIDMODE, 5);
-				break;
-			case 5:
-				mem_driver_write(IOSTART + IO_VIDMODE, 6);
-				break;
-			case 6:
-				mem_driver_write(IOSTART + IO_VIDMODE, 8);
-				break;
-			case 8:
-				mem_driver_write(IOSTART + IO_VIDMODE, 9);
-				break;
-			case 9:
-				mem_driver_write(IOSTART + IO_VIDMODE, 0);
-				break;
-		}
-	}
-	
-	printf("randomizing video... mode %d\n", mem[IOSTART + IO_VIDMODE]);
-	for (i = VIDSTART; i <= VIDEND; ++i) {
-		mem_driver_write(i, rand() & 0xff);
-	}
-	if (mem[IOSTART + IO_VIDMODE] >= 8) {
-		int j = 0;
-		for (i = VIDSTART; i < VIDSTART + 32; i+=2) {
-			mem_driver_write(i, '*');
-			mem_driver_write(i + 1, j++);
-		}
-	}
-}
-
 int main(int argc, char **argv)
 {
 	struct timespec ts;
-	srand(time(NULL));
 
 	// handle SIGINT
 	struct sigaction sa;
@@ -93,10 +41,11 @@ int main(int argc, char **argv)
 	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
 	io_driver_startup();
 	printf("started up io driver, qid_forward = %d qid_backchannel = %d\n", io_driver_qid_forward(), io_driver_qid_backchannel());
-	io_message_t msg;
+	unsigned char *mem = mem_driver_buffer();
 	// wait for client to connect
 	io_driver_post_forward(IO_CMD_SERVERALIVE, 0);
 	printf("waiting for client to connect...\n");
+	io_message_t msg;
 	while (io_driver_wait_backchannel(&msg) == -1) {
 		ts.tv_sec = 0;
 		ts.tv_nsec = 20000000;
@@ -109,17 +58,41 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 	
+	mem_driver_write(IOSTART + IO_VIDMODE, 8);
+	mem_driver_write(IOSTART + IO_CON_CHAROUT, 0x41);
+	mem_driver_write(IOSTART + IO_CON_COLOR, 0x0f);
+	mem_driver_write(IOSTART + IO_CON_CLS, 0);
+	mem_driver_write(IOSTART + IO_CON_CURSOR, 0x80);
+	mem_driver_write(IOSTART + IO_CON_CURSORH, 0);
+	mem_driver_write(IOSTART + IO_CON_CURSORV, 0);
 	while (1) {
-		if (io_driver_wait_backchannel(&msg) == 0) {
-			if (msg.address == IO_CMD_CLIENTDEAD) {
-				// client died, so break out of our loop
-				break;
+		char key;
+		unsigned char waiting;
+		while ((waiting = mem[IOSTART + IO_KEYQ_SIZE]) == 0) {
+			ts.tv_sec = 0;
+			ts.tv_nsec = 10000000;
+			nanosleep(&ts, NULL);
+			if (io_driver_wait_backchannel(&msg) == 0) {
+				if (msg.address == IO_CMD_CLIENTDEAD) {
+					// client died, so break out of our loop
+					printf("client died!\n");
+					ctrlc();
+					exit(0);
+				}
 			}
 		}
-		randvideo();
-		sleep(1);
+		key = mem[IOSTART + IO_KEYQ_WAITING];
+		mem_driver_write(IOSTART + IO_KEYQ_DEQUEUE, 0);
+		// wait for waiting IO to change
+		while (mem[IOSTART + IO_KEYQ_SIZE] == waiting) {
+			ts.tv_sec = 0;
+			ts.tv_nsec = 10000000;
+			nanosleep(&ts, NULL);			
+		}
+		printf("showing key %d\n", key);
+		mem_driver_write(VIDSTART, key);
+		mem_driver_write(VIDSTART + 1, 0x0f);
 	}
 	ctrlc(); // just use the ctrlc handler to shut everything down
 	return 0;
 }
-

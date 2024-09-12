@@ -39,6 +39,18 @@ const static uint32_t E4SHADOWEND = 0x1fffff;
 
 // IO address space is from 0000-03ff. 0400-F7FF is reserved.
 // Commands/conditions begin at F800.
+const static uint32_t IO_KEYQ_SIZE = 0x00;
+const static uint32_t IO_KEYQ_WAITING = 0x01;
+const static uint32_t IO_KEYQ_DEQUEUE = 0x02;
+const static uint32_t IO_KEYQ_CLEAR = 0x03;
+const static uint32_t IO_CON_CLS = 0x10;
+const static uint32_t IO_CON_COLOR = 0x11;
+const static uint32_t IO_CON_CHAROUT = 0x12;
+const static uint32_t IO_CON_REGISTER = 0x13;
+const static uint32_t IO_CON_CURSORH = 0x14;
+const static uint32_t IO_CON_CURSORV = 0x15;
+const static uint32_t IO_CON_CURSOR = 0x16;
+const static uint32_t IO_CON_CR = 0x17;
 
 const static uint16_t IO_VIDMODE = 0x0020;
 
@@ -54,7 +66,7 @@ void mem_driver_startup();
 void mem_driver_shutdown();
 void mem_driver_dispose_shared();
 int mem_driver_shmid();
-char *mem_driver_buffer();
+unsigned char *mem_driver_buffer();
 void mem_driver_write(uint32_t a_address, uint8_t a_byte);
 
 // io driver

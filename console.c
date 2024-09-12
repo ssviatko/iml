@@ -197,8 +197,8 @@ void draw(void)
     int l_gr_w;
     int l_gr_h;
     int l_4096;
-	char *mem = mem_driver_buffer();
-	int l_video_mode = mem[IO_VIDMODE];
+	unsigned char *mem = mem_driver_buffer();
+	int l_video_mode = mem[IOSTART + IO_VIDMODE];
  
     if (l_video_mode >= 8) {
         switch (l_video_mode) {
@@ -221,6 +221,7 @@ void draw(void)
 		Pixmap l_charimg;
 		l_charimg = XCreatePixmap(dpy, win, l_pixel_size * 6 * g_scale, l_pixel_size * 8 * g_scale, 24);
 
+//		printf("IO_CON_CURSOR %d IO_CON_CURSORH %d IO_CON_CURSORV %d\n", mem[IOSTART + IO_CON_CURSOR], mem[IOSTART + IO_CON_CURSORH], mem[IOSTART + IO_CON_CURSORV]);
 		for (int w = 0; w < l_gr_w; ++w) {
 			for (int h = 0; h < l_gr_h; ++h) {
 				// compute base address and get character/color info out of memory
@@ -230,10 +231,18 @@ void draw(void)
 				l_char &= 0x7f;
 				uint8_t l_color = mem[l_baseaddr + 1] & 0x0f;
 				uint8_t l_backcolor = (mem[l_baseaddr + 1] >> 4) & 0x0f;
-				if (g_flashing && l_flash) {
+				if ((mem[IOSTART + IO_CON_CURSOR] >= 0x80) && ((mem[IOSTART + IO_CON_CURSORH] == w) && (mem[IOSTART + IO_CON_CURSORV] == h))) {
+					// invert this block.. but don't flash it
+//					printf("showing cursor at %d, %d\n", w, h);
 					uint8_t l_temp = l_color;
 					l_color = l_backcolor;
 					l_backcolor = l_temp;
+				} else {
+					if (g_flashing && l_flash) {
+						uint8_t l_temp = l_color;
+						l_color = l_backcolor;
+						l_backcolor = l_temp;
+					}
 				}
 				// blot out our character stencil with the background color
 				XSetForeground(dpy, gc, ((g_standard_colors[l_backcolor][0] * 65536) + (g_standard_colors[l_backcolor][1] * 256) + g_standard_colors[l_backcolor][2]));
@@ -356,6 +365,13 @@ int main(int argc, char **argv)
 	io_driver_startup();
 	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
 	
+	// init keypress queue
+	unsigned char *mem = mem_driver_buffer();
+	mem[IOSTART + IO_KEYQ_SIZE] = 0;
+	mem[IOSTART + IO_KEYQ_WAITING] = 0;
+	char keyq[256];
+	unsigned char keyq_size = 0;
+	
 	// start up X
 	int runFlag=1;
 	int ShiftState = 0, ControlState = 0, AltState = 0;
@@ -445,7 +461,7 @@ int main(int argc, char **argv)
 			// Handle timer here
 //			printf("33ms timeout\n");
 			// respond to message queue
-			if (io_driver_wait_forward(&msg) != -1) {
+			while (io_driver_wait_forward(&msg) != -1) {
 				if (msg.address == IO_VIDMODE) {
 					// we read our vidmode right out of softswitches now
 //					printf("IO_VIDMODE\n");
@@ -453,6 +469,54 @@ int main(int argc, char **argv)
 				if (msg.address == IO_CMD_SERVERDEAD) {
 					printf("server died!\n");
 					break;
+				}
+				if (msg.address == IO_KEYQ_CLEAR) {
+					keyq_size = 0;
+					mem[IOSTART + IO_KEYQ_SIZE] = 0;
+					mem[IOSTART + IO_KEYQ_WAITING] = 0;
+				}
+				if (msg.address == IO_KEYQ_DEQUEUE) {
+					if (keyq_size >= 2) {
+						for (int i = 1; i <= keyq_size; i++)
+							keyq[i - 1] = keyq[i];
+						keyq_size--;
+					} else if (keyq_size == 1) {
+						keyq_size = 0;
+					}
+					mem[IOSTART + IO_KEYQ_SIZE] = keyq_size;
+					printf("DEQUEUE: IO_KEYQ_SIZE = %d\n", keyq_size);
+					if (keyq_size > 0)
+						mem[IOSTART + IO_KEYQ_WAITING] = keyq[0];
+					else
+						mem[IOSTART + IO_KEYQ_WAITING] = 0;
+				}
+				if (msg.address == IO_CON_REGISTER) {
+					// stick IO_CON_CHAROUT on the screen
+				}
+				if (msg.address == IO_CON_CLS) {
+					// clear the text screen
+					uint8_t l_w;
+					uint8_t l_h;
+					if (mem[IOSTART + IO_VIDMODE] == 0x08) {
+						l_w = 40;
+						l_h = 17;
+					} else if (mem[IOSTART + IO_VIDMODE] == 0x09) {
+						l_w = 80;
+						l_h = 34;
+					} else {
+						// not in either of the text modes, so do nothing
+						l_w = 0;
+						l_h = 0;
+					}
+					for (unsigned int h = 0; h < l_h; ++h) {
+						for (unsigned int w = 0; w < l_w; ++w) {
+							mem[VIDSTART + (h * l_w * 2) + (w * 2)] = mem[IOSTART + IO_CON_CHAROUT];
+							mem[VIDSTART + (h * l_w * 2) + (w * 2) + 1] = mem[IOSTART + IO_CON_COLOR];
+						}
+					}
+				}
+				if (msg.address == IO_CON_CR) {
+					// print a carriage return
 				}
 			}
 			draw();
@@ -494,7 +558,11 @@ int main(int argc, char **argv)
 							AltState = 1;
 							break;
 						default:
-						printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+							keyq[keyq_size++] = xlat[0];
+							mem[IOSTART + IO_KEYQ_SIZE] = keyq_size;
+							mem[IOSTART + IO_KEYQ_WAITING] = keyq[0];
+							break;
 					}
 					break;
 				case KeyRelease:

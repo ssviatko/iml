@@ -7,14 +7,20 @@ LDFLAGS = -lX11
 
 RV_OBJS = randvideo.o memio_driver.o
 RV_TARGET = randvideo
+KE_OBJS = kbdecho.o memio_driver.o
+KE_TARGET = kbdecho
 CONS_OBJS = console.o memio_driver.o
 CONS_TARGET = console
 
-all: $(RV_TARGET) $(CONS_TARGET)
+all: $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET)
 
 $(RV_TARGET): $(RV_OBJS)
 
 	$(LD) $(RV_OBJS) -o $(RV_TARGET) $(LDFLAGS)
+
+$(KE_TARGET): $(KE_OBJS)
+
+	$(LD) $(KE_OBJS) -o $(KE_TARGET) $(LDFLAGS)
 
 $(CONS_TARGET): $(CONS_OBJS)
 

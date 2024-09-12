@@ -49,6 +49,7 @@ void io_driver_shutdown()
 
 void io_driver_post_forward(uint16_t a_address, uint8_t a_byte)
 {
+//	printf("posting forward %04X %02X\n", a_address, a_byte);
 	io_message_t msg;
 	msg.type = 1;
 	msg.address = a_address;
@@ -125,7 +126,8 @@ void mem_driver_startup()
 {
 	g_shmid = get_shm(&g_shm_ptr);
 	// init soft switches
-	g_shm_ptr[IO_VIDMODE] = 8; // Lo-res text
+	g_shm_ptr[IOSTART + IO_VIDMODE] = 8; // Lo-res text
+	g_shm_ptr[IOSTART + IO_CON_CURSOR] = 0; // cursor off
 }
 
 void mem_driver_shutdown()
@@ -143,16 +145,25 @@ int mem_driver_shmid()
 	return g_shmid;
 }
 
-char *mem_driver_buffer()
+unsigned char *mem_driver_buffer()
 {
-	return g_shm_ptr;
+	return (unsigned char *)g_shm_ptr;
 }
 
 void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 {
-	if (a_address == IO_VIDMODE) {
-		// tell the console we're changing modes
-		io_driver_post_forward(a_address, a_byte);
+	// addresses we need to report to the console
+	switch (a_address) {
+		case IOSTART + IO_VIDMODE:
+		case IOSTART + IO_KEYQ_CLEAR:
+		case IOSTART + IO_KEYQ_DEQUEUE:
+		case IOSTART + IO_CON_REGISTER:
+		case IOSTART + IO_CON_CR:
+		case IOSTART + IO_CON_CLS:
+			io_driver_post_forward(a_address - IOSTART, a_byte);
+			break;
+		default:
+			break;
 	}
 	g_shm_ptr[a_address] = a_byte;
 }
