@@ -25,6 +25,16 @@ void io_driver_startup()
     }
 }
 
+int io_driver_qid_forward()
+{
+	return g_qid_forward;
+}
+
+int io_driver_qid_backchannel()
+{
+	return g_qid_backchannel;
+}
+
 void io_driver_shutdown()
 {
 	if (msgctl(g_qid_forward, IPC_RMID, NULL) == -1) {
@@ -37,18 +47,28 @@ void io_driver_shutdown()
 	}
 }
 
-void io_driver_post_forward(io_message_t *a_msg)
+void io_driver_post_forward(uint16_t a_address, uint8_t a_byte)
 {
-	if (msgsnd (g_qid_forward, a_msg, sizeof(io_message_t), 0) == -1) {  
-		fprintf(stderr, "msgsnd(forward)\n");
+	io_message_t msg;
+	msg.type = 1;
+	msg.address = a_address;
+	msg.byte = a_byte;
+	if (msgsnd(g_qid_forward, &msg, sizeof(io_message_t) - sizeof(long), 0) == -1) {  
+		fprintf(stderr, "msgsnd(forward) %s qid=%d addr=%04X byte=%02X\n", strerror(errno), g_qid_forward, msg.address, msg.byte);
+		io_driver_shutdown();
 		exit(-1);
 	}
 }
 
-void io_driver_post_backchannel(io_message_t *a_msg)
+void io_driver_post_backchannel(uint16_t a_address, uint8_t a_byte)
 {
-	if (msgsnd (g_qid_backchannel, a_msg, sizeof(io_message_t), 0) == -1) {  
-		fprintf(stderr, "msgsnd(backchannel)\n");
+	io_message_t msg;
+	msg.type = 1;
+	msg.address = a_address;
+	msg.byte = a_byte;
+	if (msgsnd(g_qid_backchannel, &msg, sizeof(io_message_t) - sizeof(long), 0) == -1) {  
+		fprintf(stderr, "msgsnd(backchannel) %s qid=%d addr=%04X byte=%02X\n", strerror(errno), g_qid_backchannel, msg.address, msg.byte);
+		io_driver_shutdown();
 		exit(-1);
 	}
 }
@@ -58,7 +78,7 @@ int io_driver_wait_forward(io_message_t *a_msg)
 	if (msgrcv(g_qid_forward, a_msg, sizeof(io_message_t), 0, IPC_NOWAIT) == -1) {
 		if (errno == ENOMSG)
 			return -1;
-		fprintf(stderr, "msgrcv(forward)\n");
+		fprintf(stderr, "msgrcv(forward) %s qid=%d\n", strerror(errno), g_qid_forward);
 		exit(-1);
 	}
 	return 0;
@@ -69,7 +89,7 @@ int io_driver_wait_backchannel(io_message_t *a_msg)
 	if (msgrcv(g_qid_backchannel, a_msg, sizeof(io_message_t), 0, IPC_NOWAIT) == -1) {
 		if (errno == ENOMSG)
 			return -1;
-		fprintf(stderr, "msgrcv(backchannel)\n");
+		fprintf(stderr, "msgrcv(backchannel) %s qid=%d\n", strerror(errno), g_qid_backchannel);
 		exit(-1);
 	}
 	return 0;

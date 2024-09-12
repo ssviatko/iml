@@ -7,16 +7,16 @@
 #include "mem_driver.h"
 #include "io_driver.h"
 
+uint8_t g_mode = 8;
+int g_countdown = 6;
+
 void ctrlc()
 {
 	printf("shutting down memory and io driver...\n");
 	mem_driver_shutdown();
 	mem_driver_dispose_shared();
 	// send SERVERDEAD
-	io_message_t msg;
-	msg.address = IO_CMD_SERVERDEAD;
-	msg.byte = 0;
-	io_driver_post_forward(&msg);
+	io_driver_post_forward(IO_CMD_SERVERDEAD, 0);
 	struct timespec ts;
 	ts.tv_sec = 0;
 	ts.tv_nsec = 500000000; // 500ms
@@ -28,10 +28,49 @@ void ctrlc()
 void randvideo()
 {
 	size_t i;
+
+	g_countdown--;
+	if (g_countdown == 0) {
+		g_countdown = 6;
+		switch (g_mode) {
+			case 0:
+				g_mode = 1;
+				break;
+			case 1:
+				g_mode = 2;
+				break;
+			case 2:
+				g_mode = 4;
+				break;
+			case 4:
+				g_mode = 5;
+				break;
+			case 5:
+				g_mode = 6;
+				break;
+			case 6:
+				g_mode = 8;
+				break;
+			case 8:
+				g_mode = 9;
+				break;
+			case 9:
+				g_mode = 0;
+				break;
+		}
+		io_driver_post_forward(IO_VIDMODE, g_mode);
+	}
 	
 	printf("randomizing video...\n");
 	for (i = VIDSTART; i <= VIDEND; ++i) {
 		mem_driver_write(i, rand() & 0xff);
+	}
+	if (g_mode >= 8) {
+		int j = 0;
+		for (i = VIDSTART; i < VIDSTART + 32; i+=2) {
+			mem_driver_write(i, '*');
+			mem_driver_write(i + 1, j++);
+		}
 	}
 }
 
@@ -53,13 +92,12 @@ int main(int argc, char **argv)
 
 	printf("starting up memory and io driver..\n");
 	mem_driver_startup();
-	io_driver_startup();
 	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
+	io_driver_startup();
+	printf("started up io driver, qid_forward = %d qid_backchannel = %d\n", io_driver_qid_forward(), io_driver_qid_backchannel());
 	io_message_t msg;
 	// wait for client to connect
-	msg.address = IO_CMD_SERVERALIVE;
-	msg.byte = 0;
-	io_driver_post_forward(&msg);
+	io_driver_post_forward(IO_CMD_SERVERALIVE, 0);
 	printf("waiting for client to connect...\n");
 	while (io_driver_wait_backchannel(&msg) == -1) {
 		ts.tv_sec = 0;
@@ -81,10 +119,7 @@ int main(int argc, char **argv)
 			}
 		}
 		randvideo();
-		msg.address = IO_CMD_VIDEODIRTY;
-		msg.byte = 0x80;
-		io_driver_post_forward(&msg);
-		sleep(2);
+		sleep(10);
 	}
 	ctrlc(); // just use the ctrlc handler to shut everything down
 	return 0;
