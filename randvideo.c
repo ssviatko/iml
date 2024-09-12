@@ -6,7 +6,6 @@
 
 #include "memio_driver.h"
 
-uint8_t g_mode = 8;
 int g_countdown = 6;
 
 void ctrlc()
@@ -27,44 +26,44 @@ void ctrlc()
 void randvideo()
 {
 	size_t i;
+	char *mem = mem_driver_buffer();
 
 	g_countdown--;
 	if (g_countdown == 0) {
 		g_countdown = 6;
-		switch (g_mode) {
+		switch (mem[IO_VIDMODE]) {
 			case 0:
-				g_mode = 1;
+				mem_driver_write(IO_VIDMODE, 1);
 				break;
 			case 1:
-				g_mode = 2;
+				mem_driver_write(IO_VIDMODE, 2);
 				break;
 			case 2:
-				g_mode = 4;
+				mem_driver_write(IO_VIDMODE, 4);
 				break;
 			case 4:
-				g_mode = 5;
+				mem_driver_write(IO_VIDMODE, 5);
 				break;
 			case 5:
-				g_mode = 6;
+				mem_driver_write(IO_VIDMODE, 6);
 				break;
 			case 6:
-				g_mode = 8;
+				mem_driver_write(IO_VIDMODE, 8);
 				break;
 			case 8:
-				g_mode = 9;
+				mem_driver_write(IO_VIDMODE, 9);
 				break;
 			case 9:
-				g_mode = 0;
+				mem_driver_write(IO_VIDMODE, 0);
 				break;
 		}
-		io_driver_post_forward(IO_VIDMODE, g_mode);
 	}
 	
 	printf("randomizing video...\n");
 	for (i = VIDSTART; i <= VIDEND; ++i) {
 		mem_driver_write(i, rand() & 0xff);
 	}
-	if (g_mode >= 8) {
+	if (mem[IO_VIDMODE] >= 8) {
 		int j = 0;
 		for (i = VIDSTART; i < VIDSTART + 32; i+=2) {
 			mem_driver_write(i, '*');
@@ -118,7 +117,7 @@ int main(int argc, char **argv)
 			}
 		}
 		randvideo();
-		sleep(10);
+		sleep(1);
 	}
 	ctrlc(); // just use the ctrlc handler to shut everything down
 	return 0;

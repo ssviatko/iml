@@ -26,7 +26,6 @@ Window win;
 GC gc;
 Pixmap osb;
 
-uint8_t g_video_mode = 8;
 int g_flashing;
 int g_flash_countdown;
 const int g_flash_rate = 15;
@@ -199,9 +198,10 @@ void draw(void)
     int l_gr_h;
     int l_4096;
 	char *mem = mem_driver_buffer();
+	int l_video_mode = mem[IO_VIDMODE];
  
-    if (g_video_mode >= 8) {
-        switch (g_video_mode) {
+    if (l_video_mode >= 8) {
+        switch (l_video_mode) {
         case 8: // 40 x 17 text mode
             l_gr_w = 40;
             l_gr_h = 17;
@@ -251,7 +251,7 @@ void draw(void)
 		}
 		XFreePixmap(dpy, l_charimg);
     } else {
-        switch (g_video_mode) {
+        switch (l_video_mode) {
         case 0: // 120 x 68, 16 colors, 4k
             l_gr_w = 120;
             l_gr_h = 68;
@@ -351,18 +351,6 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 	
-	// no need for SIGINT, just click the close box on the window
-//	// handle SIGINT
-//	struct sigaction sa;
-//	sa.sa_handler = ctrlc;
-//	sigemptyset(&sa.sa_mask);
-//	sigaddset(&sa.sa_mask, SIGINT);
-//	sa.sa_flags = 0;
-//	if (sigaction(SIGINT, &sa, NULL) < 0) {
-//		fprintf(stderr, "fatal error: can't catch SIGINT");
-//		exit(-1);
-//	}
-
 	printf("starting up memory and io driver..\n");
 	mem_driver_startup();
 	io_driver_startup();
@@ -459,7 +447,8 @@ int main(int argc, char **argv)
 			// respond to message queue
 			if (io_driver_wait_forward(&msg) != -1) {
 				if (msg.address == IO_VIDMODE) {
-					g_video_mode = msg.byte;
+					// we read our vidmode right out of softswitches now
+//					printf("IO_VIDMODE\n");
 				}
 				if (msg.address == IO_CMD_SERVERDEAD) {
 					printf("server died!\n");

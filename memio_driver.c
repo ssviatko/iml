@@ -124,6 +124,8 @@ static int get_shm(char **a_shm_ptr)
 void mem_driver_startup()
 {
 	g_shmid = get_shm(&g_shm_ptr);
+	// init soft switches
+	g_shm_ptr[IO_VIDMODE] = 8; // Lo-res text
 }
 
 void mem_driver_shutdown()
@@ -148,5 +150,9 @@ char *mem_driver_buffer()
 
 void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 {
+	if (a_address == IO_VIDMODE) {
+		// tell the console we're changing modes
+		io_driver_post_forward(a_address, a_byte);
+	}
 	g_shm_ptr[a_address] = a_byte;
 }
