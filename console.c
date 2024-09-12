@@ -7,8 +7,7 @@
 #include <time.h>
 #include <getopt.h>
 
-#include "mem_driver.h"
-#include "io_driver.h"
+#include "memio_driver.h"
 
 #define DEFAULTX 480
 #define DEFAULTY 272

@@ -5,9 +5,9 @@ CC = gcc
 LD = gcc
 LDFLAGS = -lX11
 
-RV_OBJS = randvideo.o mem_driver.o io_driver.o
+RV_OBJS = randvideo.o memio_driver.o
 RV_TARGET = randvideo
-CONS_OBJS = console.o mem_driver.o io_driver.o
+CONS_OBJS = console.o memio_driver.o
 CONS_TARGET = console
 
 all: $(RV_TARGET) $(CONS_TARGET)

@@ -4,8 +4,7 @@
 #include <unistd.h>
 #include <signal.h>
 
-#include "mem_driver.h"
-#include "io_driver.h"
+#include "memio_driver.h"
 
 uint8_t g_mode = 8;
 int g_countdown = 6;
