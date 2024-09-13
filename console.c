@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <time.h>
 #include <getopt.h>
+#include <stdarg.h>
 
 #include "memio_driver.h"
 
@@ -14,6 +15,7 @@
 
 struct option g_options[] = {
 	{ "scale", required_argument, NULL, 's' },
+	{ "exec", required_argument, NULL, 'e' },
 	{ NULL, 0, NULL, 0 }
 };
 
@@ -343,13 +345,29 @@ void redraw(void)
 	XCopyArea(dpy, osb, win, gc, 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale, 0, 0);
 }
 
+void load_server(char *path)
+{
+	int pid = fork();
+	if (pid == 0) {
+		char *execargs[1] = { NULL };
+		int success = execvp(path, execargs);
+		if (success < 0) {
+			fprintf(stderr, "exec of server binary failed. errno=%d (%s)\n", errno, strerror(errno));
+			exit(-1);
+		}
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int opt;
-	while ((opt = getopt_long(argc, argv, "s:", g_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "s:e:", g_options, NULL)) != -1) {
 		switch (opt) {
 		case 's':
 			g_scale = atoi(optarg);
+			break;
+		case 'e':
+			load_server(optarg);
 			break;
 		}
 	}

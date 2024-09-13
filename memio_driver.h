@@ -7,9 +7,9 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <sys/msg.h>
+#include <sys/shm.h>
 #include <sys/ipc.h> // for ftok
 #include <errno.h>
-#include <sys/shm.h>
 
 #define SHM_SIZE 2097152
 #define SHM_MODE 0600
