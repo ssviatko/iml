@@ -60,6 +60,7 @@ const static uint16_t IO_CMD_CLIENTALIVE = 0xF802;
 const static uint16_t IO_CMD_CLIENTDEAD = 0xF803;
 
 const static uint16_t IO_CMD_VIDEODIRTY = 0xF900;
+const static uint16_t IO_CMD_KEYPRESS = 0xF901;
 
 // memory driver
 void mem_driver_startup();
@@ -78,5 +79,13 @@ void io_driver_post_forward(uint16_t a_address, uint8_t a_byte);
 void io_driver_post_backchannel(uint16_t a_address, uint8_t a_byte);
 int io_driver_wait_forward(io_message_t *a_msg);
 int io_driver_wait_backchannel(io_message_t *a_msg);
+
+// keyboard queue and console support, used by the server
+void kbd_enqueue(uint8_t a_char);
+uint8_t kbd_dequeue();
+void kbd_clear();
+void con_cls();
+void con_register();
+void con_cr();
 
 #endif // IO_DRIVER_H

@@ -128,6 +128,8 @@ void mem_driver_startup()
 	// init soft switches
 	g_shm_ptr[IOSTART + IO_VIDMODE] = 8; // Lo-res text
 	g_shm_ptr[IOSTART + IO_CON_CURSOR] = 0; // cursor off
+	g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
+	g_shm_ptr[IOSTART + IO_CON_CURSORV] = 0; // cursor at top left corner
 }
 
 void mem_driver_shutdown()
@@ -152,18 +154,174 @@ unsigned char *mem_driver_buffer()
 
 void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 {
+	if (a_address == IOSTART + IO_KEYQ_DEQUEUE)
+		kbd_dequeue();
+	if (a_address == IOSTART + IO_KEYQ_CLEAR)
+		kbd_clear();
+	if (a_address == IOSTART + IO_CON_CLS)
+		con_cls();
+	if (a_address == IOSTART + IO_CON_REGISTER)
+		con_register();
+	if (a_address == IOSTART + IO_CON_CR)
+		con_cr();
+	if (a_address == IOSTART + IO_VIDMODE) {
+		// if we're on the text screen, reset the cursor to the top left
+		if (a_byte >= 8) {
+			g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
+			g_shm_ptr[IOSTART + IO_CON_CURSORV] = 0;
+		}
+	}
+	g_shm_ptr[a_address] = a_byte;
 	// addresses we need to report to the console
 	switch (a_address) {
 		case IOSTART + IO_VIDMODE:
-		case IOSTART + IO_KEYQ_CLEAR:
-		case IOSTART + IO_KEYQ_DEQUEUE:
-		case IOSTART + IO_CON_REGISTER:
-		case IOSTART + IO_CON_CR:
-		case IOSTART + IO_CON_CLS:
 			io_driver_post_forward(a_address - IOSTART, a_byte);
 			break;
 		default:
 			break;
 	}
-	g_shm_ptr[a_address] = a_byte;
+}
+
+// keyboard queue
+static uint8_t kbd_q[256];
+static uint8_t kbd_qsize = 0;
+
+void kbd_enqueue(uint8_t a_char)
+{
+	if (kbd_qsize == 255)
+		return; // queue full
+	kbd_q[kbd_qsize++] = a_char;
+	g_shm_ptr[IOSTART + IO_KEYQ_SIZE] = kbd_qsize;
+	g_shm_ptr[IOSTART + IO_KEYQ_WAITING] = kbd_q[0];
+}
+
+uint8_t kbd_dequeue()
+{
+	if (kbd_qsize == 0)
+		return 0;
+	uint8_t l_ret = kbd_q[0];
+	if (kbd_qsize == 1) {
+		kbd_qsize = 0;
+	} else {
+		for (uint8_t i = 1; i <= kbd_qsize; ++i)
+			kbd_q[i -1] = kbd_q[i];
+	}
+	return l_ret;
+}
+
+void kbd_clear()
+{
+	kbd_qsize = 0;
+	g_shm_ptr[IOSTART + IO_KEYQ_SIZE] = 0;
+	g_shm_ptr[IOSTART + IO_KEYQ_WAITING] = 0;
+}
+
+void con_cls()
+{
+	// clear the text screen
+	uint8_t l_w;
+	uint8_t l_h;
+	if (g_shm_ptr[IOSTART + IO_VIDMODE] == 0x08) {
+		l_w = 40;
+		l_h = 17;
+	} else if (g_shm_ptr[IOSTART + IO_VIDMODE] == 0x09) {
+		l_w = 80;
+		l_h = 34;
+	} else {
+		// not in either of the text modes, so do nothing
+		l_w = 0;
+		l_h = 0;
+	}
+	for (unsigned int h = 0; h < l_h; ++h) {
+		for (unsigned int w = 0; w < l_w; ++w) {
+			g_shm_ptr[VIDSTART + (h * l_w * 2) + (w * 2)] = g_shm_ptr[IOSTART + IO_CON_CHAROUT];
+			g_shm_ptr[VIDSTART + (h * l_w * 2) + (w * 2) + 1] = g_shm_ptr[IOSTART + IO_CON_COLOR];
+		}
+	}
+}
+
+static void scrollup()
+{
+	uint8_t l_w = 0;
+	uint8_t l_h = 0;
+	if (g_shm_ptr[IOSTART + IO_VIDMODE] == 0x08) {
+		l_w = 40;
+		l_h = 17;
+	} else if (g_shm_ptr[IOSTART + IO_VIDMODE] == 0x09) {
+		l_w = 80;
+		l_h = 34;
+	}
+	if (g_shm_ptr[IOSTART + IO_CON_CURSORV] >= l_h) {
+		g_shm_ptr[IOSTART + IO_CON_CURSORV] = l_h - 1;
+		// scroll the screen
+		for (uint32_t d = VIDSTART; d < VIDSTART + (l_w * 2) * (l_h - 1); ++d) {
+			g_shm_ptr[d] = g_shm_ptr[d + (l_w * 2)];
+		}
+		// blank out the last line
+		for (uint32_t d = VIDSTART + (l_w * 2) * (l_h - 1); d < VIDSTART + (l_w * 2) * l_h; d += 2) {
+			g_shm_ptr[d] = 0x20;
+			g_shm_ptr[d + 1] = g_shm_ptr[IOSTART + IO_CON_COLOR];
+		}
+	}
+}
+
+void con_register()
+{
+	uint8_t l_w;
+	if (g_shm_ptr[IOSTART + IO_VIDMODE] == 0x08) {
+		l_w = 40;
+	} else if (g_shm_ptr[IOSTART + IO_VIDMODE] == 0x09) {
+		l_w = 80;
+	} else {
+		// not in either of the text modes, so print no character
+		return;
+	}
+	// check for CR
+	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] == 0x0d) {
+		con_cr();
+		return;
+	}
+	// ctrl-H (0x08)
+	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] == 0x08) {
+		if (g_shm_ptr[IOSTART + IO_CON_CURSORH] != 0) {
+			g_shm_ptr[IOSTART + IO_CON_CURSORH]--;
+		}
+		return;
+	}
+	// ctrl-I (0x09)
+	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] == 0x09) {
+		if (g_shm_ptr[IOSTART + IO_CON_CURSORV] != 0) {
+			g_shm_ptr[IOSTART + IO_CON_CURSORV]--;
+		}
+		return;
+	}
+	// ctrl-J (0x0a)
+	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] == 0x0a) {
+		g_shm_ptr[IOSTART + IO_CON_CURSORV] += 1;
+		scrollup();
+		return;
+	}
+	// ctrl-k (0x0b)
+	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] == 0x0b) {
+		goto register_advance;
+	}
+	// place the character at the cursor position
+	uint32_t l_base = VIDSTART + (g_shm_ptr[IOSTART + IO_CON_CURSORH] * 2) + (l_w * g_shm_ptr[IOSTART + IO_CON_CURSORV] * 2);
+    g_shm_ptr[l_base] = g_shm_ptr[IOSTART + IO_CON_CHAROUT];
+    g_shm_ptr[l_base + 1] = g_shm_ptr[IOSTART + IO_CON_COLOR];
+	// advance the cursor
+register_advance:
+	g_shm_ptr[IOSTART + IO_CON_CURSORH] += 1;
+	if (g_shm_ptr[IOSTART + IO_CON_CURSORH] >= l_w) {
+		g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
+		g_shm_ptr[IOSTART + IO_CON_CURSORV] += 1;
+		scrollup();
+	}
+}
+
+void con_cr()
+{
+	g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
+	g_shm_ptr[IOSTART + IO_CON_CURSORV] += 1;
+	scrollup();
 }

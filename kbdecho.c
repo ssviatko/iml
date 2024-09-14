@@ -58,40 +58,55 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 	
-	mem_driver_write(IOSTART + IO_VIDMODE, 8);
-	mem_driver_write(IOSTART + IO_CON_CHAROUT, 0x41);
-	mem_driver_write(IOSTART + IO_CON_COLOR, 0x0f);
+	mem_driver_write(IOSTART + IO_VIDMODE, 9);
+	mem_driver_write(IOSTART + IO_CON_CHAROUT, 0x20);
+	mem_driver_write(IOSTART + IO_CON_COLOR, 0x0d);
 	mem_driver_write(IOSTART + IO_CON_CLS, 0);
 	mem_driver_write(IOSTART + IO_CON_CURSOR, 0x80);
 	mem_driver_write(IOSTART + IO_CON_CURSORH, 0);
 	mem_driver_write(IOSTART + IO_CON_CURSORV, 0);
 	while (1) {
-		char key;
-		unsigned char waiting;
-		while ((waiting = mem[IOSTART + IO_KEYQ_SIZE]) == 0) {
-			ts.tv_sec = 0;
-			ts.tv_nsec = 10000000;
-			nanosleep(&ts, NULL);
-			if (io_driver_wait_backchannel(&msg) == 0) {
-				if (msg.address == IO_CMD_CLIENTDEAD) {
-					// client died, so break out of our loop
-					printf("client died!\n");
-					ctrlc();
-					exit(0);
+		if (io_driver_wait_backchannel(&msg) == 0) {
+			if (msg.address == IO_CMD_CLIENTDEAD) {
+				// client died, so break out of our loop
+//				printf("client died!\n");
+				break;
+			}
+			if (msg.address == IO_CMD_KEYPRESS) {
+//				printf("keypress: %d\n", msg.byte);
+				// ctrl A - set 40 cols
+				if (msg.byte == 0x01) {
+					mem_driver_write(IOSTART + IO_VIDMODE, 0x08);
+					continue;
 				}
+				// ctrl B - set 80 cols
+				if (msg.byte == 0x02) {
+					mem_driver_write(IOSTART + IO_VIDMODE, 0x09);
+					continue;
+				}
+				// ctrl C - select next color
+				if (msg.byte == 0x03) {
+					uint8_t l_color = mem[IOSTART + IO_CON_COLOR];
+					l_color++;
+					l_color &= 0x0f;
+					mem_driver_write(IOSTART + IO_CON_COLOR, l_color);
+					continue;
+				}
+				kbd_enqueue(msg.byte);
+			}
+			if (mem[IOSTART + IO_KEYQ_SIZE] > 0) {
+				uint8_t l_char = mem[IOSTART + IO_KEYQ_WAITING];
+//				printf("showing key %d\n", l_char);
+				mem_driver_write(IOSTART + IO_CON_CHAROUT, l_char);
+				mem_driver_write(IOSTART + IO_CON_REGISTER, 0);
+				mem_driver_write(IOSTART + IO_KEYQ_DEQUEUE, 0);
+				continue;
 			}
 		}
-		key = mem[IOSTART + IO_KEYQ_WAITING];
-		mem_driver_write(IOSTART + IO_KEYQ_DEQUEUE, 0);
-		// wait for waiting IO to change
-		while (mem[IOSTART + IO_KEYQ_SIZE] == waiting) {
-			ts.tv_sec = 0;
-			ts.tv_nsec = 10000000;
-			nanosleep(&ts, NULL);			
-		}
-		printf("showing key %d\n", key);
-		mem_driver_write(VIDSTART, key);
-		mem_driver_write(VIDSTART + 1, 0x0f);
+		// nighty night
+		ts.tv_sec = 0;
+		ts.tv_nsec = 10000000;
+		nanosleep(&ts, NULL);			
 	}
 	ctrlc(); // just use the ctrlc handler to shut everything down
 	return 0;

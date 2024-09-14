@@ -355,6 +355,10 @@ void load_server(char *path)
 			fprintf(stderr, "exec of server binary failed. errno=%d (%s)\n", errno, strerror(errno));
 			exit(-1);
 		}
+		// don't clutter the screen
+		close(0);
+		close(1);
+		close(2);
 	}
 }
 
@@ -383,23 +387,16 @@ int main(int argc, char **argv)
 	io_driver_startup();
 	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
 	
-	// init keypress queue
-	unsigned char *mem = mem_driver_buffer();
-	mem[IOSTART + IO_KEYQ_SIZE] = 0;
-	mem[IOSTART + IO_KEYQ_WAITING] = 0;
-	char keyq[256];
-	unsigned char keyq_size = 0;
-	
 	// start up X
-	int runFlag=1;
-	int ShiftState = 0, ControlState = 0, AltState = 0;
+	int runFlag = 1;
+//	int ShiftState = 0, ControlState = 0, AltState = 0;
 	dpy = XOpenDisplay(0);
 	assert(dpy);
 
 	blackColor = BlackPixel(dpy, DefaultScreen(dpy));
 	whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
 
-	printf("Creating window...\n");
+	printf("Starting X: Creating window...\n");
 	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale, 0, blackColor, blackColor);
 
 	// constrict window to set size
@@ -488,54 +485,6 @@ int main(int argc, char **argv)
 					printf("server died!\n");
 					break;
 				}
-				if (msg.address == IO_KEYQ_CLEAR) {
-					keyq_size = 0;
-					mem[IOSTART + IO_KEYQ_SIZE] = 0;
-					mem[IOSTART + IO_KEYQ_WAITING] = 0;
-				}
-				if (msg.address == IO_KEYQ_DEQUEUE) {
-					if (keyq_size >= 2) {
-						for (int i = 1; i <= keyq_size; i++)
-							keyq[i - 1] = keyq[i];
-						keyq_size--;
-					} else if (keyq_size == 1) {
-						keyq_size = 0;
-					}
-					mem[IOSTART + IO_KEYQ_SIZE] = keyq_size;
-					printf("DEQUEUE: IO_KEYQ_SIZE = %d\n", keyq_size);
-					if (keyq_size > 0)
-						mem[IOSTART + IO_KEYQ_WAITING] = keyq[0];
-					else
-						mem[IOSTART + IO_KEYQ_WAITING] = 0;
-				}
-				if (msg.address == IO_CON_REGISTER) {
-					// stick IO_CON_CHAROUT on the screen
-				}
-				if (msg.address == IO_CON_CLS) {
-					// clear the text screen
-					uint8_t l_w;
-					uint8_t l_h;
-					if (mem[IOSTART + IO_VIDMODE] == 0x08) {
-						l_w = 40;
-						l_h = 17;
-					} else if (mem[IOSTART + IO_VIDMODE] == 0x09) {
-						l_w = 80;
-						l_h = 34;
-					} else {
-						// not in either of the text modes, so do nothing
-						l_w = 0;
-						l_h = 0;
-					}
-					for (unsigned int h = 0; h < l_h; ++h) {
-						for (unsigned int w = 0; w < l_w; ++w) {
-							mem[VIDSTART + (h * l_w * 2) + (w * 2)] = mem[IOSTART + IO_CON_CHAROUT];
-							mem[VIDSTART + (h * l_w * 2) + (w * 2) + 1] = mem[IOSTART + IO_CON_COLOR];
-						}
-					}
-				}
-				if (msg.address == IO_CON_CR) {
-					// print a carriage return
-				}
 			}
 			draw();
 			redraw();
@@ -555,31 +504,37 @@ int main(int argc, char **argv)
 			switch(e.type)
 			{
 				case ConfigureNotify:
-					printf("ConfigureNotify event\n");
+//					printf("ConfigureNotify event\n");
 					break;
 				case Expose:
 					redraw();
-					printf("Expose event\n");
+//					printf("Expose event\n");
 					break;
 				case KeyPress:
 					switch(key_symbol) {
 						case XK_Shift_L:
 						case XK_Shift_R:
-							ShiftState = 1;
+//							ShiftState = 1;
 							break;
 						case XK_Control_L:
 						case XK_Control_R:
-							ControlState = 1;
+//							ControlState = 1;
 							break;
 						case XK_Alt_L:
 						case XK_Alt_R:
-							AltState = 1;
+//							AltState = 1;
 							break;
 						default:
-							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
-							keyq[keyq_size++] = xlat[0];
-							mem[IOSTART + IO_KEYQ_SIZE] = keyq_size;
-							mem[IOSTART + IO_KEYQ_WAITING] = keyq[0];
+//							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+							if (key_symbol == 0xff51)
+								xlat[0] = 0x8;
+							if (key_symbol == 0xff52)
+								xlat[0] = 0x9;
+							if (key_symbol == 0xff53)
+								xlat[0] = 0xb;
+							if (key_symbol == 0xff54)
+								xlat[0] = 0xa;
+							io_driver_post_backchannel(IO_CMD_KEYPRESS, xlat[0]);
 							break;
 					}
 					break;
@@ -587,15 +542,15 @@ int main(int argc, char **argv)
 					switch(key_symbol) {
 						case XK_Shift_L:
 						case XK_Shift_R:
-							ShiftState = 0;
+//							ShiftState = 0;
 							break;
 						case XK_Control_L:
 						case XK_Control_R:
-							ControlState = 0;
+//							ControlState = 0;
 							break;
 						case XK_Alt_L:
 						case XK_Alt_R:
-							AltState = 0;
+//							AltState = 0;
 							break;
 					}
 					break;
@@ -605,7 +560,7 @@ int main(int argc, char **argv)
 				case ClientMessage:
 					char *str = XGetAtomName(dpy,e.xclient.message_type);
 //					printf("ClientMessage: %s\n",str);
-					if (!strcmp(str,"WM_PROTOCOLS"))
+//					if (!strcmp(str,"WM_PROTOCOLS"))
 						runFlag = 0;
 					XFree(str);
 					break;
