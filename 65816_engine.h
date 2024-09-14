@@ -1,0 +1,41 @@
+#ifndef E65816_H
+#define E65816_H
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#include "memio_driver.h"
+
+// addressing mode codes
+enum { 
+	IMPLIED,
+	IMMEDIATE,
+	ABSOLUTE,
+	ABSOLUTELONG,
+	ACCUMULATOR,
+	BRA, BCC, BCS, BEQ, BNE, BMI, BPL, BVC, BVS, BRLPER,
+	DIRECT,
+	DIRECTINDEXEDX,
+	DIRECTINDEXEDY,
+	ABSOLUTEINDEXEDX,
+	ABSOLUTEINDEXEDY,
+	ABSOLUTELONGINDEXEDX,
+	DIRECTINDIRECT,
+	DIRECTINDIRECTLONG,
+	DIRECTINDEXEDINDIRECTX,
+	DIRECTINDIRECTINDEXEDY,
+	DIRECTINDIRECTLONGINDEXEDY,
+	STACKRELATIVE,
+	STACKINDIRECTINDEXEDY,
+	ABSOLUTEINDIRECT, // JMP ($abs)
+	ABSOLUTEINDEXEDINDIRECT, // JMP or JSR ($abs,X)
+	ABSOLUTEINDIRECTLONG // JML [$abs]
+};
+
+int engine_65816_init(unsigned char *a_memory, int a_traceflag);
+void engine_65816_step();
+long engine_65816_cycle_count();
+int engine_65816_halted(); 
+
+#endif // E65816_H

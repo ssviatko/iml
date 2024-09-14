@@ -6,8 +6,10 @@
 	!align $ffff,$e400	;leave room for softswitches
 
 IO_CON_CLS = $1bfc10
+IO_CON_COLOR = $1bfc11
 IO_CON_CHAROUT = $1bfc12
 IO_CON_REGISTER = $1bfc13
+IO_VIDMODE = $1bfc20
 
 romstart
 	clc
@@ -22,8 +24,14 @@ romstart
 	tcd
 	ldx #$e3ff
 	txs
-	sep #20
+	sep #$20
 	!as
+	lda #$08
+	sta IO_VIDMODE
+	lda #$0f
+	sta IO_CON_COLOR
+	lda #$20
+	sta IO_CON_CHAROUT
 	sta IO_CON_CLS
 	ldx #$0000
 prloop
@@ -38,7 +46,6 @@ done
 
 initstring
 	!tx "IML 65816 E4 Firmware v00"
-	!byte 0x0d
 	!byte 0x0d
 	!tx "By Stephen Sviatko, 09/2024"
 	!byte 0x0d

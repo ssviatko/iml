@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CodeLite_Project Name="iml" Version="11000" InternalType="">
   <VirtualDirectory Name="iml">
+    <File Name="65816_engine.c"/>
+    <File Name="65816_engine.h"/>
+    <File Name="65816.c"/>
     <File Name="kbdecho.c"/>
     <File Name="memio_driver.c"/>
     <File Name="memio_driver.h"/>

@@ -3,8 +3,11 @@ CFLAGS = -Wall -O3 $(INCL)
 UNAME = $(shell uname)
 CC = gcc
 LD = gcc
-LDFLAGS = -lX11
+LDFLAGS =
+CONS_LDFLAGS = -lX11
 
+65816_OBJS = 65816.o 65816_engine.o memio_driver.o
+65816_TARGET = 65816
 RV_OBJS = randvideo.o memio_driver.o
 RV_TARGET = randvideo
 KE_OBJS = kbdecho.o memio_driver.o
@@ -12,7 +15,12 @@ KE_TARGET = kbdecho
 CONS_OBJS = console.o memio_driver.o
 CONS_TARGET = console
 
-all: $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET)
+all: $(65816_TARGET) $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET)
+
+$(65816_TARGET): $(65816_OBJS)
+
+	acme e4.a
+	$(LD) $(65816_OBJS) -o $(65816_TARGET) $(LDFLAGS)
 
 $(RV_TARGET): $(RV_OBJS)
 
@@ -24,7 +32,7 @@ $(KE_TARGET): $(KE_OBJS)
 
 $(CONS_TARGET): $(CONS_OBJS)
 
-	$(LD) $(CONS_OBJS) -o $(CONS_TARGET) $(LDFLAGS)
+	$(LD) $(CONS_OBJS) -o $(CONS_TARGET) $(CONS_LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
