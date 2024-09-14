@@ -34,3 +34,46 @@ information up on the screen, cycling every second.
 
 kbdecho - Demonstrates keyboard echo using the built in CON feature of the
 IO layer.
+
+--- Technical details about IML environment ---
+
+Memory map:
+
+00/0000-00/00FF - Zero page. Not used on processors other than 65 series.
+00/0100-00/01FF - Emulation mode stack
+00/0200-00/E3FF - Bank 0 program area, native mode stack starts at E3FF and works down.
+00/E400-00/FFFF - 7k Bank 0 ROM image, reset vectors
+01/0000-16/FFFF - Roughly 1.5MB of user RAM area
+17/0000-17/FFFF - 1C ROM data area, system usage
+18/0000-1B/FBFF - 256k video buffer
+1B/FC00-1B/FFFF - Soft switches (see guide below)
+1C/0000-1F/FFFF - 256k 1C ROM image
+20/0000-FF/FFFF - 14MB free RAM area for future expansion, currently unimplemented on 2MB system.
+
+Soft switches:
+
+IO_KEYQ_SIZE = 0x1bfc00 - (read) - Number of keypresses waiting in keyboard queue
+IO_KEYQ_WAITING = 0x1bfc01 - (read) The next waiting keypress
+IO_KEYQ_DEQUEUE = 0x1bfc02 - (write any value) - Remove longest keypress, reveal next waiting keypress
+IO_KEYQ_CLEAR = 0x1bfc03 - (write any value) - Clear keyboard queue
+IO_CON_CLS = 0x1bfc10 - (write any value) - Clear the text screen (video modes 8/9) to CHAROUT using COLOR
+IO_CON_COLOR = 0x1bfc11 - (read/write) - Set color byte to be used on next CLS or REGISTER operation
+IO_CON_CHAROUT = 0x1bfc12 - (read/write) - Character to use for next CLS or REGISTER operation
+IO_CON_REGISTER = 0x1bfc13 - (write any value) - Writes CHAROUT to screen, advances cursors/scrolls screen if necessary
+IO_CON_CURSORH = 0x1bfc14 - (read/write) - Horizontal cursor position
+IO_CON_CURSORV = 0x1bfc15 - (read/write) - Vertizontal cursor position
+IO_CON_CURSOR = 0x1bfc16 - (read/write) - High bit set determines if cursor is visible
+IO_CON_CR = 0x1bfc17 - (write any value) - Prints a carriage return
+IO_VIDMODE = 0x1bfc20 - (read/write) - Console video mode
+
+Video modes:
+
+0 - 120x68 Low-res 16 colors (1 nibble per pixel)
+1 - 240x136 Medium-res 16 colors
+2 - 480x272 High-res 16 colors
+4 - 120x68 Low-res 4096 colors (2 bytes per pixel, low 12 bits of 16 bit word are significant)
+5 - 240x136 Medium-res 4096 colors
+6 - 480x272 High-res 4096 colors
+8 - 40x17 Text, 16 colors, 16 background colors
+9 - 80x34 Text, 16 colors, 16 background colors
+
