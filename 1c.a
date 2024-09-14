@@ -1,0 +1,31 @@
+	!to "1c.o",plain
+	!cpu 65816
+
+l_toolinit = $1c0000 + toolinit
+l_dispatch = $1c0000 + dispatch
+
+	*= $0000
+
+toolinit
+	phb
+	!al
+	lda #$1717
+	pha
+	plb
+	plb		;set up bank 17 as tool data area
+
+	plb
+	rtl
+
+dispatch
+	rtl
+
+	!align $ffff, $ff00,$00 
+
+vec_toolinit
+	jml l_toolinit
+vec_dispatch
+	jml l_dispatch
+
+	!align $ffff, $ffff,$00	;fill up to top of memory
+
