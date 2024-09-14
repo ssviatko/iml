@@ -75,13 +75,6 @@ int main(int argc, char **argv)
 	
 	engine_65816_init(mem, 0);
 	
-	mem_driver_write(IOSTART + IO_VIDMODE, 8);
-	mem_driver_write(IOSTART + IO_CON_CHAROUT, 0x20);
-	mem_driver_write(IOSTART + IO_CON_COLOR, 0x0d);
-	mem_driver_write(IOSTART + IO_CON_CLS, 0);
-	mem_driver_write(IOSTART + IO_CON_CURSOR, 0x80);
-	mem_driver_write(IOSTART + IO_CON_CURSORH, 0);
-	mem_driver_write(IOSTART + IO_CON_CURSORV, 0);
 	while (1) {
 		if (io_driver_wait_backchannel(&msg) == 0) {
 			if (msg.address == IO_CMD_CLIENTDEAD) {

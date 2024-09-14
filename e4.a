@@ -9,6 +9,9 @@ IO_CON_CLS = $1bfc10
 IO_CON_COLOR = $1bfc11
 IO_CON_CHAROUT = $1bfc12
 IO_CON_REGISTER = $1bfc13
+IO_CON_CURSORH = $1bfc14;
+IO_CON_CURSORV = $1bfc15;
+IO_CON_CURSOR = $1bfc16;
 IO_VIDMODE = $1bfc20
 
 romstart
@@ -28,7 +31,12 @@ romstart
 	!as
 	lda #$08
 	sta IO_VIDMODE
-	lda #$0f
+	lda #$00
+	sta IO_CON_CURSORH
+	sta IO_CON_CURSORV
+	ora #$80
+	sta IO_CON_CURSOR
+	lda #$5b
 	sta IO_CON_COLOR
 	lda #$20
 	sta IO_CON_CHAROUT

@@ -1,0 +1,36 @@
+This repository contains my experimentation with interpreted machine language.
+
+I am slowly collecting 15+ years of software and data into this repo, so expect
+it to grow as time goes by.
+
+Programs contained herein:
+
+--- Client program: the console ---
+
+console - This is the IML console. It contains the video (and eventually audio)
+frontend and memory/IO structure for any fictitious microprocessor that would
+like to use it.
+
+command switches for console:
+
+-s (size scale): embiggens the console window by a factor of size scale.
+Default is 2.
+
+-e (server): automatically loads up and fork/execs any of the programs listed
+below. This is a timesaver so you don't have to open the server in a different
+window.
+
+example: ./console -s3 -e./randvideo
+
+--- Server programs ---
+
+65816 - This is my 65816 emulator. It loads up a ROM file called "e4.o" at
+$00/E400 and this contains a mock ROM and all the ROM vectors up to $00/FFFF.
+It initiates a reset cycle, which temporarily just prints a ROM splash message
+and then executes a STP instruction, halting the processor.
+
+randvideo - This cycles through the console's video modes and throws random
+information up on the screen, cycling every second.
+
+kbdecho - Demonstrates keyboard echo using the built in CON feature of the
+IO layer.
