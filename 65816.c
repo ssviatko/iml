@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <signal.h>
 
@@ -84,7 +85,10 @@ int main(int argc, char **argv)
 	}
 	fclose(x1crom);
 	
-	engine_65816_init(mem, 1);
+	struct timeval start_time;
+	struct timeval end_time;
+	gettimeofday(&start_time, NULL);
+	engine_65816_init(mem, 0);
 	
 	while (1) {
 		if (io_driver_wait_backchannel(&msg) == 0) {
@@ -107,8 +111,13 @@ int main(int argc, char **argv)
 			nanosleep(&ts, NULL);			
 		}
 	}
+	gettimeofday(&end_time, NULL);
 	printf("Executed %ld cycles.\n", engine_65816_cycle_count());
-
+	long elapsed_secs = end_time.tv_sec - start_time.tv_sec - ((end_time.tv_usec - start_time.tv_usec < 0) ? 1 : 0); // subtract 1 if there was a usec rollover
+	long elapsed_usecs = end_time.tv_usec - start_time.tv_usec + ((end_time.tv_usec - start_time.tv_usec < 0) ? 1000000 : 0); // bump usecs by 1 million usec for rollover
+	printf("Elapsed time: %ld seconds %ld usecs.\n", elapsed_secs, elapsed_usecs);
+	printf("estimated emulation speed: %fMhz\n", ((double)engine_65816_cycle_count() / ((double)elapsed_secs + (double)(elapsed_usecs / 1000000.0))) / 1000000.0);
+	
 	ctrlc(); // just use the ctrlc handler to shut everything down
 	return 0;
 }
