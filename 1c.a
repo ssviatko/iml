@@ -42,7 +42,8 @@ monstart
 	jsl l_getline
 	jsl l_prinbuff
 	stp
-	
+
+	!zone getline
 getline
 	php
 	rep #$10
@@ -50,25 +51,25 @@ getline
 	!as
 	!rl
 	ldx #$0000
-getline2
+.local2
 	lda IO_KEYQ_SIZE
-	beq getline2
+	beq .local2
 	lda IO_KEYQ_WAITING
 	sta IO_KEYQ_DEQUEUE
 	cmp #$0d			;carriage return yet?
-	beq getline3
+	beq .local3
 	cmp #$08			;backspace/back arrow?
-	beq getline4
+	beq .local4
 	cmp #$20 			;generally any control character besides what we're specifically looking for?
-	bcc getline2 		;yes, so ignore it
+	bcc .local2		 		;yes, so ignore it
 	sta inbuff,x 		;any other character, so register it and store it
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	inx
 	lda #$0d			;tee up a CR just in case we have to fall thru below
 	cpx #$3fe			;overrun end of buffer yet?
-	bne getline2		;no, so get another char.. otherwise fall thru
-getline3
+	bne .local2			;no, so get another char.. otherwise fall thru
+.local3
 	sta inbuff,x		;store CR
 	sta IO_CON_CR
 	inx
@@ -76,9 +77,9 @@ getline3
 	sta inbuff,x
 	plp
 	rtl
-getline4
+.local4
 	cpx #$0000
-	beq getline2		;no data in buffer yet, so nothing to backspace over
+	beq .local2			;no data in buffer yet, so nothing to backspace over
 	lda #$08
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER	;print backspace char, which backs up the cursor
@@ -89,8 +90,9 @@ getline4
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER	;print backspace char again since we advanced the cursor
 	dex
-	bra getline2
+	bra .local2
 	
+	!zone prinbuff
 prinbuff
 	php
 	rep #$10
@@ -98,14 +100,14 @@ prinbuff
 	!as
 	!rl
 	ldx #$0000
-prinbuff2
+.local2
 	lda inbuff,x
-	beq prinbuff3
+	beq .local3
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	inx
-	bra prinbuff2
-prinbuff3
+	bra .local2
+.local3
 	plp
 	rtl
 
