@@ -1,31 +1,113 @@
 	!to "1c.o",plain
 	!cpu 65816
 
-l_toolinit = $1c0000 + toolinit
-l_dispatch = $1c0000 + dispatch
+	*= $1c0000
 
-	*= $0000
+IO_KEYQ_SIZE = $1bfc00
+IO_KEYQ_WAITING = $1bfc01
+IO_KEYQ_DEQUEUE = $1bfc02
+IO_KEYQ_CLEAR = $1bfc03
 
-toolinit
-	phb
+IO_CON_CLS = $1bfc10
+IO_CON_COLOR = $1bfc11
+IO_CON_CHAROUT = $1bfc12
+IO_CON_REGISTER = $1bfc13
+IO_CON_CURSORH = $1bfc14;
+IO_CON_CURSORV = $1bfc15;
+IO_CON_CURSOR = $1bfc16;
+IO_CON_CR = $1bfc17
+
+IO_VIDMODE = $1bfc20
+
+promptchar = '>'
+
+l_getline = $1c0000 + getline
+l_prinbuff = $1c0000 + prinbuff
+
+inbuff = $170400
+
+x1crominit
+	phk
+	plb
+	rep #$30
 	!al
-	lda #$1717
-	pha
-	plb
-	plb		;set up bank 17 as tool data area
-
-	plb
+	!rl
+	
+monstart
+	sep #$20
+	!as
+	lda #promptchar
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	jsl l_getline
+	jsl l_prinbuff
+	stp
+	
+getline
+	php
+	rep #$10
+	sep #$20
+	!as
+	!rl
+	ldx #$0000
+getline2
+	lda IO_KEYQ_SIZE
+	beq getline2
+	lda IO_KEYQ_WAITING
+	sta IO_KEYQ_DEQUEUE
+	cmp #$0d			;carriage return yet?
+	beq getline3
+	cmp #$08			;backspace/back arrow?
+	beq getline4
+	cmp #$20 			;generally any control character besides what we're specifically looking for?
+	bcc getline2 		;yes, so ignore it
+	sta inbuff,x 		;any other character, so register it and store it
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	inx
+	lda #$0d			;tee up a CR just in case we have to fall thru below
+	cpx #$3fe			;overrun end of buffer yet?
+	bne getline2		;no, so get another char.. otherwise fall thru
+getline3
+	sta inbuff,x		;store CR
+	sta IO_CON_CR
+	inx
+	lda #$00			;store zero to end it all
+	sta inbuff,x
+	plp
 	rtl
-
-dispatch
+getline4
+	cpx #$0000
+	beq getline2		;no data in buffer yet, so nothing to backspace over
+	lda #$08
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER	;print backspace char, which backs up the cursor
+	lda #$20
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER	;blot out the character with a space
+	lda #$08
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER	;print backspace char again since we advanced the cursor
+	dex
+	bra getline2
+	
+prinbuff
+	php
+	rep #$10
+	sep #$20
+	!as
+	!rl
+	ldx #$0000
+prinbuff2
+	lda inbuff,x
+	beq prinbuff3
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	inx
+	bra prinbuff2
+prinbuff3
+	plp
 	rtl
-
-	!align $ffff, $ff00,$00 
-
-vec_toolinit
-	jml l_toolinit
-vec_dispatch
-	jml l_dispatch
 
 	!align $ffff, $ffff,$00	;fill up to top of memory
 

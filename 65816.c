@@ -59,21 +59,32 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 	
-	// load ROM
-	FILE *rom;
-	if ((rom = fopen("e4.o", "r")) == NULL)
+	// load ROMs
+	FILE *e4rom, *x1crom;
+	if ((e4rom = fopen("e4.o", "r")) == NULL)
 	{
 		fprintf(stderr, "Cannot open ROM file.\nA file named \"e4.o\" must exist in this directory.\n");
 		exit(-1);
 	}
-	if (fread(mem + E400ROMSTART, 1, 0x1c00, rom) != 0x1c00)
+	if (fread(mem + E400ROMSTART, 1, 0x1c00, e4rom) != 0x1c00)
 	{
 		fprintf(stderr, "Cannot read ROM file. It may be corrupted.\n");
 		exit(-1);
 	}
-	fclose(rom);
+	fclose(e4rom);
+	if ((x1crom = fopen("1c.o", "r")) == NULL)
+	{
+		fprintf(stderr, "Cannot open ROM file.\nA file named \"1c.o\" must exist in this directory.\n");
+		exit(-1);
+	}
+	if (fread(mem + X1CROMSTART, 1, 0xffff, x1crom) != 0xffff)
+	{
+		fprintf(stderr, "Cannot read ROM file. It may be corrupted.\n");
+		exit(-1);
+	}
+	fclose(x1crom);
 	
-	engine_65816_init(mem, 0);
+	engine_65816_init(mem, 1);
 	
 	while (1) {
 		if (io_driver_wait_backchannel(&msg) == 0) {

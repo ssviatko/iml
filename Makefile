@@ -19,7 +19,8 @@ all: $(65816_TARGET) $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET)
 
 $(65816_TARGET): $(65816_OBJS)
 
-	acme e4.a
+	acme -r e4.r e4.a
+	acme -r 1c.r 1c.a
 	$(LD) $(65816_OBJS) -o $(65816_TARGET) $(LDFLAGS)
 
 $(RV_TARGET): $(RV_OBJS)

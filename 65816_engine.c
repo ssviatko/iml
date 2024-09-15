@@ -423,7 +423,8 @@ static void initops(void)
 	}
 
 	// opcodes and corresponding functions, addressing modes, etc
-	// missing: 00,02,40,44,54 (BRK, COP, RTI, MVN, MVP)
+	// missing: 02,40,44,54 (BRK, COP, RTI, MVN, MVP)
+	opc[0x00] = &opc_stp;       opcamod[0x00] = IMPLIED;			// brk halts the processor
 	opc[0x01] = &opc_logic;		opcamod[0x01] = DIRECTINDEXEDINDIRECTX;		// ORA (dp,X)
 	opc[0x03] = &opc_logic;		opcamod[0x03] = STACKRELATIVE;			// ORA sr,S
 	opc[0x04] = &opc_trbtsb;	opcamod[0x04] = DIRECT;				// TSB dp

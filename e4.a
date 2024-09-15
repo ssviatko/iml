@@ -14,6 +14,8 @@ IO_CON_CURSORV = $1bfc15;
 IO_CON_CURSOR = $1bfc16;
 IO_VIDMODE = $1bfc20
 
+x1crominit = $1c0000
+
 romstart
 	clc
 	xce
@@ -25,7 +27,7 @@ romstart
 	plb
 	plb
 	tcd
-	ldx #$e3ff
+	ldx #$dfff
 	txs
 	sep #$20
 	!as
@@ -50,12 +52,14 @@ prloop
 	inx
 	bra prloop
 done
-	stp
+	jml x1crominit
 
 initstring
 	!tx "IML 65816 E4 Firmware v00"
 	!byte 0x0d
-	!tx "By Stephen Sviatko, 09/2024"
+	!tx "(C) Good Neighbors LLC, 2019, 2024"
+	!byte 0x0d
+	!tx "Developed by Stephen Sviatko"
 	!byte 0x0d
 	!byte 0x0d
 	!byte 0

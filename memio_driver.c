@@ -199,14 +199,17 @@ uint8_t kbd_dequeue()
 {
 	if (kbd_qsize == 0)
 		return 0;
-	uint8_t l_ret = kbd_q[0];
 	if (kbd_qsize == 1) {
 		kbd_qsize = 0;
+		kbd_q[0] = 0;
 	} else {
 		for (uint8_t i = 1; i <= kbd_qsize; ++i)
 			kbd_q[i -1] = kbd_q[i];
 	}
-	return l_ret;
+	g_shm_ptr[IOSTART + IO_KEYQ_SIZE] = kbd_qsize;
+	g_shm_ptr[IOSTART + IO_KEYQ_WAITING] = kbd_q[0];
+
+	return kbd_q[0];
 }
 
 void kbd_clear()
@@ -285,6 +288,11 @@ void con_register()
 	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] == 0x08) {
 		if (g_shm_ptr[IOSTART + IO_CON_CURSORH] != 0) {
 			g_shm_ptr[IOSTART + IO_CON_CURSORH]--;
+		} else {
+			if (g_shm_ptr[IOSTART + IO_CON_CURSORV] != 0) {
+				g_shm_ptr[IOSTART + IO_CON_CURSORV]--;
+				g_shm_ptr[IOSTART + IO_CON_CURSORH] = l_w - 1;
+			}
 		}
 		return;
 	}
