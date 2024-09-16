@@ -219,6 +219,30 @@ monsynerr
 	!tx "Syntax error!"
 	!byte $0d, $00
 
+colorcmd
+	jsr parse_addr
+	bcc monerror
+	tya
+	sta IO_CON_COLOR
+	jmp moncmd
+	
+modecmd
+	jsr parse_addr
+	bcc monerror
+	tya
+	cmp #$08
+	bcc monerror
+	cmp #$0a
+	bcs monerror
+	sta IO_VIDMODE
+	lda #$00
+	sta IO_CON_CURSORH
+	sta IO_CON_CURSORV
+	lda #$20
+	sta IO_CON_CHAROUT
+	sta IO_CON_CLS
+	jmp moncmd
+	
 monstart				;main entry point for system monitor
 	phk
 	plb
@@ -259,7 +283,27 @@ moncmd
 	cmp #'A'
 	beq asciidumpcmd
 	cmp #'B'
-	beq bankcmd
+	bne .local5
+	jmp+2 bankcmd
+.local5
+	cmp #'C'
+	bne .local6
+	jmp+2 colorcmd
+.local6
+	cmp #'M'
+	bne .local7
+	jmp+2 modecmd
+.local7
+	cmp #'?'
+	beq helpcmd
+	jmp moncmd
+	
+helpcmd
+	ldx #helpmsg
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
 	jmp moncmd
 	
 haltcmd
@@ -306,13 +350,37 @@ asciidumpcmd
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	iny
+	lda IO_VIDMODE
+	cmp #$09
+	bne .lores1
+	cpy #$0040
+	bne .local2
+	bra .lores2
+.lores1
 	cpy #$0010
 	bne .local2
+.lores2
 	sta IO_CON_CR
 	jsr adjdumpaddr
 	bcs .local5				;carry to bank, exit even if we're processing a range
 	jsr adjdumpaddr
-	bcs .local5				;carry to bank, exit even if we're processing a range
+	bcs .local5	
+	lda IO_VIDMODE
+	cmp #$09
+	bne .lores3
+	jsr adjdumpaddr
+	bcs .local5	
+	jsr adjdumpaddr
+	bcs .local5	
+	jsr adjdumpaddr
+	bcs .local5	
+	jsr adjdumpaddr
+	bcs .local5	
+	jsr adjdumpaddr
+	bcs .local5	
+	jsr adjdumpaddr
+	bcs .local5	
+.lores3
 	bit monrange			;ranges on?
 	bpl .local5
 	ldy rangehigh
@@ -353,16 +421,52 @@ dumpcmd
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	iny
+	lda IO_VIDMODE
+	cmp #$09
+	bne .lores1
+	cpy #$0010
+	bne .local2
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #'-'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldy #$0000				;print 16 bytes as ASCII... bonus when in mode 9!
+.asc2
+	lda [mondump],y
+	cmp #$20
+	bcs .asc4
+	lda #'.'				;substitute control character with a period
+.asc4
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	iny
+	cpy #$0010
+	bne .asc2
+	bra .lores2
+.lores1
 	cpy #$0008
 	bne .local2
+.lores2
 	sta IO_CON_CR
 	jsr adjdumpaddr
 	bcs .local5				;carry to bank, exit even if we're processing a range
+	lda IO_VIDMODE
+	cmp #$09
+	bne .lores3
+	jsr adjdumpaddr
+	bcs .local5
+.lores3
 	bit monrange			;ranges on?
 	bpl .local5
 	ldy rangehigh
 	cpy mondump
-	bcs .local3
+	bcc .local5
+	jmp+2 .local3
 .local5
 	stz monrange
 	jmp moncmd
@@ -510,5 +614,27 @@ initstring
 	!byte 0x0d
 	!byte 0
 
+helpmsg
+	!tx "IML 65816 Monitor Commands"
+	!byte $0d
+	!tx "A <addr>  Dump ASCII"
+	!byte $0d
+	!tx "B <bank>  Change bank"
+	!byte $0d
+	!tx "C <color> Change terminal colors"
+	!byte $0d
+	!tx "D <addr>  Dump hex"
+	!byte $0d
+	!tx "M <mode>  Change video mode, 8/9"
+	!byte $0d
+	!tx "Q         Halt the processor"
+	!byte $0d
+	!tx "?         This menu"
+	!byte $0d
+	!tx "<enter>   Repeat last dump command"
+	!byte $0d
+	!tx "To specify range, use <addr1.addr2>"
+	!byte $0d, 00
+	
 !align $ffff, $ffff,$00	;fill up to top of memory
 
