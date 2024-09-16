@@ -92,7 +92,7 @@ static int engine_65816_halt; // halts execution when = 1; STP instruction sets 
 
 unsigned char rmem(unsigned char bank, unsigned short address)
 {
-	return mem[(bank * 65536) + address];
+	return mem_driver_read((bank * 65536) + address);
 }
 
 void wmem(unsigned char bank, unsigned short address, unsigned char value)

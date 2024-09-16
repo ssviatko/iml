@@ -1,7 +1,7 @@
 	!to "1c.o",plain
 	!cpu 65816
 
-	*= $1c0000
+	*= $0000
 
 IO_KEYQ_SIZE = $1bfc00
 IO_KEYQ_WAITING = $1bfc01
@@ -23,26 +23,402 @@ promptchar = '>'
 
 l_getline = $1c0000 + getline
 l_prinbuff = $1c0000 + prinbuff
+l_prcdpla = $1c0000 + prcdpla
+l_ucline = $1c0000 + ucline
+
+rangehigh = $33
+monrange = $35
+monlast = $36
+parseptr = $37
+parseptr_m = $38
+parseptr_h = $39
+mondump = $3a
+mondump_m = $3b
+mondump_h = $3c
+dpla = $3d
+dpla_m = $3e
+dpla_h = $3f
 
 inbuff = $170400
 
 x1crominit
 	phk
 	plb
-	rep #$30
-	!al
+	rep #$10
 	!rl
-	
-monstart
 	sep #$20
 	!as
+	ldx #initstring
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
+	jmp+2 monstart
+
+parse_setup
+	ldx #$0400
+	stx parseptr
+	lda #$17
+	sta parseptr_h
+	rts
+	
+	!zone parse_getchar
+parse_getchar			;get char from inbuff, assumes 8 bit A, 16 bit X
+	lda [parseptr]
+	pha
+	inc parseptr
+	bne .local2
+	inc parseptr_m
+	bne .local2
+	inc parseptr_h
+.local2
+	pla
+	rts
+	
+	!zone parse_addr
+parse_addr				;see if user specified an address on line.
+	lda #$00
+	pha
+	pha					;make space for working value on the stack
+	sta monrange		;clear range flag
+	jsr+2 parse_getnib	;get first nibble
+	bcc .no				;didn't even get one hex character, so return false
+	sta 1,s				;save it on the stack for now
+	jsr+2 parse_getnib	;get second nibble
+	bcc .yes			;if not hex then bail
+	pha
+	lda 2,s
+	asl
+	asl
+	asl
+	asl
+	ora 1,s
+	sta 2,s
+	pla					;add to stack
+	jsr+2 parse_getnib	;get possible third nibble
+	bcc .yes
+	rep #$30			;we're dealing with a 16 bit value now
+	!al
+	and #$000f
+	pha
+	lda 3,s
+	asl
+	asl
+	asl
+	asl
+	ora 1,s
+	sta 3,s
+	pla
+	sep #$20
+	!as
+	jsr+2 parse_getnib
+	bcc .yes
+	rep #$30
+	!al
+	and #$000f
+	pha
+	lda 3,s
+	asl
+	asl
+	asl
+	asl
+	ora 1,s
+	sta 3,s
+	pla
+	sep #$20			;fall thru to yes on 4th nibble
+	!as
+	jsr parse_getchar	;check to see if next char is a . so we can specify ranges
+	cmp #'.'
+	bne .yes
+	lda #$80
+	sta monrange
+.yes
+	ply					;get 16 bit work address off of stack
+	sec					;got address, return
+	rts
+.no
+	ply					;clear stack
+	clc					;no address found, return
+	rts
+parse_getnib
+	jsr parse_getchar
+	cmp #' '
+	beq parse_getnib	;throw away spaces.
+	cmp #'.'
+	bne .notrange
+	lda #$80
+	sta monrange		;this is the start of a range specification
+	clc
+	rts
+.notrange
+	cmp #$41
+	bcc .outrnga
+	cmp #$47
+	bcs .outrnga
+	sec
+	sbc #$07			;in range of A-F
+.success
+	and #$0f
+	sec
+	rts
+.outrnga				;test if 0-9
+	cmp #$30
+	bcc .outrng
+	cmp #$3a
+	bcc .success		;less than 3a, but >= 30, else fall thru to outrng
+.outrng
+	clc
+	rts
+	
+prdumpaddr
+	lda mondump_h			;print long address
+	jsr+2 prhex
+	lda #'/'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldx mondump
+	jsr+2 prhex16
+	lda #'-'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	rts
+	
+adjdumpaddr					;add 8 to dump address
+	rep #$30
+	!al
+	lda mondump
+	clc
+	adc #$0008
+	sta mondump
+	sep #$20
+	!as
+	php						;save carry state.. did we carry to the bank?
+	lda mondump_h
+	adc #$00
+	sta mondump_h
+	plp
+	rts
+	
+bankcmd
+	jsr parse_addr
+	bcc monerror
+	tya
+	sta mondump_h
+	jmp moncmd
+monerror
+	ldx #monsynerr
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
+	jmp moncmd
+monsynerr
+	!tx "Syntax error!"
+	!byte $0d, $00
+
+monstart				;main entry point for system monitor
+	phk
+	plb
+	rep #$10
+	!rl
+	sep #$20
+	!as
+	ldx #$0000
+	stx mondump
+	lda #$1c
+	sta mondump_h
+	lda #'D'
+	sta monlast
+	
+	!zone moncmd
+moncmd
 	lda #promptchar
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	jsl l_getline
-	jsl l_prinbuff
+	jsl l_ucline
+	jsr parse_setup
+	jsr parse_getchar
+.local3
+	cmp #'Q'
+	beq haltcmd
+	cmp #'D'
+	bne .local4
+	jmp+2 dumpcmd
+.local4
+	cmp #$0d
+	bne .local2
+	lda monlast			;recall previously executed command
+	cmp #$20			;make sure it isn't a control character
+	bcs .local3			;and retry it
+	bra moncmd			;else recycle and try a new command
+.local2
+	cmp #'A'
+	beq asciidumpcmd
+	cmp #'B'
+	beq bankcmd
+	jmp moncmd
+	
+haltcmd
+	ldx #haltmsg
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
 	stp
+haltmsg
+	!tx "Halting 65816 engine.."
+	!byte $0d,$00
+	
+	!zone asciidumpcmd
+asciidumpcmd
+	sta monlast
+	jsr parse_addr
+	bcc .local3
+	sty mondump
+	sty rangehigh
+	bit monrange			;user asking for a range?
+	bpl .local3
+	jsr parse_addr			;get the remaining half of the range
+	sty rangehigh
+	lda #$80				;replace value in monrange since parse_addr will overwrite it
+	sta monrange
+	ldy rangehigh
+	bne .local6
+	jmp+2 monerror			;top of range can't be zero
+.local6
+	ldy mondump
+	cpy rangehigh
+	bcc .local3				;mondump must be less than rangehigh or it's a syntax error
+	jmp+2 monerror
+.local3
+	jsr prdumpaddr
+	ldy #$0000
+.local2
+	lda [mondump],y
+	cmp #$20
+	bcs .local4
+	lda #'.'				;substitute control character with a period
+.local4
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	iny
+	cpy #$0010
+	bne .local2
+	sta IO_CON_CR
+	jsr adjdumpaddr
+	bcs .local5				;carry to bank, exit even if we're processing a range
+	jsr adjdumpaddr
+	bcs .local5				;carry to bank, exit even if we're processing a range
+	bit monrange			;ranges on?
+	bpl .local5
+	ldy rangehigh
+	cpy mondump
+	bcs .local3
+.local5
+	stz monrange
+	jmp moncmd
+	
+	!zone dumpcmd
+dumpcmd
+	sta monlast
+	jsr parse_addr
+	bcc .local3
+	sty mondump				;if address was specified, store 16 bit y at low 16 bits of mondump address
+	sty rangehigh
+	bit monrange			;user asking for a range?
+	bpl .local3
+	jsr parse_addr			;get the remaining half of the range
+	sty rangehigh
+	lda #$80				;replace value in monrange since parse_addr will overwrite it
+	sta monrange
+	ldy rangehigh
+	bne .local6
+	jmp+2 monerror			;top of range can't be zero
+.local6
+	ldy mondump
+	cpy rangehigh
+	bcc .local3				;mondump must be less than rangehigh or it's a syntax error
+	jmp+2 monerror
+.local3
+	jsr prdumpaddr
+	ldy #$0000
+.local2
+	lda [mondump],y
+	jsr+2 prhex
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	iny
+	cpy #$0008
+	bne .local2
+	sta IO_CON_CR
+	jsr adjdumpaddr
+	bcs .local5				;carry to bank, exit even if we're processing a range
+	bit monrange			;ranges on?
+	bpl .local5
+	ldy rangehigh
+	cpy mondump
+	bcs .local3
+.local5
+	stz monrange
+	jmp moncmd
+	
+prhex16
+	rep #$30
+	txa
+	sep #$20
+	xba
+	jsr+2 prhex
+	xba
+prhex
+	pha
+	lsr
+	lsr
+	lsr
+	lsr
+	jsr+2 prhexnib
+	pla
+	and #$0f
+prhexnib
+	ora #$30
+	cmp #$3a
+	bcc prhexnofix
+	clc
+	adc #$07
+prhexnofix
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	rts
 
+	!zone ucline
+ucline					;convert inbuff at $170400 to upper case
+	php
+	rep #$10
+	sep #$20
+	!as
+	!rl
+	ldx #$0000
+.local2
+	lda inbuff,x
+	beq .local4			;hit the zero, so bail
+	cmp #'a'
+	bcc .local3			;less then lowercase a, so ignore
+	cmp #'z' + 1		;less than next character after lowercase z?
+	bcs .local3			;greater than or equal, so ignore
+	sec
+	sbc #('z' - 'Z')	;make upper case
+	sta inbuff,x
+.local3
+	inx
+	bra .local2
+.local4
+	plp
+	rtl
+	
 	!zone getline
 getline
 	php
@@ -92,24 +468,47 @@ getline
 	dex
 	bra .local2
 	
-	!zone prinbuff
-prinbuff
+prinbuff				;feed location of input buffer into dpla and then print
 	php
 	rep #$10
 	sep #$20
 	!as
 	!rl
-	ldx #$0000
+	lda #$17
+	sta dpla_h
+	lda #$04
+	sta dpla_m
+	stz dpla
+	jsl l_prcdpla
+	plp
+	rtl
+	
+	!zone prcdpla
+prcdpla					; print C string pointed to by dp locations $3d-$3f
+	php
+	rep #$10
+	sep #$20
+	!as
+	!rl
+	ldy #$0000
 .local2
-	lda inbuff,x
+	lda [dpla],y
 	beq .local3
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
-	inx
+	iny
 	bra .local2
 .local3
 	plp
 	rtl
 
-	!align $ffff, $ffff,$00	;fill up to top of memory
+initstring
+	!tx "IML 65816 1C Firmware v00"
+	!byte 0x0d
+	!tx "System Monitor"
+	!byte 0x0d
+	!byte 0x0d
+	!byte 0
+
+!align $ffff, $ffff,$00	;fill up to top of memory
 

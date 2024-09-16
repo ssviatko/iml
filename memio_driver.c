@@ -182,6 +182,13 @@ void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 	}
 }
 
+uint8_t mem_driver_read(uint32_t a_address)
+{
+	// protect reading out of memory range
+	a_address &= 0x1fffff;
+	return g_shm_ptr[a_address];
+}
+
 // keyboard queue
 static uint8_t kbd_q[256];
 static uint8_t kbd_qsize = 0;

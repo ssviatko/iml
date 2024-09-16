@@ -38,7 +38,7 @@ romstart
 	sta IO_CON_CURSORV
 	ora #$80
 	sta IO_CON_CURSOR
-	lda #$5b
+	lda #$0b
 	sta IO_CON_COLOR
 	lda #$20
 	sta IO_CON_CHAROUT
@@ -60,7 +60,6 @@ initstring
 	!tx "(C) Good Neighbors LLC, 2019, 2024"
 	!byte 0x0d
 	!tx "Developed by Stephen Sviatko"
-	!byte 0x0d
 	!byte 0x0d
 	!byte 0
 

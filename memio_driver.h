@@ -68,6 +68,7 @@ void mem_driver_shutdown();
 void mem_driver_dispose_shared();
 int mem_driver_shmid();
 unsigned char *mem_driver_buffer();
+uint8_t mem_driver_read(uint32_t a_address);
 void mem_driver_write(uint32_t a_address, uint8_t a_byte);
 
 // io driver

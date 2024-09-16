@@ -40,7 +40,7 @@
     38  e41d 8f15fc1b           	sta IO_CON_CURSORV
     39  e421 0980               	ora #$80
     40  e423 8f16fc1b           	sta IO_CON_CURSOR
-    41  e427 a95b               	lda #$5b
+    41  e427 a90b               	lda #$0b
     42  e429 8f11fc1b           	sta IO_CON_COLOR
     43  e42d a920               	lda #$20
     44  e42f 8f12fc1b           	sta IO_CON_CHAROUT
@@ -63,11 +63,10 @@
     61  e48a 0d                 	!byte 0x0d
     62  e48b 446576656c6f7065...	!tx "Developed by Stephen Sviatko"
     63  e4a7 0d                 	!byte 0x0d
-    64  e4a8 0d                 	!byte 0x0d
-    65  e4a9 00                 	!byte 0
-    66                          
-    67  e4aa 0000000000000000...	!align $ffff,$fffc,$00
-    68                          
-    69  fffc 00e4               reset	!word romstart
-    70  fffe 00e4               irq	!word romstart
-    71                           
+    64  e4a8 00                 	!byte 0
+    65                          
+    66  e4a9 0000000000000000...	!align $ffff,$fffc,$00
+    67                          
+    68  fffc 00e4               reset	!word romstart
+    69  fffe 00e4               irq	!word romstart
+    70                           
