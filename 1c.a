@@ -26,6 +26,8 @@ l_prinbuff = $1c0000 + prinbuff
 l_prcdpla = $1c0000 + prcdpla
 l_ucline = $1c0000 + ucline
 
+alarge = $2d
+xlarge = $2e
 scratch1 = $2f
 enterbytes = $30
 enterbytes_m = $31
@@ -520,7 +522,7 @@ prhexnofix
 	jmp monerror
 entercmd
 	jsr parse_addr
-	bcc .local1
+	bcc .local1			;address is mandatory
 	bit monrange
 	bmi .local1			;ranges not allowed
 	sty enterbytes
@@ -547,7 +549,245 @@ entercmd
 	
 	!zone listcmd
 listcmd
+	jsr parse_addr
+	bcc .local1			;address is optional
+	sty mondump
+.local1
+	ldy #$0000
+	jsr prdumpaddr
+	lda #$00
+	xba					;clear B
+	lda [mondump]		;get opcode
+	cmp #$a
+	bcc .dunno2
+	jmp .dunno
+.dunno2
+	pha					;save opcode
+	tax
+	lda mnemlenmode,x
+	lsr
+	lsr
+	lsr
+	lsr					;isolage opcode len
+	sta scratch1
+	lda [mondump]
+	jsr+2 is816
+	lda scratch1
+	tax
+	ldy #$0000
+.nextbyte
+	lda [mondump],y
+	jsr prhex			;print hex
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER	;print space
+	iny
+	dex
+	bne .nextbyte
+	lda #$18
+	sta IO_CON_CURSORH	;tab over
+	pla					;get opcode back
+	tax
+	lda mnemlist,x
+	phx					;stash our opcode
+	asl
+	clc
+	adc mnemlist,x		;multiply by 3
+	tax
+	lda mnems, x
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	inx
+	lda mnems, x
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	inx
+	lda mnems, x
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	plx					;get our opcode back in index
+	lda mnemlenmode,x
+	and #$0f			;isolate the addressing mode
+	asl					;multiply by two
+	tax
+	jsr (listamod,x)
+	sta IO_CON_CR
+.fixup
+	lda scratch1		;get our fixup
+	clc
+	adc mondump
+	sta mondump
+	lda mondump_m
+	adc #$00
+	sta mondump_m
+	lda mondump_h
+	adc #$00
+	sta mondump_h
+.goback
 	jmp moncmd
+.dunno
+	jsr prhex
+	lda #$18
+	sta IO_CON_CURSORH
+	lda #$01
+	sta scratch1		;fix up one byte
+	lda #'?'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	sta IO_CON_REGISTER
+	sta IO_CON_REGISTER
+	sta IO_CON_CR
+	bra .fixup
+
+amod0
+	lda #'$'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldy #$0001
+	lda [mondump],y
+	jsr prhex
+	rts
+amod1
+	lda #'('
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #'$'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldy #$0001
+	lda [mondump],y
+	jsr prhex
+	lda #','
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #'X'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #')'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	rts
+amod2
+	ldy #$0001
+	lda [mondump],y
+	jsr prhex
+	lda #','
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #'S'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	rts
+amod3
+	lda #'['
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #'$'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldy #$0001
+	lda [mondump],y
+	jsr prhex
+	lda #']'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+amod4
+	rts
+	!zone amod5
+amod5
+	lda #'#'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #'$'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda scratch1
+	cmp #$02
+	beq .amod508
+.amod516
+	ldy #$0002
+	lda [mondump],y
+	jsr prhex
+.amod508
+	ldy #$0001
+	lda [mondump],y
+	jsr prhex
+	rts
+	
+	!zone is816
+is816
+	pha
+	and #$1f
+	cmp #$09				;09, 29, 49, etc?
+	bne .testx
+	bit alarge				;16 bit?
+	bmi .is16
+	bpl .is8
+.testx
+	cmp #$a0
+	beq .isx
+	cmp #$a2
+	beq .isx
+	cmp #$c0
+	beq .isx
+	cmp #$e0
+	beq .isx
+	bra .is8				;made it here, not an accumulator or index instruction
+.isx
+	bit xlarge
+	bmi .is16				;or else fall thru
+.is8
+	lda #$2
+	sta scratch1
+	pla
+	rts
+.is16
+	lda #$3
+	sta scratch1
+	pla
+	rts
+	
+listamod
+	!16 amod0
+	!16 amod1
+	!16 amod2
+	!16 amod3
+	!16 amod4
+	!16 amod5
+	
+mnemlenmode
+	!byte %00100000		;00 brk 2/$xx
+	!byte %00100001		;01 ora 2/($xx,x)
+	!byte %00100000		;02 cop 2/$xx
+	!byte %00100010		;03 ora 2/x,s
+	!byte %00100000		;04 tsb 2/$xx
+	!byte %00100000		;05 ora 2/$xx
+	!byte %00100000		;06 asl 2/$xx
+	!byte %00100011		;07 ora 2/[$xx]
+	!byte %00010100		;08 php 1
+	!byte %00100101		;09 ora 2/#imm
+mnemlist
+	!byte $00			;00 brk
+	!byte $02			;01 ora
+	!byte $01			;02 cop
+	!byte $02			;03 ora
+	!byte $03			;04 tsb
+	!BYTE $02			;05 ora
+	!byte $04			;06 asl
+	!byte $02			;07 ora
+	!byte $05			;08 php
+	!byte $02			;09 ora
+mnems
+	!tx "BRK"
+	!tx "COP"
+	!tx "ORA"
+	!tx "TSB"
+	!tx "ASL"
+	!tx "PHP"
+	!tx "PHD"
 	
 	!zone ucline
 ucline					;convert inbuff at $170400 to upper case
