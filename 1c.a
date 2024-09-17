@@ -550,14 +550,29 @@ entercmd
 	!zone listcmd
 listcmd
 	jsr parse_addr
-	bcc .local1			;address is optional
+	bcc .listmany				;address is optional
 	sty mondump
-.local1
+.listmany
+	lda IO_VIDMODE
+	cmp #$09
+	bne .listmany1
+	ldx #32
+	bra .listmany2
+.listmany1
+	ldx #15
+.listmany2
+	phx
+	jsr+2 .listsingle
+	plx
+	dex
+	bne .listmany2
+	jmp moncmd
+.listsingle
 	ldy #$0000
 	jsr prdumpaddr
 	lda #$00
 	xba					;clear B
-	lda [mondump]		;get opcode
+	lda [mondump]				;get opcode
 	cmp #$a
 	bcc .dunno2
 	jmp .dunno
@@ -627,7 +642,7 @@ listcmd
 	adc #$00
 	sta mondump_h
 .goback
-	jmp moncmd
+	rts
 .dunno
 	jsr prhex
 	lda #$18

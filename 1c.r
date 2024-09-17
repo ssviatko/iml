@@ -56,11 +56,11 @@
     54                          	!rl
     55  0004 e220               	sep #$20
     56                          	!as
-    57  0006 a24b06             	ldx #initstring
+    57  0006 a26406             	ldx #initstring
     58  0009 863d               	stx dpla
     59  000b a91c               	lda #$1c
     60  000d 853f               	sta dpla_h
-    61  000f 2232061c           	jsl l_prcdpla
+    61  000f 224b061c           	jsl l_prcdpla
     62  0013 4c5d01             	jmp+2 monstart
     63                          
     64                          parse_setup
@@ -226,7 +226,7 @@
    224  010b 863d               	stx dpla
    225  010d a91c               	lda #$1c
    226  010f 853f               	sta dpla_h
-   227  0111 2232061c           	jsl l_prcdpla
+   227  0111 224b061c           	jsl l_prcdpla
    228  0115 4c7001             	jmp moncmd
    229                          monsynerr
    230  0118 53796e7461782065...	!tx "Syntax error!"
@@ -275,8 +275,8 @@
    273  0170 a93e               	lda #promptchar
    274  0172 8f12fc1b           	sta IO_CON_CHAROUT
    275  0176 8f13fc1b           	sta IO_CON_REGISTER
-   276  017a 22b0051c           	jsl l_getline
-   277  017e 228e051c           	jsl l_ucline
+   276  017a 22c9051c           	jsl l_getline
+   277  017e 22a7051c           	jsl l_ucline
    278  0182 201600             	jsr parse_setup
    279  0185 202000             	jsr parse_getchar
    280                          .local3
@@ -320,11 +320,11 @@
    318  01ca 4c7001             	jmp moncmd
    319                          	
    320                          helpcmd
-   321  01cd a27606             	ldx #helpmsg
+   321  01cd a28f06             	ldx #helpmsg
    322  01d0 863d               	stx dpla
    323  01d2 a91c               	lda #$1c
    324  01d4 853f               	sta dpla_h
-   325  01d6 2232061c           	jsl l_prcdpla
+   325  01d6 224b061c           	jsl l_prcdpla
    326  01da 4c7001             	jmp moncmd
    327                          	
    328                          haltcmd
@@ -332,7 +332,7 @@
    330  01e0 863d               	stx dpla
    331  01e2 a91c               	lda #$1c
    332  01e4 853f               	sta dpla_h
-   333  01e6 2232061c           	jsl l_prcdpla
+   333  01e6 224b061c           	jsl l_prcdpla
    334  01ea db                 	stp
    335                          haltmsg
    336  01eb 48616c74696e6720...	!tx "Halting 65816 engine.."
@@ -552,387 +552,402 @@
    550                          	!zone listcmd
    551                          listcmd
    552  03a2 202f00             	jsr parse_addr
-   553  03a5 9002               	bcc .local1			;address is optional
+   553  03a5 9002               	bcc .listmany				;address is optional
    554  03a7 843a               	sty mondump
-   555                          .local1
-   556  03a9 a00000             	ldy #$0000
-   557  03ac 20bf00             	jsr prdumpaddr
-   558  03af a900               	lda #$00
-   559  03b1 eb                 	xba					;clear B
-   560  03b2 a73a               	lda [mondump]		;get opcode
-   561  03b4 c90a               	cmp #$a
-   562  03b6 9003               	bcc .dunno2
-   563  03b8 4c4804             	jmp .dunno
-   564                          .dunno2
-   565  03bb 48                 	pha					;save opcode
-   566  03bc aa                 	tax
-   567  03bd bd6505             	lda mnemlenmode,x
-   568  03c0 4a                 	lsr
-   569  03c1 4a                 	lsr
-   570  03c2 4a                 	lsr
-   571  03c3 4a                 	lsr					;isolage opcode len
-   572  03c4 852f               	sta scratch1
-   573  03c6 a73a               	lda [mondump]
-   574  03c8 202a05             	jsr+2 is816
-   575  03cb a52f               	lda scratch1
-   576  03cd aa                 	tax
-   577  03ce a00000             	ldy #$0000
-   578                          .nextbyte
-   579  03d1 b73a               	lda [mondump],y
-   580  03d3 205403             	jsr prhex			;print hex
-   581  03d6 a920               	lda #' '
-   582  03d8 8f12fc1b           	sta IO_CON_CHAROUT
-   583  03dc 8f13fc1b           	sta IO_CON_REGISTER	;print space
-   584  03e0 c8                 	iny
-   585  03e1 ca                 	dex
-   586  03e2 d0ed               	bne .nextbyte
-   587  03e4 a918               	lda #$18
-   588  03e6 8f14fc1b           	sta IO_CON_CURSORH	;tab over
-   589  03ea 68                 	pla					;get opcode back
-   590  03eb aa                 	tax
-   591  03ec bd6f05             	lda mnemlist,x
-   592  03ef da                 	phx					;stash our opcode
-   593  03f0 0a                 	asl
-   594  03f1 18                 	clc
-   595  03f2 7d6f05             	adc mnemlist,x		;multiply by 3
-   596  03f5 aa                 	tax
-   597  03f6 bd7905             	lda mnems, x
-   598  03f9 8f12fc1b           	sta IO_CON_CHAROUT
-   599  03fd 8f13fc1b           	sta IO_CON_REGISTER
-   600  0401 e8                 	inx
-   601  0402 bd7905             	lda mnems, x
-   602  0405 8f12fc1b           	sta IO_CON_CHAROUT
-   603  0409 8f13fc1b           	sta IO_CON_REGISTER
-   604  040d e8                 	inx
-   605  040e bd7905             	lda mnems, x
-   606  0411 8f12fc1b           	sta IO_CON_CHAROUT
-   607  0415 8f13fc1b           	sta IO_CON_REGISTER
-   608  0419 a920               	lda #' '
-   609  041b 8f12fc1b           	sta IO_CON_CHAROUT
-   610  041f 8f13fc1b           	sta IO_CON_REGISTER
-   611  0423 fa                 	plx					;get our opcode back in index
-   612  0424 bd6505             	lda mnemlenmode,x
-   613  0427 290f               	and #$0f			;isolate the addressing mode
-   614  0429 0a                 	asl					;multiply by two
-   615  042a aa                 	tax
-   616  042b fc5905             	jsr (listamod,x)
-   617  042e 8f17fc1b           	sta IO_CON_CR
-   618                          .fixup
-   619  0432 a52f               	lda scratch1		;get our fixup
-   620  0434 18                 	clc
-   621  0435 653a               	adc mondump
-   622  0437 853a               	sta mondump
-   623  0439 a53b               	lda mondump_m
-   624  043b 6900               	adc #$00
-   625  043d 853b               	sta mondump_m
-   626  043f a53c               	lda mondump_h
-   627  0441 6900               	adc #$00
-   628  0443 853c               	sta mondump_h
-   629                          .goback
-   630  0445 4c7001             	jmp moncmd
-   631                          .dunno
-   632  0448 205403             	jsr prhex
-   633  044b a918               	lda #$18
-   634  044d 8f14fc1b           	sta IO_CON_CURSORH
-   635  0451 a901               	lda #$01
-   636  0453 852f               	sta scratch1		;fix up one byte
-   637  0455 a93f               	lda #'?'
-   638  0457 8f12fc1b           	sta IO_CON_CHAROUT
-   639  045b 8f13fc1b           	sta IO_CON_REGISTER
-   640  045f 8f13fc1b           	sta IO_CON_REGISTER
-   641  0463 8f13fc1b           	sta IO_CON_REGISTER
-   642  0467 8f17fc1b           	sta IO_CON_CR
-   643  046b 80c5               	bra .fixup
-   644                          
-   645                          amod0
-   646  046d a924               	lda #'$'
-   647  046f 8f12fc1b           	sta IO_CON_CHAROUT
-   648  0473 8f13fc1b           	sta IO_CON_REGISTER
-   649  0477 a00100             	ldy #$0001
-   650  047a b73a               	lda [mondump],y
-   651  047c 205403             	jsr prhex
-   652  047f 60                 	rts
-   653                          amod1
-   654  0480 a928               	lda #'('
-   655  0482 8f12fc1b           	sta IO_CON_CHAROUT
-   656  0486 8f13fc1b           	sta IO_CON_REGISTER
-   657  048a a924               	lda #'$'
-   658  048c 8f12fc1b           	sta IO_CON_CHAROUT
-   659  0490 8f13fc1b           	sta IO_CON_REGISTER
-   660  0494 a00100             	ldy #$0001
-   661  0497 b73a               	lda [mondump],y
-   662  0499 205403             	jsr prhex
-   663  049c a92c               	lda #','
-   664  049e 8f12fc1b           	sta IO_CON_CHAROUT
-   665  04a2 8f13fc1b           	sta IO_CON_REGISTER
-   666  04a6 a958               	lda #'X'
-   667  04a8 8f12fc1b           	sta IO_CON_CHAROUT
-   668  04ac 8f13fc1b           	sta IO_CON_REGISTER
-   669  04b0 a929               	lda #')'
-   670  04b2 8f12fc1b           	sta IO_CON_CHAROUT
-   671  04b6 8f13fc1b           	sta IO_CON_REGISTER
-   672  04ba 60                 	rts
-   673                          amod2
-   674  04bb a00100             	ldy #$0001
-   675  04be b73a               	lda [mondump],y
-   676  04c0 205403             	jsr prhex
-   677  04c3 a92c               	lda #','
-   678  04c5 8f12fc1b           	sta IO_CON_CHAROUT
-   679  04c9 8f13fc1b           	sta IO_CON_REGISTER
-   680  04cd a953               	lda #'S'
-   681  04cf 8f12fc1b           	sta IO_CON_CHAROUT
-   682  04d3 8f13fc1b           	sta IO_CON_REGISTER
-   683  04d7 60                 	rts
-   684                          amod3
-   685  04d8 a95b               	lda #'['
-   686  04da 8f12fc1b           	sta IO_CON_CHAROUT
-   687  04de 8f13fc1b           	sta IO_CON_REGISTER
-   688  04e2 a924               	lda #'$'
-   689  04e4 8f12fc1b           	sta IO_CON_CHAROUT
-   690  04e8 8f13fc1b           	sta IO_CON_REGISTER
-   691  04ec a00100             	ldy #$0001
-   692  04ef b73a               	lda [mondump],y
-   693  04f1 205403             	jsr prhex
-   694  04f4 a95d               	lda #']'
-   695  04f6 8f12fc1b           	sta IO_CON_CHAROUT
-   696  04fa 8f13fc1b           	sta IO_CON_REGISTER
-   697                          amod4
-   698  04fe 60                 	rts
-   699                          	!zone amod5
-   700                          amod5
-   701  04ff a923               	lda #'#'
-   702  0501 8f12fc1b           	sta IO_CON_CHAROUT
-   703  0505 8f13fc1b           	sta IO_CON_REGISTER
-   704  0509 a924               	lda #'$'
-   705  050b 8f12fc1b           	sta IO_CON_CHAROUT
-   706  050f 8f13fc1b           	sta IO_CON_REGISTER
-   707  0513 a52f               	lda scratch1
-   708  0515 c902               	cmp #$02
-   709  0517 f008               	beq .amod508
-   710                          .amod516
-   711  0519 a00200             	ldy #$0002
-   712  051c b73a               	lda [mondump],y
-   713  051e 205403             	jsr prhex
-   714                          .amod508
-   715  0521 a00100             	ldy #$0001
-   716  0524 b73a               	lda [mondump],y
-   717  0526 205403             	jsr prhex
-   718  0529 60                 	rts
-   719                          	
-   720                          	!zone is816
-   721                          is816
-   722  052a 48                 	pha
-   723  052b 291f               	and #$1f
-   724  052d c909               	cmp #$09				;09, 29, 49, etc?
-   725  052f d006               	bne .testx
-   726  0531 242d               	bit alarge				;16 bit?
-   727  0533 301e               	bmi .is16
-   728  0535 1016               	bpl .is8
-   729                          .testx
-   730  0537 c9a0               	cmp #$a0
-   731  0539 f00e               	beq .isx
-   732  053b c9a2               	cmp #$a2
-   733  053d f00a               	beq .isx
-   734  053f c9c0               	cmp #$c0
-   735  0541 f006               	beq .isx
-   736  0543 c9e0               	cmp #$e0
-   737  0545 f002               	beq .isx
-   738  0547 68                 	pla						;made it here, not an accumulator or index instruction
-   739  0548 60                 	rts
-   740                          .isx
-   741  0549 242e               	bit xlarge
-   742  054b 3006               	bmi .is16				;or else fall thru
-   743                          .is8
-   744  054d a902               	lda #$2
-   745  054f 852f               	sta scratch1
-   746  0551 68                 	pla
-   747  0552 60                 	rts
-   748                          .is16
-   749  0553 a903               	lda #$3
-   750  0555 852f               	sta scratch1
-   751  0557 68                 	pla
-   752  0558 60                 	rts
-   753                          	
-   754                          listamod
-   755  0559 6d04               	!16 amod0
-   756  055b 8004               	!16 amod1
-   757  055d bb04               	!16 amod2
-   758  055f d804               	!16 amod3
-   759  0561 fe04               	!16 amod4
-   760  0563 ff04               	!16 amod5
-   761                          	
-   762                          mnemlenmode
-   763  0565 20                 	!byte %00100000		;00 brk 2/$xx
-   764  0566 21                 	!byte %00100001		;01 ora 2/($xx,x)
-   765  0567 20                 	!byte %00100000		;02 cop 2/$xx
-   766  0568 22                 	!byte %00100010		;03 ora 2/x,s
-   767  0569 20                 	!byte %00100000		;04 tsb 2/$xx
-   768  056a 20                 	!byte %00100000		;05 ora 2/$xx
-   769  056b 20                 	!byte %00100000		;06 asl 2/$xx
-   770  056c 23                 	!byte %00100011		;07 ora 2/[$xx]
-   771  056d 14                 	!byte %00010100		;08 php 1
-   772  056e 25                 	!byte %00100101		;09 ora 2/#imm
-   773                          mnemlist
-   774  056f 00                 	!byte $00			;00 brk
-   775  0570 02                 	!byte $02			;01 ora
-   776  0571 01                 	!byte $01			;02 cop
-   777  0572 02                 	!byte $02			;03 ora
-   778  0573 03                 	!byte $03			;04 tsb
-   779  0574 02                 	!BYTE $02			;05 ora
-   780  0575 04                 	!byte $04			;06 asl
-   781  0576 02                 	!byte $02			;07 ora
-   782  0577 05                 	!byte $05			;08 php
-   783  0578 02                 	!byte $02			;09 ora
-   784                          mnems
-   785  0579 42524b             	!tx "BRK"
-   786  057c 434f50             	!tx "COP"
-   787  057f 4f5241             	!tx "ORA"
-   788  0582 545342             	!tx "TSB"
-   789  0585 41534c             	!tx "ASL"
-   790  0588 504850             	!tx "PHP"
-   791  058b 504844             	!tx "PHD"
-   792                          	
-   793                          	!zone ucline
-   794                          ucline					;convert inbuff at $170400 to upper case
-   795  058e 08                 	php
-   796  058f c210               	rep #$10
-   797  0591 e220               	sep #$20
-   798                          	!as
-   799                          	!rl
-   800  0593 a20000             	ldx #$0000
-   801                          .local2
-   802  0596 bf000417           	lda inbuff,x
-   803  059a f012               	beq .local4			;hit the zero, so bail
-   804  059c c961               	cmp #'a'
-   805  059e 900b               	bcc .local3			;less then lowercase a, so ignore
-   806  05a0 c97b               	cmp #'z' + 1		;less than next character after lowercase z?
-   807  05a2 b007               	bcs .local3			;greater than or equal, so ignore
-   808  05a4 38                 	sec
-   809  05a5 e920               	sbc #('z' - 'Z')	;make upper case
-   810  05a7 9f000417           	sta inbuff,x
-   811                          .local3
-   812  05ab e8                 	inx
-   813  05ac 80e8               	bra .local2
-   814                          .local4
-   815  05ae 28                 	plp
-   816  05af 6b                 	rtl
-   817                          	
-   818                          	!zone getline
-   819                          getline
-   820  05b0 08                 	php
-   821  05b1 c210               	rep #$10
-   822  05b3 e220               	sep #$20
-   823                          	!as
-   824                          	!rl
-   825  05b5 a20000             	ldx #$0000
-   826                          .local2
-   827  05b8 af00fc1b           	lda IO_KEYQ_SIZE
-   828  05bc f0fa               	beq .local2
-   829  05be af01fc1b           	lda IO_KEYQ_WAITING
-   830  05c2 8f02fc1b           	sta IO_KEYQ_DEQUEUE
-   831  05c6 c90d               	cmp #$0d			;carriage return yet?
-   832  05c8 f01c               	beq .local3
-   833  05ca c908               	cmp #$08			;backspace/back arrow?
-   834  05cc f029               	beq .local4
-   835  05ce c920               	cmp #$20 			;generally any control character besides what we're specifically looking for?
-   836  05d0 90e6               	bcc .local2		 		;yes, so ignore it
-   837  05d2 9f000417           	sta inbuff,x 		;any other character, so register it and store it
-   838  05d6 8f12fc1b           	sta IO_CON_CHAROUT
-   839  05da 8f13fc1b           	sta IO_CON_REGISTER
-   840  05de e8                 	inx
-   841  05df a90d               	lda #$0d			;tee up a CR just in case we have to fall thru below
-   842  05e1 e0fe03             	cpx #$3fe			;overrun end of buffer yet?
-   843  05e4 d0d2               	bne .local2			;no, so get another char.. otherwise fall thru
-   844                          .local3
-   845  05e6 9f000417           	sta inbuff,x		;store CR
-   846  05ea 8f17fc1b           	sta IO_CON_CR
-   847  05ee e8                 	inx
-   848  05ef a900               	lda #$00			;store zero to end it all
-   849  05f1 9f000417           	sta inbuff,x
-   850  05f5 28                 	plp
-   851  05f6 6b                 	rtl
-   852                          .local4
-   853  05f7 e00000             	cpx #$0000
-   854  05fa f0bc               	beq .local2			;no data in buffer yet, so nothing to backspace over
-   855  05fc a908               	lda #$08
-   856  05fe 8f12fc1b           	sta IO_CON_CHAROUT
-   857  0602 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char, which backs up the cursor
-   858  0606 a920               	lda #$20
-   859  0608 8f12fc1b           	sta IO_CON_CHAROUT
-   860  060c 8f13fc1b           	sta IO_CON_REGISTER	;blot out the character with a space
-   861  0610 a908               	lda #$08
-   862  0612 8f12fc1b           	sta IO_CON_CHAROUT
-   863  0616 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char again since we advanced the cursor
-   864  061a ca                 	dex
-   865  061b 809b               	bra .local2
-   866                          	
-   867                          prinbuff				;feed location of input buffer into dpla and then print
-   868  061d 08                 	php
-   869  061e c210               	rep #$10
-   870  0620 e220               	sep #$20
-   871                          	!as
-   872                          	!rl
-   873  0622 a917               	lda #$17
-   874  0624 853f               	sta dpla_h
-   875  0626 a904               	lda #$04
-   876  0628 853e               	sta dpla_m
-   877  062a 643d               	stz dpla
-   878  062c 2232061c           	jsl l_prcdpla
-   879  0630 28                 	plp
-   880  0631 6b                 	rtl
+   555                          .listmany
+   556  03a9 af20fc1b           	lda IO_VIDMODE
+   557  03ad c909               	cmp #$09
+   558  03af d005               	bne .listmany1
+   559  03b1 a22000             	ldx #32
+   560  03b4 8003               	bra .listmany2
+   561                          .listmany1
+   562  03b6 a20f00             	ldx #15
+   563                          .listmany2
+   564  03b9 da                 	phx
+   565  03ba 20c403             	jsr+2 .listsingle
+   566  03bd fa                 	plx
+   567  03be ca                 	dex
+   568  03bf d0f8               	bne .listmany2
+   569  03c1 4c7001             	jmp moncmd
+   570                          .listsingle
+   571  03c4 a00000             	ldy #$0000
+   572  03c7 20bf00             	jsr prdumpaddr
+   573  03ca a900               	lda #$00
+   574  03cc eb                 	xba					;clear B
+   575  03cd a73a               	lda [mondump]				;get opcode
+   576  03cf c90a               	cmp #$a
+   577  03d1 9003               	bcc .dunno2
+   578  03d3 4c6104             	jmp .dunno
+   579                          .dunno2
+   580  03d6 48                 	pha					;save opcode
+   581  03d7 aa                 	tax
+   582  03d8 bd7e05             	lda mnemlenmode,x
+   583  03db 4a                 	lsr
+   584  03dc 4a                 	lsr
+   585  03dd 4a                 	lsr
+   586  03de 4a                 	lsr					;isolage opcode len
+   587  03df 852f               	sta scratch1
+   588  03e1 a73a               	lda [mondump]
+   589  03e3 204305             	jsr+2 is816
+   590  03e6 a52f               	lda scratch1
+   591  03e8 aa                 	tax
+   592  03e9 a00000             	ldy #$0000
+   593                          .nextbyte
+   594  03ec b73a               	lda [mondump],y
+   595  03ee 205403             	jsr prhex			;print hex
+   596  03f1 a920               	lda #' '
+   597  03f3 8f12fc1b           	sta IO_CON_CHAROUT
+   598  03f7 8f13fc1b           	sta IO_CON_REGISTER	;print space
+   599  03fb c8                 	iny
+   600  03fc ca                 	dex
+   601  03fd d0ed               	bne .nextbyte
+   602  03ff a918               	lda #$18
+   603  0401 8f14fc1b           	sta IO_CON_CURSORH	;tab over
+   604  0405 68                 	pla					;get opcode back
+   605  0406 aa                 	tax
+   606  0407 bd8805             	lda mnemlist,x
+   607  040a da                 	phx					;stash our opcode
+   608  040b 0a                 	asl
+   609  040c 18                 	clc
+   610  040d 7d8805             	adc mnemlist,x		;multiply by 3
+   611  0410 aa                 	tax
+   612  0411 bd9205             	lda mnems, x
+   613  0414 8f12fc1b           	sta IO_CON_CHAROUT
+   614  0418 8f13fc1b           	sta IO_CON_REGISTER
+   615  041c e8                 	inx
+   616  041d bd9205             	lda mnems, x
+   617  0420 8f12fc1b           	sta IO_CON_CHAROUT
+   618  0424 8f13fc1b           	sta IO_CON_REGISTER
+   619  0428 e8                 	inx
+   620  0429 bd9205             	lda mnems, x
+   621  042c 8f12fc1b           	sta IO_CON_CHAROUT
+   622  0430 8f13fc1b           	sta IO_CON_REGISTER
+   623  0434 a920               	lda #' '
+   624  0436 8f12fc1b           	sta IO_CON_CHAROUT
+   625  043a 8f13fc1b           	sta IO_CON_REGISTER
+   626  043e fa                 	plx					;get our opcode back in index
+   627  043f bd7e05             	lda mnemlenmode,x
+   628  0442 290f               	and #$0f			;isolate the addressing mode
+   629  0444 0a                 	asl					;multiply by two
+   630  0445 aa                 	tax
+   631  0446 fc7205             	jsr (listamod,x)
+   632  0449 8f17fc1b           	sta IO_CON_CR
+   633                          .fixup
+   634  044d a52f               	lda scratch1		;get our fixup
+   635  044f 18                 	clc
+   636  0450 653a               	adc mondump
+   637  0452 853a               	sta mondump
+   638  0454 a53b               	lda mondump_m
+   639  0456 6900               	adc #$00
+   640  0458 853b               	sta mondump_m
+   641  045a a53c               	lda mondump_h
+   642  045c 6900               	adc #$00
+   643  045e 853c               	sta mondump_h
+   644                          .goback
+   645  0460 60                 	rts
+   646                          .dunno
+   647  0461 205403             	jsr prhex
+   648  0464 a918               	lda #$18
+   649  0466 8f14fc1b           	sta IO_CON_CURSORH
+   650  046a a901               	lda #$01
+   651  046c 852f               	sta scratch1		;fix up one byte
+   652  046e a93f               	lda #'?'
+   653  0470 8f12fc1b           	sta IO_CON_CHAROUT
+   654  0474 8f13fc1b           	sta IO_CON_REGISTER
+   655  0478 8f13fc1b           	sta IO_CON_REGISTER
+   656  047c 8f13fc1b           	sta IO_CON_REGISTER
+   657  0480 8f17fc1b           	sta IO_CON_CR
+   658  0484 80c7               	bra .fixup
+   659                          
+   660                          amod0
+   661  0486 a924               	lda #'$'
+   662  0488 8f12fc1b           	sta IO_CON_CHAROUT
+   663  048c 8f13fc1b           	sta IO_CON_REGISTER
+   664  0490 a00100             	ldy #$0001
+   665  0493 b73a               	lda [mondump],y
+   666  0495 205403             	jsr prhex
+   667  0498 60                 	rts
+   668                          amod1
+   669  0499 a928               	lda #'('
+   670  049b 8f12fc1b           	sta IO_CON_CHAROUT
+   671  049f 8f13fc1b           	sta IO_CON_REGISTER
+   672  04a3 a924               	lda #'$'
+   673  04a5 8f12fc1b           	sta IO_CON_CHAROUT
+   674  04a9 8f13fc1b           	sta IO_CON_REGISTER
+   675  04ad a00100             	ldy #$0001
+   676  04b0 b73a               	lda [mondump],y
+   677  04b2 205403             	jsr prhex
+   678  04b5 a92c               	lda #','
+   679  04b7 8f12fc1b           	sta IO_CON_CHAROUT
+   680  04bb 8f13fc1b           	sta IO_CON_REGISTER
+   681  04bf a958               	lda #'X'
+   682  04c1 8f12fc1b           	sta IO_CON_CHAROUT
+   683  04c5 8f13fc1b           	sta IO_CON_REGISTER
+   684  04c9 a929               	lda #')'
+   685  04cb 8f12fc1b           	sta IO_CON_CHAROUT
+   686  04cf 8f13fc1b           	sta IO_CON_REGISTER
+   687  04d3 60                 	rts
+   688                          amod2
+   689  04d4 a00100             	ldy #$0001
+   690  04d7 b73a               	lda [mondump],y
+   691  04d9 205403             	jsr prhex
+   692  04dc a92c               	lda #','
+   693  04de 8f12fc1b           	sta IO_CON_CHAROUT
+   694  04e2 8f13fc1b           	sta IO_CON_REGISTER
+   695  04e6 a953               	lda #'S'
+   696  04e8 8f12fc1b           	sta IO_CON_CHAROUT
+   697  04ec 8f13fc1b           	sta IO_CON_REGISTER
+   698  04f0 60                 	rts
+   699                          amod3
+   700  04f1 a95b               	lda #'['
+   701  04f3 8f12fc1b           	sta IO_CON_CHAROUT
+   702  04f7 8f13fc1b           	sta IO_CON_REGISTER
+   703  04fb a924               	lda #'$'
+   704  04fd 8f12fc1b           	sta IO_CON_CHAROUT
+   705  0501 8f13fc1b           	sta IO_CON_REGISTER
+   706  0505 a00100             	ldy #$0001
+   707  0508 b73a               	lda [mondump],y
+   708  050a 205403             	jsr prhex
+   709  050d a95d               	lda #']'
+   710  050f 8f12fc1b           	sta IO_CON_CHAROUT
+   711  0513 8f13fc1b           	sta IO_CON_REGISTER
+   712                          amod4
+   713  0517 60                 	rts
+   714                          	!zone amod5
+   715                          amod5
+   716  0518 a923               	lda #'#'
+   717  051a 8f12fc1b           	sta IO_CON_CHAROUT
+   718  051e 8f13fc1b           	sta IO_CON_REGISTER
+   719  0522 a924               	lda #'$'
+   720  0524 8f12fc1b           	sta IO_CON_CHAROUT
+   721  0528 8f13fc1b           	sta IO_CON_REGISTER
+   722  052c a52f               	lda scratch1
+   723  052e c902               	cmp #$02
+   724  0530 f008               	beq .amod508
+   725                          .amod516
+   726  0532 a00200             	ldy #$0002
+   727  0535 b73a               	lda [mondump],y
+   728  0537 205403             	jsr prhex
+   729                          .amod508
+   730  053a a00100             	ldy #$0001
+   731  053d b73a               	lda [mondump],y
+   732  053f 205403             	jsr prhex
+   733  0542 60                 	rts
+   734                          	
+   735                          	!zone is816
+   736                          is816
+   737  0543 48                 	pha
+   738  0544 291f               	and #$1f
+   739  0546 c909               	cmp #$09				;09, 29, 49, etc?
+   740  0548 d006               	bne .testx
+   741  054a 242d               	bit alarge				;16 bit?
+   742  054c 301e               	bmi .is16
+   743  054e 1016               	bpl .is8
+   744                          .testx
+   745  0550 c9a0               	cmp #$a0
+   746  0552 f00e               	beq .isx
+   747  0554 c9a2               	cmp #$a2
+   748  0556 f00a               	beq .isx
+   749  0558 c9c0               	cmp #$c0
+   750  055a f006               	beq .isx
+   751  055c c9e0               	cmp #$e0
+   752  055e f002               	beq .isx
+   753  0560 68                 	pla						;made it here, not an accumulator or index instruction
+   754  0561 60                 	rts
+   755                          .isx
+   756  0562 242e               	bit xlarge
+   757  0564 3006               	bmi .is16				;or else fall thru
+   758                          .is8
+   759  0566 a902               	lda #$2
+   760  0568 852f               	sta scratch1
+   761  056a 68                 	pla
+   762  056b 60                 	rts
+   763                          .is16
+   764  056c a903               	lda #$3
+   765  056e 852f               	sta scratch1
+   766  0570 68                 	pla
+   767  0571 60                 	rts
+   768                          	
+   769                          listamod
+   770  0572 8604               	!16 amod0
+   771  0574 9904               	!16 amod1
+   772  0576 d404               	!16 amod2
+   773  0578 f104               	!16 amod3
+   774  057a 1705               	!16 amod4
+   775  057c 1805               	!16 amod5
+   776                          	
+   777                          mnemlenmode
+   778  057e 20                 	!byte %00100000		;00 brk 2/$xx
+   779  057f 21                 	!byte %00100001		;01 ora 2/($xx,x)
+   780  0580 20                 	!byte %00100000		;02 cop 2/$xx
+   781  0581 22                 	!byte %00100010		;03 ora 2/x,s
+   782  0582 20                 	!byte %00100000		;04 tsb 2/$xx
+   783  0583 20                 	!byte %00100000		;05 ora 2/$xx
+   784  0584 20                 	!byte %00100000		;06 asl 2/$xx
+   785  0585 23                 	!byte %00100011		;07 ora 2/[$xx]
+   786  0586 14                 	!byte %00010100		;08 php 1
+   787  0587 25                 	!byte %00100101		;09 ora 2/#imm
+   788                          mnemlist
+   789  0588 00                 	!byte $00			;00 brk
+   790  0589 02                 	!byte $02			;01 ora
+   791  058a 01                 	!byte $01			;02 cop
+   792  058b 02                 	!byte $02			;03 ora
+   793  058c 03                 	!byte $03			;04 tsb
+   794  058d 02                 	!BYTE $02			;05 ora
+   795  058e 04                 	!byte $04			;06 asl
+   796  058f 02                 	!byte $02			;07 ora
+   797  0590 05                 	!byte $05			;08 php
+   798  0591 02                 	!byte $02			;09 ora
+   799                          mnems
+   800  0592 42524b             	!tx "BRK"
+   801  0595 434f50             	!tx "COP"
+   802  0598 4f5241             	!tx "ORA"
+   803  059b 545342             	!tx "TSB"
+   804  059e 41534c             	!tx "ASL"
+   805  05a1 504850             	!tx "PHP"
+   806  05a4 504844             	!tx "PHD"
+   807                          	
+   808                          	!zone ucline
+   809                          ucline					;convert inbuff at $170400 to upper case
+   810  05a7 08                 	php
+   811  05a8 c210               	rep #$10
+   812  05aa e220               	sep #$20
+   813                          	!as
+   814                          	!rl
+   815  05ac a20000             	ldx #$0000
+   816                          .local2
+   817  05af bf000417           	lda inbuff,x
+   818  05b3 f012               	beq .local4			;hit the zero, so bail
+   819  05b5 c961               	cmp #'a'
+   820  05b7 900b               	bcc .local3			;less then lowercase a, so ignore
+   821  05b9 c97b               	cmp #'z' + 1		;less than next character after lowercase z?
+   822  05bb b007               	bcs .local3			;greater than or equal, so ignore
+   823  05bd 38                 	sec
+   824  05be e920               	sbc #('z' - 'Z')	;make upper case
+   825  05c0 9f000417           	sta inbuff,x
+   826                          .local3
+   827  05c4 e8                 	inx
+   828  05c5 80e8               	bra .local2
+   829                          .local4
+   830  05c7 28                 	plp
+   831  05c8 6b                 	rtl
+   832                          	
+   833                          	!zone getline
+   834                          getline
+   835  05c9 08                 	php
+   836  05ca c210               	rep #$10
+   837  05cc e220               	sep #$20
+   838                          	!as
+   839                          	!rl
+   840  05ce a20000             	ldx #$0000
+   841                          .local2
+   842  05d1 af00fc1b           	lda IO_KEYQ_SIZE
+   843  05d5 f0fa               	beq .local2
+   844  05d7 af01fc1b           	lda IO_KEYQ_WAITING
+   845  05db 8f02fc1b           	sta IO_KEYQ_DEQUEUE
+   846  05df c90d               	cmp #$0d			;carriage return yet?
+   847  05e1 f01c               	beq .local3
+   848  05e3 c908               	cmp #$08			;backspace/back arrow?
+   849  05e5 f029               	beq .local4
+   850  05e7 c920               	cmp #$20 			;generally any control character besides what we're specifically looking for?
+   851  05e9 90e6               	bcc .local2		 		;yes, so ignore it
+   852  05eb 9f000417           	sta inbuff,x 		;any other character, so register it and store it
+   853  05ef 8f12fc1b           	sta IO_CON_CHAROUT
+   854  05f3 8f13fc1b           	sta IO_CON_REGISTER
+   855  05f7 e8                 	inx
+   856  05f8 a90d               	lda #$0d			;tee up a CR just in case we have to fall thru below
+   857  05fa e0fe03             	cpx #$3fe			;overrun end of buffer yet?
+   858  05fd d0d2               	bne .local2			;no, so get another char.. otherwise fall thru
+   859                          .local3
+   860  05ff 9f000417           	sta inbuff,x		;store CR
+   861  0603 8f17fc1b           	sta IO_CON_CR
+   862  0607 e8                 	inx
+   863  0608 a900               	lda #$00			;store zero to end it all
+   864  060a 9f000417           	sta inbuff,x
+   865  060e 28                 	plp
+   866  060f 6b                 	rtl
+   867                          .local4
+   868  0610 e00000             	cpx #$0000
+   869  0613 f0bc               	beq .local2			;no data in buffer yet, so nothing to backspace over
+   870  0615 a908               	lda #$08
+   871  0617 8f12fc1b           	sta IO_CON_CHAROUT
+   872  061b 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char, which backs up the cursor
+   873  061f a920               	lda #$20
+   874  0621 8f12fc1b           	sta IO_CON_CHAROUT
+   875  0625 8f13fc1b           	sta IO_CON_REGISTER	;blot out the character with a space
+   876  0629 a908               	lda #$08
+   877  062b 8f12fc1b           	sta IO_CON_CHAROUT
+   878  062f 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char again since we advanced the cursor
+   879  0633 ca                 	dex
+   880  0634 809b               	bra .local2
    881                          	
-   882                          	!zone prcdpla
-   883                          prcdpla					; print C string pointed to by dp locations $3d-$3f
-   884  0632 08                 	php
-   885  0633 c210               	rep #$10
-   886  0635 e220               	sep #$20
-   887                          	!as
-   888                          	!rl
-   889  0637 a00000             	ldy #$0000
-   890                          .local2
-   891  063a b73d               	lda [dpla],y
-   892  063c f00b               	beq .local3
-   893  063e 8f12fc1b           	sta IO_CON_CHAROUT
-   894  0642 8f13fc1b           	sta IO_CON_REGISTER
-   895  0646 c8                 	iny
-   896  0647 80f1               	bra .local2
-   897                          .local3
-   898  0649 28                 	plp
-   899  064a 6b                 	rtl
-   900                          
-   901                          initstring
-   902  064b 494d4c2036353831...	!tx "IML 65816 1C Firmware v00"
-   903  0664 0d                 	!byte 0x0d
-   904  0665 53797374656d204d...	!tx "System Monitor"
-   905  0673 0d                 	!byte 0x0d
-   906  0674 0d                 	!byte 0x0d
-   907  0675 00                 	!byte 0
-   908                          
-   909                          helpmsg
-   910  0676 494d4c2036353831...	!tx "IML 65816 Monitor Commands"
-   911  0690 0d                 	!byte $0d
-   912  0691 41203c616464723e...	!tx "A <addr>  Dump ASCII"
-   913  06a5 0d                 	!byte $0d
-   914  06a6 42203c62616e6b3e...	!tx "B <bank>  Change bank"
-   915  06bb 0d                 	!byte $0d
-   916  06bc 43203c636f6c6f72...	!tx "C <color> Change terminal colors"
-   917  06dc 0d                 	!byte $0d
-   918  06dd 44203c616464723e...	!tx "D <addr>  Dump hex"
-   919  06ef 0d                 	!byte $0d
-   920  06f0 45203c616464723e...	!tx "E <addr> <byte> <byte>...  Enter bytes"
-   921  0716 0d                 	!byte $0d
-   922  0717 4c203c616464723e...	!tx "L <addr>  Disassemble 65816 Instructions"
-   923  073f 0d                 	!byte $0d
-   924  0740 4d203c6d6f64653e...	!tx "M <mode>  Change video mode, 8/9"
-   925  0760 0d                 	!byte $0d
-   926  0761 5120202020202020...	!tx "Q         Halt the processor"
-   927  077d 0d                 	!byte $0d
-   928  077e 3f20202020202020...	!tx "?         This menu"
-   929  0791 0d                 	!byte $0d
-   930  0792 3c656e7465723e20...	!tx "<enter>   Repeat last dump command"
-   931  07b4 0d                 	!byte $0d
-   932  07b5 546f207370656369...	!tx "To specify range, use <addr1.addr2>"
-   933  07d8 0d00               	!byte $0d, 00
-   934                          	
-   935  07da 0000000000000000...!align $ffff, $ffff,$00	;fill up to top of memory
-   936                          
+   882                          prinbuff				;feed location of input buffer into dpla and then print
+   883  0636 08                 	php
+   884  0637 c210               	rep #$10
+   885  0639 e220               	sep #$20
+   886                          	!as
+   887                          	!rl
+   888  063b a917               	lda #$17
+   889  063d 853f               	sta dpla_h
+   890  063f a904               	lda #$04
+   891  0641 853e               	sta dpla_m
+   892  0643 643d               	stz dpla
+   893  0645 224b061c           	jsl l_prcdpla
+   894  0649 28                 	plp
+   895  064a 6b                 	rtl
+   896                          	
+   897                          	!zone prcdpla
+   898                          prcdpla					; print C string pointed to by dp locations $3d-$3f
+   899  064b 08                 	php
+   900  064c c210               	rep #$10
+   901  064e e220               	sep #$20
+   902                          	!as
+   903                          	!rl
+   904  0650 a00000             	ldy #$0000
+   905                          .local2
+   906  0653 b73d               	lda [dpla],y
+   907  0655 f00b               	beq .local3
+   908  0657 8f12fc1b           	sta IO_CON_CHAROUT
+   909  065b 8f13fc1b           	sta IO_CON_REGISTER
+   910  065f c8                 	iny
+   911  0660 80f1               	bra .local2
+   912                          .local3
+   913  0662 28                 	plp
+   914  0663 6b                 	rtl
+   915                          
+   916                          initstring
+   917  0664 494d4c2036353831...	!tx "IML 65816 1C Firmware v00"
+   918  067d 0d                 	!byte 0x0d
+   919  067e 53797374656d204d...	!tx "System Monitor"
+   920  068c 0d                 	!byte 0x0d
+   921  068d 0d                 	!byte 0x0d
+   922  068e 00                 	!byte 0
+   923                          
+   924                          helpmsg
+   925  068f 494d4c2036353831...	!tx "IML 65816 Monitor Commands"
+   926  06a9 0d                 	!byte $0d
+   927  06aa 41203c616464723e...	!tx "A <addr>  Dump ASCII"
+   928  06be 0d                 	!byte $0d
+   929  06bf 42203c62616e6b3e...	!tx "B <bank>  Change bank"
+   930  06d4 0d                 	!byte $0d
+   931  06d5 43203c636f6c6f72...	!tx "C <color> Change terminal colors"
+   932  06f5 0d                 	!byte $0d
+   933  06f6 44203c616464723e...	!tx "D <addr>  Dump hex"
+   934  0708 0d                 	!byte $0d
+   935  0709 45203c616464723e...	!tx "E <addr> <byte> <byte>...  Enter bytes"
+   936  072f 0d                 	!byte $0d
+   937  0730 4c203c616464723e...	!tx "L <addr>  Disassemble 65816 Instructions"
+   938  0758 0d                 	!byte $0d
+   939  0759 4d203c6d6f64653e...	!tx "M <mode>  Change video mode, 8/9"
+   940  0779 0d                 	!byte $0d
+   941  077a 5120202020202020...	!tx "Q         Halt the processor"
+   942  0796 0d                 	!byte $0d
+   943  0797 3f20202020202020...	!tx "?         This menu"
+   944  07aa 0d                 	!byte $0d
+   945  07ab 3c656e7465723e20...	!tx "<enter>   Repeat last dump command"
+   946  07cd 0d                 	!byte $0d
+   947  07ce 546f207370656369...	!tx "To specify range, use <addr1.addr2>"
+   948  07f1 0d00               	!byte $0d, 00
+   949                          	
+   950  07f3 0000000000000000...!align $ffff, $ffff,$00	;fill up to top of memory
+   951                          
