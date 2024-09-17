@@ -735,7 +735,8 @@ is816
 	beq .isx
 	cmp #$e0
 	beq .isx
-	bra .is8				;made it here, not an accumulator or index instruction
+	pla						;made it here, not an accumulator or index instruction
+	rts
 .isx
 	bit xlarge
 	bmi .is16				;or else fall thru
