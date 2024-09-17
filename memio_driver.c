@@ -154,6 +154,10 @@ unsigned char *mem_driver_buffer()
 
 void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 {
+	if ((a_address >= 0x1c0000) && (a_address <= 0x1fffff))
+		return; // no write to ROM
+	if ((a_address >= 0xe400) && (a_address <= 0xffff))
+		return; // no write to ROM
 	if (a_address == IOSTART + IO_KEYQ_DEQUEUE)
 		kbd_dequeue();
 	if (a_address == IOSTART + IO_KEYQ_CLEAR)

@@ -26,6 +26,10 @@ l_prinbuff = $1c0000 + prinbuff
 l_prcdpla = $1c0000 + prcdpla
 l_ucline = $1c0000 + ucline
 
+scratch1 = $2f
+enterbytes = $30
+enterbytes_m = $31
+enterbytes_h = $32
 rangehigh = $33
 monrange = $35
 monlast = $36
@@ -81,7 +85,11 @@ parse_addr				;see if user specified an address on line.
 	pha
 	pha					;make space for working value on the stack
 	sta monrange		;clear range flag
-	jsr+2 parse_getnib	;get first nibble
+.throwaway
+	jsr+2 parse_getchar
+	cmp #' '
+	beq .throwaway		;throw away leading spaces
+	jsr+2 parse_getnib2	;get first nibble. call 2nd entry point since we already have character
 	bcc .no				;didn't even get one hex character, so return false
 	sta 1,s				;save it on the stack for now
 	jsr+2 parse_getnib	;get second nibble
@@ -142,8 +150,9 @@ parse_addr				;see if user specified an address on line.
 	rts
 parse_getnib
 	jsr parse_getchar
+parse_getnib2			;enter here after we've thrown away leading spaces
 	cmp #' '
-	beq parse_getnib	;throw away spaces.
+	beq .outrng			;space = end of value
 	cmp #'.'
 	bne .notrange
 	lda #$80
@@ -294,6 +303,14 @@ moncmd
 	bne .local7
 	jmp+2 modecmd
 .local7
+	cmp #'E'
+	bne .local8
+	jmp+2 entercmd
+.local8
+	cmp #'L'
+	bne .local9
+	jmp+2 listcmd
+.local9
 	cmp #'?'
 	beq helpcmd
 	jmp moncmd
@@ -498,6 +515,40 @@ prhexnofix
 	sta IO_CON_REGISTER
 	rts
 
+	!zone entercmd
+.local1
+	jmp monerror
+entercmd
+	jsr parse_addr
+	bcc .local1
+	bit monrange
+	bmi .local1			;ranges not allowed
+	sty enterbytes
+	lda mondump_h
+	sta enterbytes_h	;retrieve bank from mondump
+.local2
+	jsr parse_addr		;start grabbing bytes
+	bcc .enterdone
+	bit monrange
+	bmi .local1			;stop that happening here too
+	rep #$30
+	tya
+	sep #$20			;get low byte of parsed address into A
+	sta [enterbytes]
+	inc enterbytes
+	bne .local3
+	inc enterbytes_m
+	bne .local3
+	inc enterbytes_h
+.local3
+	bra .local2
+.enterdone
+	jmp moncmd
+	
+	!zone listcmd
+listcmd
+	jmp moncmd
+	
 	!zone ucline
 ucline					;convert inbuff at $170400 to upper case
 	php
@@ -624,6 +675,10 @@ helpmsg
 	!tx "C <color> Change terminal colors"
 	!byte $0d
 	!tx "D <addr>  Dump hex"
+	!byte $0d
+	!tx "E <addr> <byte> <byte>...  Enter bytes"
+	!byte $0d
+	!tx "L <addr>  Disassemble 65816 Instructions"
 	!byte $0d
 	!tx "M <mode>  Change video mode, 8/9"
 	!byte $0d
