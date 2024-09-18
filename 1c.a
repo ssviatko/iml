@@ -19,7 +19,7 @@ IO_CON_CR = $1bfc17
 
 IO_VIDMODE = $1bfc20
 
-promptchar = '>'
+promptchar = '*'
 
 l_getline = $1c0000 + getline
 l_prinbuff = $1c0000 + prinbuff

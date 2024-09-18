@@ -21,7 +21,7 @@
     19                          
     20                          IO_VIDMODE = $1bfc20
     21                          
-    22                          promptchar = '>'
+    22                          promptchar = '*'
     23                          
     24                          l_getline = $1c0000 + getline
     25                          l_prinbuff = $1c0000 + prinbuff
@@ -275,7 +275,7 @@
    273                          	
    274                          	!zone moncmd
    275                          moncmd
-   276  0170 a93e               	lda #promptchar
+   276  0170 a92a               	lda #promptchar
    277  0172 8f12fc1b           	sta IO_CON_CHAROUT
    278  0176 8f13fc1b           	sta IO_CON_REGISTER
    279  017a 229b0b1c           	jsl l_getline
