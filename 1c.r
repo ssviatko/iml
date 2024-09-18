@@ -59,11 +59,11 @@
     57                          	!rl
     58  0004 e220               	sep #$20
     59                          	!as
-    60  0006 a2770a             	ldx #initstring
+    60  0006 a2360c             	ldx #initstring
     61  0009 863d               	stx dpla
     62  000b a91c               	lda #$1c
     63  000d 853f               	sta dpla_h
-    64  000f 225e0a1c           	jsl l_prcdpla
+    64  000f 221d0c1c           	jsl l_prcdpla
     65  0013 4c5d01             	jmp+2 monstart
     66                          
     67                          parse_setup
@@ -229,7 +229,7 @@
    227  010b 863d               	stx dpla
    228  010d a91c               	lda #$1c
    229  010f 853f               	sta dpla_h
-   230  0111 225e0a1c           	jsl l_prcdpla
+   230  0111 221d0c1c           	jsl l_prcdpla
    231  0115 4c7001             	jmp moncmd
    232                          monsynerr
    233  0118 53796e7461782065...	!tx "Syntax error!"
@@ -278,8 +278,8 @@
    276  0170 a93e               	lda #promptchar
    277  0172 8f12fc1b           	sta IO_CON_CHAROUT
    278  0176 8f13fc1b           	sta IO_CON_REGISTER
-   279  017a 22dc091c           	jsl l_getline
-   280  017e 22ba091c           	jsl l_ucline
+   279  017a 229b0b1c           	jsl l_getline
+   280  017e 22790b1c           	jsl l_ucline
    281  0182 201600             	jsr parse_setup
    282  0185 202000             	jsr parse_getchar
    283                          .local3
@@ -323,11 +323,11 @@
    321  01ca 4c7001             	jmp moncmd
    322                          	
    323                          helpcmd
-   324  01cd a2a20a             	ldx #helpmsg
+   324  01cd a2610c             	ldx #helpmsg
    325  01d0 863d               	stx dpla
    326  01d2 a91c               	lda #$1c
    327  01d4 853f               	sta dpla_h
-   328  01d6 225e0a1c           	jsl l_prcdpla
+   328  01d6 221d0c1c           	jsl l_prcdpla
    329  01da 4c7001             	jmp moncmd
    330                          	
    331                          haltcmd
@@ -335,7 +335,7 @@
    333  01e0 863d               	stx dpla
    334  01e2 a91c               	lda #$1c
    335  01e4 853f               	sta dpla_h
-   336  01e6 225e0a1c           	jsl l_prcdpla
+   336  01e6 221d0c1c           	jsl l_prcdpla
    337  01ea db                 	stp
    338                          haltmsg
    339  01eb 48616c74696e6720...	!tx "Halting 65816 engine.."
@@ -578,927 +578,1260 @@
    576  03ca a900               	lda #$00
    577  03cc eb                 	xba					;clear B
    578  03cd a73a               	lda [mondump]				;get opcode
-   579  03cf c980               	cmp #$80
-   580  03d1 9003               	bcc .dunno2
-   581  03d3 4c6204             	jmp .dunno
-   582                          .dunno2
-   583  03d6 48                 	pha					;save opcode
-   584  03d7 aa                 	tax
-   585  03d8 bd3008             	lda mnemlenmode,x
-   586  03db 4a                 	lsr
-   587  03dc 4a                 	lsr
-   588  03dd 4a                 	lsr
-   589  03de 4a                 	lsr
-   590  03df 4a                 	lsr					;isolage opcode len
-   591  03e0 852f               	sta scratch1
-   592  03e2 a73a               	lda [mondump]
-   593  03e4 20d907             	jsr+2 is816
-   594  03e7 a52f               	lda scratch1
-   595  03e9 aa                 	tax
-   596  03ea a00000             	ldy #$0000
-   597                          .nextbyte
-   598  03ed b73a               	lda [mondump],y
-   599  03ef 205403             	jsr prhex			;print hex
-   600  03f2 a920               	lda #' '
-   601  03f4 8f12fc1b           	sta IO_CON_CHAROUT
-   602  03f8 8f13fc1b           	sta IO_CON_REGISTER	;print space
-   603  03fc c8                 	iny
-   604  03fd ca                 	dex
-   605  03fe d0ed               	bne .nextbyte
-   606  0400 a916               	lda #$16
-   607  0402 8f14fc1b           	sta IO_CON_CURSORH	;tab over
-   608  0406 68                 	pla					;get opcode back
-   609  0407 aa                 	tax
-   610  0408 bdb008             	lda mnemlist,x
-   611  040b da                 	phx					;stash our opcode
-   612  040c 0a                 	asl
-   613  040d 18                 	clc
-   614  040e 7db008             	adc mnemlist,x		;multiply by 3
-   615  0411 aa                 	tax
-   616  0412 bd3009             	lda mnems, x
-   617  0415 8f12fc1b           	sta IO_CON_CHAROUT
-   618  0419 8f13fc1b           	sta IO_CON_REGISTER
-   619  041d e8                 	inx
-   620  041e bd3009             	lda mnems, x
-   621  0421 8f12fc1b           	sta IO_CON_CHAROUT
-   622  0425 8f13fc1b           	sta IO_CON_REGISTER
-   623  0429 e8                 	inx
-   624  042a bd3009             	lda mnems, x
-   625  042d 8f12fc1b           	sta IO_CON_CHAROUT
-   626  0431 8f13fc1b           	sta IO_CON_REGISTER
-   627  0435 a920               	lda #' '
-   628  0437 8f12fc1b           	sta IO_CON_CHAROUT
-   629  043b 8f13fc1b           	sta IO_CON_REGISTER
-   630  043f fa                 	plx					;get our opcode back in index
-   631  0440 bd3008             	lda mnemlenmode,x
-   632  0443 291f               	and #$1f			;isolate the addressing mode
-   633  0445 0a                 	asl					;multiply by two
-   634  0446 aa                 	tax
-   635  0447 fc0808             	jsr (listamod,x)
-   636  044a 8f17fc1b           	sta IO_CON_CR
-   637                          .fixup
-   638  044e a52f               	lda scratch1		;get our fixup
-   639  0450 18                 	clc
-   640  0451 653a               	adc mondump
-   641  0453 853a               	sta mondump
-   642  0455 a53b               	lda mondump_m
-   643  0457 6900               	adc #$00
-   644  0459 853b               	sta mondump_m
-   645  045b a53c               	lda mondump_h
-   646  045d 6900               	adc #$00
-   647  045f 853c               	sta mondump_h
-   648                          .goback
-   649  0461 60                 	rts
-   650                          .dunno
-   651  0462 205403             	jsr prhex
-   652  0465 a916               	lda #$16
-   653  0467 8f14fc1b           	sta IO_CON_CURSORH
-   654  046b a901               	lda #$01
-   655  046d 852f               	sta scratch1		;fix up one byte
-   656  046f a93f               	lda #'?'
-   657  0471 8f12fc1b           	sta IO_CON_CHAROUT
-   658  0475 8f13fc1b           	sta IO_CON_REGISTER
-   659  0479 8f13fc1b           	sta IO_CON_REGISTER
-   660  047d 8f13fc1b           	sta IO_CON_REGISTER
-   661  0481 8f17fc1b           	sta IO_CON_CR
-   662  0485 80c7               	bra .fixup
-   663                          
-   664                          amod0
-   665  0487 a924               	lda #'$'
-   666  0489 8f12fc1b           	sta IO_CON_CHAROUT
-   667  048d 8f13fc1b           	sta IO_CON_REGISTER
-   668  0491 a00100             	ldy #$0001
-   669  0494 b73a               	lda [mondump],y
-   670  0496 205403             	jsr prhex
-   671  0499 60                 	rts
-   672                          amod1
-   673  049a a928               	lda #'('
-   674  049c 8f12fc1b           	sta IO_CON_CHAROUT
-   675  04a0 8f13fc1b           	sta IO_CON_REGISTER
-   676  04a4 a924               	lda #'$'
-   677  04a6 8f12fc1b           	sta IO_CON_CHAROUT
-   678  04aa 8f13fc1b           	sta IO_CON_REGISTER
-   679  04ae a00100             	ldy #$0001
-   680  04b1 b73a               	lda [mondump],y
-   681  04b3 205403             	jsr prhex
-   682  04b6 a92c               	lda #','
-   683  04b8 8f12fc1b           	sta IO_CON_CHAROUT
-   684  04bc 8f13fc1b           	sta IO_CON_REGISTER
-   685  04c0 a958               	lda #'X'
-   686  04c2 8f12fc1b           	sta IO_CON_CHAROUT
-   687  04c6 8f13fc1b           	sta IO_CON_REGISTER
-   688  04ca a929               	lda #')'
-   689  04cc 8f12fc1b           	sta IO_CON_CHAROUT
-   690  04d0 8f13fc1b           	sta IO_CON_REGISTER
-   691  04d4 60                 	rts
-   692                          amod2
-   693  04d5 a00100             	ldy #$0001
-   694  04d8 b73a               	lda [mondump],y
-   695  04da 205403             	jsr prhex
-   696  04dd a92c               	lda #','
-   697  04df 8f12fc1b           	sta IO_CON_CHAROUT
-   698  04e3 8f13fc1b           	sta IO_CON_REGISTER
-   699  04e7 a953               	lda #'S'
-   700  04e9 8f12fc1b           	sta IO_CON_CHAROUT
-   701  04ed 8f13fc1b           	sta IO_CON_REGISTER
-   702  04f1 60                 	rts
-   703                          amod3
-   704  04f2 a95b               	lda #'['
-   705  04f4 8f12fc1b           	sta IO_CON_CHAROUT
-   706  04f8 8f13fc1b           	sta IO_CON_REGISTER
-   707  04fc a924               	lda #'$'
-   708  04fe 8f12fc1b           	sta IO_CON_CHAROUT
-   709  0502 8f13fc1b           	sta IO_CON_REGISTER
-   710  0506 a00100             	ldy #$0001
-   711  0509 b73a               	lda [mondump],y
-   712  050b 205403             	jsr prhex
-   713  050e a95d               	lda #']'
-   714  0510 8f12fc1b           	sta IO_CON_CHAROUT
-   715  0514 8f13fc1b           	sta IO_CON_REGISTER
-   716                          amod4
-   717  0518 60                 	rts
-   718                          	!zone amod5
-   719                          amod5
-   720  0519 a923               	lda #'#'
-   721  051b 8f12fc1b           	sta IO_CON_CHAROUT
-   722  051f 8f13fc1b           	sta IO_CON_REGISTER
-   723  0523 a924               	lda #'$'
-   724  0525 8f12fc1b           	sta IO_CON_CHAROUT
-   725  0529 8f13fc1b           	sta IO_CON_REGISTER
-   726  052d a52f               	lda scratch1
-   727  052f c902               	cmp #$02
-   728  0531 f008               	beq .amod508
-   729                          .amod516
-   730  0533 a00200             	ldy #$0002
-   731  0536 b73a               	lda [mondump],y
-   732  0538 205403             	jsr prhex
-   733                          .amod508
-   734  053b a00100             	ldy #$0001
-   735  053e b73a               	lda [mondump],y
-   736  0540 205403             	jsr prhex
-   737  0543 60                 	rts
-   738                          amod6
-   739  0544 a924               	lda #'$'
-   740  0546 8f12fc1b           	sta IO_CON_CHAROUT
-   741  054a 8f13fc1b           	sta IO_CON_REGISTER
-   742  054e a00200             	ldy #$0002
-   743  0551 b73a               	lda [mondump],y
-   744  0553 205403             	jsr prhex
-   745  0556 88                 	dey
-   746  0557 b73a               	lda [mondump],y
-   747  0559 4c5403             	jmp prhex
-   748                          amod7
-   749  055c a924               	lda #'$'
-   750  055e 8f12fc1b           	sta IO_CON_CHAROUT
-   751  0562 8f13fc1b           	sta IO_CON_REGISTER
-   752  0566 a00300             	ldy #$0003
-   753  0569 b73a               	lda [mondump],y
-   754  056b 205403             	jsr prhex
-   755  056e 88                 	dey
-   756  056f b73a               	lda [mondump],y
-   757  0571 205403             	jsr prhex
-   758  0574 88                 	dey
-   759  0575 b73a               	lda [mondump],y
-   760  0577 4c5403             	jmp prhex
-   761                          amod11
-   762  057a a00300             	ldy #$0003
-   763  057d 842a               	sty scratch2			;number of bytes to bump offset
-   764  057f a00200             	ldy #$0002
-   765  0582 b73a               	lda [mondump],y
-   766  0584 eb                 	xba
-   767  0585 88                 	dey
-   768  0586 b73a               	lda [mondump],y
-   769  0588 8014               	bra amod8nosign
-   770                          amod8
-   771  058a a00200             	ldy #$0002
-   772  058d 842a               	sty scratch2
-   773  058f a900               	lda #$00
-   774  0591 eb                 	xba						;clear high byte of A
-   775                          amod8a
-   776  0592 a00100             	ldy #$0001
-   777  0595 b73a               	lda [mondump],y			;get rel byte
-   778  0597 1005               	bpl amod8nosign
-   779  0599 48                 	pha
-   780  059a a9ff               	lda #$ff
-   781  059c eb                 	xba						;sign extend if negative
-   782  059d 68                 	pla
-   783                          amod8nosign
-   784  059e c230               	rep #$30
-   785                          	!al
-   786  05a0 18                 	clc
-   787  05a1 653a               	adc mondump				;add to our current disassembly address
-   788  05a3 18                 	clc
-   789  05a4 652a               	adc scratch2			;add offset for instruction size
-   790  05a6 aa                 	tax
-   791  05a7 e220               	sep #$20
-   792                          	!as
-   793  05a9 a924               	lda #'$'
-   794  05ab 8f12fc1b           	sta IO_CON_CHAROUT
-   795  05af 8f13fc1b           	sta IO_CON_REGISTER
-   796  05b3 204a03             	jsr prhex16
-   797  05b6 60                 	rts
-   798                          amod9
-   799  05b7 a928               	lda #'('
-   800  05b9 8f12fc1b           	sta IO_CON_CHAROUT
-   801  05bd 8f13fc1b           	sta IO_CON_REGISTER
-   802  05c1 a924               	lda #'$'
-   803  05c3 8f12fc1b           	sta IO_CON_CHAROUT
-   804  05c7 8f13fc1b           	sta IO_CON_REGISTER
-   805  05cb a00100             	ldy #$0001
-   806  05ce b73a               	lda [mondump],y
-   807  05d0 205403             	jsr prhex
-   808  05d3 a929               	lda #')'
-   809  05d5 8f12fc1b           	sta IO_CON_CHAROUT
-   810  05d9 8f13fc1b           	sta IO_CON_REGISTER
-   811  05dd a92c               	lda #','
-   812  05df 8f12fc1b           	sta IO_CON_CHAROUT
-   813  05e3 8f13fc1b           	sta IO_CON_REGISTER
-   814  05e7 a959               	lda #'Y'
-   815  05e9 8f12fc1b           	sta IO_CON_CHAROUT
-   816  05ed 8f13fc1b           	sta IO_CON_REGISTER
-   817  05f1 60                 	rts
-   818                          amoda
-   819  05f2 a928               	lda #'('
-   820  05f4 8f12fc1b           	sta IO_CON_CHAROUT
-   821  05f8 8f13fc1b           	sta IO_CON_REGISTER
-   822  05fc a924               	lda #'$'
-   823  05fe 8f12fc1b           	sta IO_CON_CHAROUT
-   824  0602 8f13fc1b           	sta IO_CON_REGISTER
-   825  0606 a00100             	ldy #$0001
-   826  0609 b73a               	lda [mondump],y
-   827  060b 205403             	jsr prhex
-   828  060e a929               	lda #')'
-   829  0610 8f12fc1b           	sta IO_CON_CHAROUT
-   830  0614 8f13fc1b           	sta IO_CON_REGISTER
-   831  0618 60                 	rts
-   832                          amodb
-   833  0619 a928               	lda #'('
-   834  061b 8f12fc1b           	sta IO_CON_CHAROUT
-   835  061f 8f13fc1b           	sta IO_CON_REGISTER
-   836  0623 a924               	lda #'$'
-   837  0625 8f12fc1b           	sta IO_CON_CHAROUT
-   838  0629 8f13fc1b           	sta IO_CON_REGISTER
-   839  062d a00100             	ldy #$0001
-   840  0630 b73a               	lda [mondump],y
-   841  0632 205403             	jsr prhex
-   842  0635 a92c               	lda #','
-   843  0637 8f12fc1b           	sta IO_CON_CHAROUT
-   844  063b 8f13fc1b           	sta IO_CON_REGISTER
-   845  063f a953               	lda #'S'
-   846  0641 8f12fc1b           	sta IO_CON_CHAROUT
-   847  0645 8f13fc1b           	sta IO_CON_REGISTER
-   848  0649 a929               	lda #')'
-   849  064b 8f12fc1b           	sta IO_CON_CHAROUT
-   850  064f 8f13fc1b           	sta IO_CON_REGISTER
-   851  0653 a92c               	lda #','
-   852  0655 8f12fc1b           	sta IO_CON_CHAROUT
-   853  0659 8f13fc1b           	sta IO_CON_REGISTER
-   854  065d a959               	lda #'Y'
-   855  065f 8f12fc1b           	sta IO_CON_CHAROUT
-   856  0663 8f13fc1b           	sta IO_CON_REGISTER
-   857  0667 60                 	rts
-   858                          amodc
-   859  0668 a924               	lda #'$'
-   860  066a 8f12fc1b           	sta IO_CON_CHAROUT
-   861  066e 8f13fc1b           	sta IO_CON_REGISTER
-   862  0672 a00100             	ldy #$0001
-   863  0675 b73a               	lda [mondump],y
-   864  0677 205403             	jsr prhex
-   865  067a a92c               	lda #','
-   866  067c 8f12fc1b           	sta IO_CON_CHAROUT
-   867  0680 8f13fc1b           	sta IO_CON_REGISTER
-   868  0684 a958               	lda #'X'
-   869  0686 8f12fc1b           	sta IO_CON_CHAROUT
-   870  068a 8f13fc1b           	sta IO_CON_REGISTER
-   871  068e 60                 	rts
-   872                          amodd
-   873  068f a95b               	lda #'['
-   874  0691 8f12fc1b           	sta IO_CON_CHAROUT
-   875  0695 8f13fc1b           	sta IO_CON_REGISTER
-   876  0699 a924               	lda #'$'
-   877  069b 8f12fc1b           	sta IO_CON_CHAROUT
-   878  069f 8f13fc1b           	sta IO_CON_REGISTER
-   879  06a3 a00100             	ldy #$0001
-   880  06a6 b73a               	lda [mondump],y
-   881  06a8 205403             	jsr prhex
-   882  06ab a95d               	lda #']'
-   883  06ad 8f12fc1b           	sta IO_CON_CHAROUT
-   884  06b1 8f13fc1b           	sta IO_CON_REGISTER
-   885  06b5 a92c               	lda #','
-   886  06b7 8f12fc1b           	sta IO_CON_CHAROUT
-   887  06bb 8f13fc1b           	sta IO_CON_REGISTER
-   888  06bf a959               	lda #'Y'
-   889  06c1 8f12fc1b           	sta IO_CON_CHAROUT
-   890  06c5 8f13fc1b           	sta IO_CON_REGISTER
-   891  06c9 60                 	rts
-   892                          amode
-   893  06ca a924               	lda #'$'
-   894  06cc 8f12fc1b           	sta IO_CON_CHAROUT
-   895  06d0 8f13fc1b           	sta IO_CON_REGISTER
-   896  06d4 a00200             	ldy #$0002
-   897  06d7 b73a               	lda [mondump],y
-   898  06d9 205403             	jsr prhex
-   899  06dc 88                 	dey
-   900  06dd b73a               	lda [mondump],y
-   901  06df 205403             	jsr prhex
-   902  06e2 a92c               	lda #','
-   903  06e4 8f12fc1b           	sta IO_CON_CHAROUT
-   904  06e8 8f13fc1b           	sta IO_CON_REGISTER
-   905  06ec a958               	lda #'X'
-   906  06ee 8f12fc1b           	sta IO_CON_CHAROUT
-   907  06f2 8f13fc1b           	sta IO_CON_REGISTER
-   908  06f6 60                 	rts
-   909                          amodf
-   910  06f7 a924               	lda #'$'
-   911  06f9 8f12fc1b           	sta IO_CON_CHAROUT
-   912  06fd 8f13fc1b           	sta IO_CON_REGISTER
-   913  0701 a00200             	ldy #$0002
-   914  0704 b73a               	lda [mondump],y
-   915  0706 205403             	jsr prhex
-   916  0709 88                 	dey
-   917  070a b73a               	lda [mondump],y
-   918  070c 205403             	jsr prhex
-   919  070f a92c               	lda #','
-   920  0711 8f12fc1b           	sta IO_CON_CHAROUT
-   921  0715 8f13fc1b           	sta IO_CON_REGISTER
-   922  0719 a959               	lda #'Y'
-   923  071b 8f12fc1b           	sta IO_CON_CHAROUT
-   924  071f 8f13fc1b           	sta IO_CON_REGISTER
-   925  0723 60                 	rts
-   926                          amod10
-   927  0724 a924               	lda #'$'
-   928  0726 8f12fc1b           	sta IO_CON_CHAROUT
-   929  072a 8f13fc1b           	sta IO_CON_REGISTER
-   930  072e a00300             	ldy #$0003
-   931  0731 b73a               	lda [mondump],y
-   932  0733 205403             	jsr prhex
-   933  0736 88                 	dey
-   934  0737 b73a               	lda [mondump],y
-   935  0739 205403             	jsr prhex
-   936  073c 88                 	dey
-   937  073d b73a               	lda [mondump],y
-   938  073f 205403             	jsr prhex
-   939  0742 a92c               	lda #','
-   940  0744 8f12fc1b           	sta IO_CON_CHAROUT
-   941  0748 8f13fc1b           	sta IO_CON_REGISTER
-   942  074c a958               	lda #'X'
-   943  074e 8f12fc1b           	sta IO_CON_CHAROUT
-   944  0752 8f13fc1b           	sta IO_CON_REGISTER
-   945  0756 60                 	rts
-   946                          amod12
-   947  0757 a928               	lda #'('
-   948  0759 8f12fc1b           	sta IO_CON_CHAROUT
-   949  075d 8f13fc1b           	sta IO_CON_REGISTER
-   950  0761 a924               	lda #'$'
-   951  0763 8f12fc1b           	sta IO_CON_CHAROUT
-   952  0767 8f13fc1b           	sta IO_CON_REGISTER
-   953  076b a00200             	ldy #$0002
-   954  076e b73a               	lda [mondump],y
-   955  0770 205403             	jsr prhex
-   956  0773 88                 	dey
-   957  0774 b73a               	lda [mondump],y
-   958  0776 205403             	jsr prhex
-   959  0779 a929               	lda #')'
-   960  077b 8f12fc1b           	sta IO_CON_CHAROUT
-   961  077f 8f13fc1b           	sta IO_CON_REGISTER
-   962  0783 60                 	rts
-   963                          amod13
-   964  0784 a928               	lda #'('
-   965  0786 8f12fc1b           	sta IO_CON_CHAROUT
-   966  078a 8f13fc1b           	sta IO_CON_REGISTER
-   967  078e a924               	lda #'$'
-   968  0790 8f12fc1b           	sta IO_CON_CHAROUT
-   969  0794 8f13fc1b           	sta IO_CON_REGISTER
-   970  0798 a00200             	ldy #$0002
-   971  079b b73a               	lda [mondump],y
-   972  079d 205403             	jsr prhex
-   973  07a0 88                 	dey
-   974  07a1 b73a               	lda [mondump],y
-   975  07a3 205403             	jsr prhex
-   976  07a6 a92c               	lda #','
-   977  07a8 8f12fc1b           	sta IO_CON_CHAROUT
-   978  07ac 8f13fc1b           	sta IO_CON_REGISTER
-   979  07b0 a958               	lda #'X'
-   980  07b2 8f12fc1b           	sta IO_CON_CHAROUT
-   981  07b6 8f13fc1b           	sta IO_CON_REGISTER
-   982  07ba a929               	lda #')'
-   983  07bc 8f12fc1b           	sta IO_CON_CHAROUT
-   984  07c0 8f13fc1b           	sta IO_CON_REGISTER
-   985  07c4 60                 	rts
-   986                          	
-   987                          						;test branches for disassembly purposes..
-   988  07c5 7090               	bvs amod12
-   989  07c7 7010               	bvs is816
-   990  07c9 70b9               	bvs amod13
-   991  07cb 703b               	bvs listamod
-   992  07cd 6287ff             	per amod12
-   993  07d0 620600             	per is816
-   994  07d3 624eff             	per amod10
-   995  07d6 622f00             	per listamod
-   996                          	
-   997                          	!zone is816
-   998                          is816
-   999  07d9 48                 	pha
-  1000  07da 291f               	and #$1f
-  1001  07dc c909               	cmp #$09				;09, 29, 49, etc?
-  1002  07de d006               	bne .testx
-  1003  07e0 242d               	bit alarge				;16 bit?
-  1004  07e2 301e               	bmi .is16
-  1005  07e4 1016               	bpl .is8
-  1006                          .testx
-  1007  07e6 c9a0               	cmp #$a0
-  1008  07e8 f00e               	beq .isx
-  1009  07ea c9a2               	cmp #$a2
-  1010  07ec f00a               	beq .isx
-  1011  07ee c9c0               	cmp #$c0
-  1012  07f0 f006               	beq .isx
-  1013  07f2 c9e0               	cmp #$e0
-  1014  07f4 f002               	beq .isx
-  1015  07f6 68                 	pla						;made it here, not an accumulator or index instruction
-  1016  07f7 60                 	rts
-  1017                          .isx
-  1018  07f8 242e               	bit xlarge
-  1019  07fa 3006               	bmi .is16				;or else fall thru
-  1020                          .is8
-  1021  07fc a902               	lda #$2
-  1022  07fe 852f               	sta scratch1
-  1023  0800 68                 	pla
-  1024  0801 60                 	rts
-  1025                          .is16
-  1026  0802 a903               	lda #$3
-  1027  0804 852f               	sta scratch1
-  1028  0806 68                 	pla
-  1029  0807 60                 	rts
-  1030                          	
-  1031                          listamod
-  1032  0808 8704               	!16 amod0			;$xx
-  1033  080a 9a04               	!16 amod1			;($xx,X)
-  1034  080c d504               	!16 amod2			;x,S
-  1035  080e f204               	!16 amod3			;[$xx]
-  1036  0810 1805               	!16 amod4			;implied
-  1037  0812 1905               	!16 amod5			;#$xx (or #$yyxx)
-  1038  0814 4405               	!16 amod6			;$yyxx
-  1039  0816 5c05               	!16 amod7			;$zzyyxx
-  1040  0818 8a05               	!16 amod8			;rel8
-  1041  081a b705               	!16 amod9			;($xx),Y
-  1042  081c f205               	!16 amoda			;($xx)
-  1043  081e 1906               	!16 amodb			;(xx,S),Y
-  1044  0820 6806               	!16 amodc			;$xx,X
-  1045  0822 8f06               	!16 amodd			;[$xx],Y
-  1046  0824 ca06               	!16 amode			;$yyxx,X
-  1047  0826 f706               	!16 amodf			;$yyxx,Y
-  1048  0828 2407               	!16 amod10			;$zzyyxx,X
-  1049  082a 7a05               	!16 amod11			;rel16
-  1050  082c 5707               	!16 amod12			;($yyxx)
-  1051  082e 8407               	!16 amod13			;($yyxx,X)
-  1052                          	
-  1053                          mnemlenmode
-  1054  0830 40                 	!byte %01000000		;00 brk 2/$xx
-  1055  0831 41                 	!byte %01000001		;01 ora 2/($xx,x)
-  1056  0832 40                 	!byte %01000000		;02 cop 2/$xx
-  1057  0833 42                 	!byte %01000010		;03 ora 2/x,s
-  1058  0834 40                 	!byte %01000000		;04 tsb 2/$xx
-  1059  0835 40                 	!byte %01000000		;05 ora 2/$xx
-  1060  0836 40                 	!byte %01000000		;06 asl 2/$xx
-  1061  0837 43                 	!byte %01000011		;07 ora 2/[$xx]
-  1062  0838 24                 	!byte %00100100		;08 php 1
-  1063  0839 45                 	!byte %01000101		;09 ora 2/#imm
-  1064  083a 24                 	!byte %00100100		;0a asl 1
-  1065  083b 24                 	!byte %00100100		;0b phd 1
-  1066  083c 66                 	!byte %01100110		;0c tsb 3/$yyxx
-  1067  083d 66                 	!byte %01100110		;0d ora 3/$yyxx
-  1068  083e 66                 	!byte %01100110		;0e asl 3/$yyxx
-  1069  083f 87                 	!byte %10000111		;0f ora 4/$zzyyxx
-  1070  0840 48                 	!byte %01001000		;10 bpl 2/rel8
-  1071  0841 49                 	!byte %01001001		;11 ora 2/($xx),Y
-  1072  0842 4a                 	!byte %01001010		;12 ora 2/($xx)
-  1073  0843 4b                 	!byte %01001011		;13 ora 2/(x,s),Y
-  1074  0844 40                 	!byte %01000000		;14 trb 2/$xx
-  1075  0845 4c                 	!byte %01001100		;15 ora 2/$xx,X
-  1076  0846 4c                 	!byte %01001100		;16 asl 2/$xx,X
-  1077  0847 4d                 	!byte %01001101		;17 ora 2/[$xx],Y
-  1078  0848 24                 	!byte %00100100		;18 clc 1
-  1079  0849 6f                 	!byte %01101111		;19 ora 3/$yyxx,Y
-  1080  084a 24                 	!byte %00100100		;1a inc 1
-  1081  084b 24                 	!byte %00100100		;1b tcs 1
-  1082  084c 66                 	!byte %01100110		;1c trb 3/$yyxx
-  1083  084d 6e                 	!byte %01101110		;1d ora 3/$yyxx,X
-  1084  084e 6e                 	!byte %01101110		;1e asl 3/$yyxx,X
-  1085  084f 90                 	!byte %10010000		;1f ora 4/$zzyyxx,X
-  1086  0850 66                 	!byte %01100110		;20 jsr 3/$yyxx
-  1087  0851 41                 	!byte %01000001		;21 and 2/($xx,x)
-  1088  0852 87                 	!byte %10000111		;22 jsl 4/$zzyyxx
-  1089  0853 42                 	!byte %01000010		;23 and 2/x,s
-  1090  0854 40                 	!byte %01000000		;24 bit 2/$xx
-  1091  0855 40                 	!byte %01000000		;25 and 2/$xx
-  1092  0856 40                 	!byte %01000000		;26 rol 2/$xx
-  1093  0857 43                 	!byte %01000011		;27 and 2/[$xx]
-  1094  0858 24                 	!byte %00100100		;28 plp 1
-  1095  0859 45                 	!byte %01000101		;29 and 2/#imm
-  1096  085a 24                 	!byte %00100100		;2a rol 1
-  1097  085b 24                 	!byte %00100100		;2b pld 1
-  1098  085c 66                 	!byte %01100110		;2c bit 3/$yyxx
-  1099  085d 66                 	!byte %01100110		;2d and 3/$yyxx
-  1100  085e 66                 	!byte %01100110		;2e rol 3/$yyxx
-  1101  085f 87                 	!byte %10000111		;2f and 4/$zzyyxx
-  1102  0860 48                 	!byte %01001000		;30 bmi 2/rel8
-  1103  0861 49                 	!byte %01001001		;31 and 2/($xx),Y
-  1104  0862 4a                 	!byte %01001010		;32 and 2/($xx)
-  1105  0863 4b                 	!byte %01001011		;33 and 2/(x,s),Y
-  1106  0864 4c                 	!byte %01001100		;34 bit 2/$xx,X
-  1107  0865 4c                 	!byte %01001100		;35 and 2/$xx,X
-  1108  0866 4c                 	!byte %01001100		;36 rol 2/$xx,X
-  1109  0867 4d                 	!byte %01001101		;37 and 2/[$xx],Y
-  1110  0868 24                 	!byte %00100100		;38 sec 1
-  1111  0869 6f                 	!byte %01101111		;39 and 3/$yyxx,Y
-  1112  086a 24                 	!byte %00100100		;3a dec 1
-  1113  086b 24                 	!byte %00100100		;3b tsc 1
-  1114  086c 6e                 	!byte %01101110		;3c bit 3/$yyxx,X
-  1115  086d 6e                 	!byte %01101110		;3d and 3/$yyxx,X
-  1116  086e 6e                 	!byte %01101110		;3e rol 3/$yyxx,X
-  1117  086f 90                 	!byte %10010000		;3f and 4/$zzyyxx,X
-  1118  0870 24                 	!byte %00100100		;40 ???
-  1119  0871 41                 	!byte %01000001		;41 eor 2/($xx,x)
-  1120  0872 40                 	!byte %01000000		;42 wdm 2/$00
-  1121  0873 42                 	!byte %01000010		;43 eor 2/x,s
-  1122  0874 24                 	!byte %00100100		;44 ???
-  1123  0875 40                 	!byte %01000000		;45 eor 2/$xx
-  1124  0876 40                 	!byte %01000000		;46 lsr 2/$xx
-  1125  0877 43                 	!byte %01000011		;47 eor 2/[$xx]
-  1126  0878 24                 	!byte %00100100		;48 pha 1
-  1127  0879 45                 	!byte %01000101		;49 eor 2/#imm
-  1128  087a 24                 	!byte %00100100		;4a lsr 1
-  1129  087b 24                 	!byte %00100100		;4b phk 1
-  1130  087c 66                 	!byte %01100110		;4c jmp 3/$yyxx
-  1131  087d 66                 	!byte %01100110		;4d eor 3/$yyxx
-  1132  087e 66                 	!byte %01100110		;4e lsr 3/$yyxx
-  1133  087f 87                 	!byte %10000111		;4f eor 4/$zzyyxx
-  1134  0880 48                 	!byte %01001000		;50 bvc 2/rel8
-  1135  0881 49                 	!byte %01001001		;51 eor 2/($xx),Y
-  1136  0882 4a                 	!byte %01001010		;52 eor 2/($xx)
-  1137  0883 4b                 	!byte %01001011		;53 eor 2/(x,s),Y
-  1138  0884 24                 	!byte %00100100		;54 ???
-  1139  0885 4c                 	!byte %01001100		;55 eor 2/$xx,X
-  1140  0886 4c                 	!byte %01001100		;56 lsr 2/$xx,X
-  1141  0887 4d                 	!byte %01001101		;57 eor 2/[$xx],Y
-  1142  0888 24                 	!byte %00100100		;58 cli 1
-  1143  0889 6f                 	!byte %01101111		;59 eor 3/$yyxx,Y
-  1144  088a 24                 	!byte %00100100		;5a phy 1
-  1145  088b 24                 	!byte %00100100		;5b tcd 1
-  1146  088c 87                 	!byte %10000111		;5c jml 4/$zzyyxx
-  1147  088d 6e                 	!byte %01101110		;5d eor 3/$yyxx,X
-  1148  088e 6e                 	!byte %01101110		;5e lsr 3/$yyxx,X
-  1149  088f 90                 	!byte %10010000		;5f eor 4/$zzyyxx,X
-  1150  0890 24                 	!byte %00100100		;60 rts
-  1151  0891 41                 	!byte %01000001		;61 adc 2/($xx,x)
-  1152  0892 71                 	!byte %01110001		;62 per 3/rel16
-  1153  0893 42                 	!byte %01000010		;63 adc 2/x,s
-  1154  0894 40                 	!byte %01000000		;64 stz 2/$xx
-  1155  0895 40                 	!byte %01000000		;65 adc 2/$xx
-  1156  0896 40                 	!byte %01000000		;66 ror 2/$xx
-  1157  0897 43                 	!byte %01000011		;67 adc 2/[$xx]
-  1158  0898 24                 	!byte %00100100		;68 pla 1
-  1159  0899 45                 	!byte %01000101		;69 adc 2/#imm
-  1160  089a 24                 	!byte %00100100		;6a ror 1
-  1161  089b 24                 	!byte %00100100		;6b rtl 1
-  1162  089c 72                 	!byte %01110010		;6c jmp 3/($yyxx)
-  1163  089d 66                 	!byte %01100110		;6d adc 3/$yyxx
-  1164  089e 66                 	!byte %01100110		;6e ror 3/$yyxx
-  1165  089f 87                 	!byte %10000111		;6f adc 4/$zzyyxx
-  1166  08a0 48                 	!byte %01001000		;70 bvs 2/rel8
-  1167  08a1 49                 	!byte %01001001		;71 adc 2/($xx),Y
-  1168  08a2 4a                 	!byte %01001010		;72 adc 2/($xx)
-  1169  08a3 4b                 	!byte %01001011		;73 adc 2/(x,s),Y
-  1170  08a4 4c                 	!byte %01001100		;74 stz 2/$xx,X
-  1171  08a5 4c                 	!byte %01001100		;75 adc 2/$xx,X
-  1172  08a6 4c                 	!byte %01001100		;76 ror 2/$xx,X
-  1173  08a7 4d                 	!byte %01001101		;77 adc 2/[$xx],Y
-  1174  08a8 24                 	!byte %00100100		;78 sei 1
-  1175  08a9 6f                 	!byte %01101111		;79 adc 3/$yyxx,Y
-  1176  08aa 24                 	!byte %00100100		;7a ply 1
-  1177  08ab 24                 	!byte %00100100		;7b tdc 1
-  1178  08ac 73                 	!byte %01110011		;7c jmp 3/($yyxx,X)
-  1179  08ad 6e                 	!byte %01101110		;7d adc 3/$yyxx,X
-  1180  08ae 6e                 	!byte %01101110		;7e lsr 3/$yyxx,X
-  1181  08af 90                 	!byte %10010000		;7f adc 4/$zzyyxx,X
-  1182                          mnemlist
-  1183  08b0 00                 	!byte $00			;00 brk
-  1184  08b1 02                 	!byte $02			;01 ora
-  1185  08b2 01                 	!byte $01			;02 cop
-  1186  08b3 02                 	!byte $02			;03 ora
-  1187  08b4 03                 	!byte $03			;04 tsb
-  1188  08b5 02                 	!byte $02			;05 ora
-  1189  08b6 04                 	!byte $04			;06 asl
-  1190  08b7 02                 	!byte $02			;07 ora
-  1191  08b8 05                 	!byte $05			;08 php
-  1192  08b9 02                 	!byte $02			;09 ora
-  1193  08ba 04                 	!byte $04			;0a asl
-  1194  08bb 06                 	!byte $06			;0b phd
-  1195  08bc 03                 	!byte $03			;0c tsb
-  1196  08bd 02                 	!byte $02			;0d ora
-  1197  08be 04                 	!byte $04			;0e asl
-  1198  08bf 02                 	!byte $02			;0f ora
-  1199  08c0 07                 	!byte $07			;10 bpl
-  1200  08c1 02                 	!byte $02			;11 ora
-  1201  08c2 02                 	!byte $02			;12 ora
-  1202  08c3 02                 	!byte $02			;13 ora
-  1203  08c4 08                 	!byte $08			;14 trb
-  1204  08c5 02                 	!byte $02			;15 ora
-  1205  08c6 04                 	!byte $04			;16 asl
-  1206  08c7 02                 	!byte $02			;17 ora
-  1207  08c8 09                 	!byte $09			;18 clc
-  1208  08c9 02                 	!byte $02			;19 ora
-  1209  08ca 0a                 	!byte $0a			;1a inc
-  1210  08cb 0b                 	!byte $0b			;1b tcs
-  1211  08cc 08                 	!byte $08			;1c trb
-  1212  08cd 02                 	!byte $02			;1d ora
-  1213  08ce 04                 	!byte $04			;1e asl
-  1214  08cf 02                 	!byte $02			;1f ora
-  1215  08d0 0d                 	!byte $0d			;20 jsr
-  1216  08d1 0c                 	!byte $0c			;21 and
-  1217  08d2 0e                 	!byte $0e			;22 jsl
-  1218  08d3 0c                 	!byte $0c			;23 and
-  1219  08d4 10                 	!byte $10			;24 bit
-  1220  08d5 0c                 	!byte $0c			;25 and
-  1221  08d6 11                 	!byte $11			;26 rol
-  1222  08d7 0c                 	!byte $0c			;27 and
-  1223  08d8 12                 	!byte $12			;28 plp
-  1224  08d9 0c                 	!byte $0c			;29 and
-  1225  08da 11                 	!byte $11			;2a rol
-  1226  08db 13                 	!byte $13			;2b pld
-  1227  08dc 10                 	!byte $10			;2c bit
-  1228  08dd 0c                 	!byte $0c			;2d and
-  1229  08de 11                 	!byte $11			;2e rol
-  1230  08df 0c                 	!byte $0c			;2f and
-  1231  08e0 14                 	!byte $14			;30 bmi
-  1232  08e1 0c                 	!byte $0c			;31 and
-  1233  08e2 0c                 	!byte $0c			;32 and
-  1234  08e3 0c                 	!byte $0c			;33 and
-  1235  08e4 11                 	!byte $11			;34 bit
-  1236  08e5 0c                 	!byte $0c			;35 and
-  1237  08e6 11                 	!byte $11			;36 rol
-  1238  08e7 0c                 	!byte $0c			;37 and
-  1239  08e8 15                 	!byte $15			;38 sec
-  1240  08e9 0c                 	!byte $0c			;39 and
-  1241  08ea 0f                 	!byte $0f			;3a dec
-  1242  08eb 16                 	!byte $16			;3b tsc
-  1243  08ec 11                 	!byte $11			;3c bit
-  1244  08ed 0c                 	!byte $0c			;3d and
-  1245  08ee 11                 	!byte $11			;3e rol
-  1246  08ef 0c                 	!byte $0c			;3f and
-  1247  08f0 17                 	!byte $17			;40 ???
-  1248  08f1 18                 	!byte $18			;41 eor
-  1249  08f2 19                 	!byte $19			;42 wdm
-  1250  08f3 18                 	!byte $18			;43 eor
-  1251  08f4 17                 	!byte $17			;44 ???
-  1252  08f5 18                 	!byte $18			;45 eor
-  1253  08f6 1a                 	!byte $1a			;46 lsr
-  1254  08f7 18                 	!byte $18			;47 eor
-  1255  08f8 1b                 	!byte $1b			;48 pha
-  1256  08f9 18                 	!byte $18			;49 eor
-  1257  08fa 1a                 	!byte $1a			;4a lsr
-  1258  08fb 1c                 	!byte $1c			;4b phk
-  1259  08fc 1d                 	!byte $1d			;4c jmp
-  1260  08fd 18                 	!byte $18			;4d eor
-  1261  08fe 1a                 	!byte $1a			;4e lsr
-  1262  08ff 18                 	!byte $18			;4f eor
-  1263  0900 1e                 	!byte $1e			;50 bvc
-  1264  0901 18                 	!byte $18			;51 eor
-  1265  0902 18                 	!byte $18			;52 eor
-  1266  0903 18                 	!byte $18			;53 eor
-  1267  0904 17                 	!byte $17			;54 ???
-  1268  0905 18                 	!byte $18			;55 eor
-  1269  0906 1a                 	!byte $1a			;56 lsr
-  1270  0907 18                 	!byte $18			;57 eor
-  1271  0908 1f                 	!byte $1f			;58 cli
-  1272  0909 18                 	!byte $18			;59 eor
-  1273  090a 20                 	!byte $20			;5a phy
-  1274  090b 21                 	!byte $21			;5b tcd
-  1275  090c 22                 	!byte $22			;5c jml
-  1276  090d 18                 	!byte $18			;5d eor
-  1277  090e 1a                 	!byte $1a			;5e lsr
-  1278  090f 18                 	!byte $18			;5f eor
-  1279  0910 23                 	!byte $23			;60 rts
-  1280  0911 24                 	!byte $24			;61 adc
-  1281  0912 25                 	!byte $25			;62 per
-  1282  0913 24                 	!byte $24			;63 adc
-  1283  0914 26                 	!byte $26			;64 stz
-  1284  0915 24                 	!byte $24			;65 adc
-  1285  0916 27                 	!byte $27			;66 ror
-  1286  0917 24                 	!byte $24			;67 adc
-  1287  0918 28                 	!byte $28			;68 pla
-  1288  0919 24                 	!byte $24			;69 adc
-  1289  091a 27                 	!byte $27			;6a ror
-  1290  091b 29                 	!byte $29			;6b rtl
-  1291  091c 1d                 	!byte $1d			;6c jmp
-  1292  091d 24                 	!byte $24			;6d adc
-  1293  091e 27                 	!byte $27			;6e ror
-  1294  091f 24                 	!byte $24			;6f adc
-  1295  0920 2a                 	!byte $2a			;70 bvs
-  1296  0921 24                 	!byte $24			;71 adc
-  1297  0922 24                 	!byte $24			;72 adc
-  1298  0923 24                 	!byte $24			;73 adc
-  1299  0924 26                 	!byte $26			;74 stz
-  1300  0925 24                 	!byte $24			;75 adc
-  1301  0926 27                 	!byte $27			;76 ror
-  1302  0927 24                 	!byte $24			;77 adc
-  1303  0928 2b                 	!byte $2b			;78 sei
-  1304  0929 24                 	!byte $24			;79 adc
-  1305  092a 2c                 	!byte $2c			;7a ply
-  1306  092b 2d                 	!byte $2d			;7b tdc
-  1307  092c 1d                 	!byte $1d			;7c jmp
-  1308  092d 24                 	!byte $24			;7d adc
-  1309  092e 27                 	!byte $27			;7e ror
-  1310  092f 24                 	!byte $24			;7f adc
-  1311                          mnems
-  1312  0930 42524b             	!tx "BRK"			;0
-  1313  0933 434f50             	!tx "COP"			;1
-  1314  0936 4f5241             	!tx "ORA"			;2
-  1315  0939 545342             	!tx "TSB"			;3
-  1316  093c 41534c             	!tx "ASL"			;4
-  1317  093f 504850             	!tx "PHP"			;5
-  1318  0942 504844             	!tx "PHD"			;6
-  1319  0945 42504c             	!tx "BPL"			;7
-  1320  0948 545242             	!tx "TRB"			;8
-  1321  094b 434c43             	!tx "CLC"			;9
-  1322  094e 494e43             	!tx "INC"			;a
-  1323  0951 544353             	!tx "TCS"			;b
-  1324  0954 414e44             	!tx "AND"			;c
-  1325  0957 4a5352             	!tx "JSR"			;d
-  1326  095a 4a534c             	!tx "JSL"			;e
-  1327  095d 444543             	!tx "DEC"			;f
-  1328  0960 424954             	!tx "BIT"			;10
-  1329  0963 524f4c             	!tx "ROL"			;11
-  1330  0966 504c50             	!tx "PLP"			;12
-  1331  0969 504c44             	!tx "PLD"			;13
-  1332  096c 424d49             	!tx "BMI"			;14
-  1333  096f 534543             	!tx "SEC"			;15
-  1334  0972 545343             	!tx "TSC"			;16
-  1335  0975 3f3f3f             	!tx "???"			;17
-  1336  0978 454f52             	!tx "EOR"			;18
-  1337  097b 57444d             	!tx "WDM"			;19
-  1338  097e 4c5352             	!tx "LSR"			;1a
-  1339  0981 504841             	!tx "PHA"			;1b
-  1340  0984 50484b             	!tx "PHK"			;1c
-  1341  0987 4a4d50             	!tx "JMP"			;1d
-  1342  098a 425643             	!tx "BVC"			;1e
-  1343  098d 434c49             	!tx "CLI"			;1f
-  1344  0990 504859             	!tx "PHY"			;20
-  1345  0993 544344             	!tx "TCD"			;21
-  1346  0996 4a4d4c             	!tx "JML"			;22
-  1347  0999 525453             	!tx "RTS"			;23
-  1348  099c 414443             	!tx "ADC"			;24
-  1349  099f 504552             	!tx "PER"			;25
-  1350  09a2 53545a             	!tx "STZ"			;26
-  1351  09a5 524f52             	!tx "ROR"			;27
-  1352  09a8 504c41             	!tx "PLA"			;28
-  1353  09ab 52544c             	!tx "RTL"			;29
-  1354  09ae 425653             	!tx "BVS"			;2a
-  1355  09b1 534549             	!tx "SEI"			;2b
-  1356  09b4 504c59             	!tx "PLY"			;2c
-  1357  09b7 544443             	!tx "TDC"			;2d
-  1358                          	
-  1359                          	!zone ucline
-  1360                          ucline					;convert inbuff at $170400 to upper case
-  1361  09ba 08                 	php
-  1362  09bb c210               	rep #$10
-  1363  09bd e220               	sep #$20
-  1364                          	!as
-  1365                          	!rl
-  1366  09bf a20000             	ldx #$0000
-  1367                          .local2
-  1368  09c2 bf000417           	lda inbuff,x
-  1369  09c6 f012               	beq .local4			;hit the zero, so bail
-  1370  09c8 c961               	cmp #'a'
-  1371  09ca 900b               	bcc .local3			;less then lowercase a, so ignore
-  1372  09cc c97b               	cmp #'z' + 1		;less than next character after lowercase z?
-  1373  09ce b007               	bcs .local3			;greater than or equal, so ignore
-  1374  09d0 38                 	sec
-  1375  09d1 e920               	sbc #('z' - 'Z')	;make upper case
-  1376  09d3 9f000417           	sta inbuff,x
-  1377                          .local3
-  1378  09d7 e8                 	inx
-  1379  09d8 80e8               	bra .local2
-  1380                          .local4
-  1381  09da 28                 	plp
-  1382  09db 6b                 	rtl
-  1383                          	
-  1384                          	!zone getline
-  1385                          getline
-  1386  09dc 08                 	php
-  1387  09dd c210               	rep #$10
-  1388  09df e220               	sep #$20
-  1389                          	!as
-  1390                          	!rl
-  1391  09e1 a20000             	ldx #$0000
-  1392                          .local2
-  1393  09e4 af00fc1b           	lda IO_KEYQ_SIZE
-  1394  09e8 f0fa               	beq .local2
-  1395  09ea af01fc1b           	lda IO_KEYQ_WAITING
-  1396  09ee 8f02fc1b           	sta IO_KEYQ_DEQUEUE
-  1397  09f2 c90d               	cmp #$0d			;carriage return yet?
-  1398  09f4 f01c               	beq .local3
-  1399  09f6 c908               	cmp #$08			;backspace/back arrow?
-  1400  09f8 f029               	beq .local4
-  1401  09fa c920               	cmp #$20 			;generally any control character besides what we're specifically looking for?
-  1402  09fc 90e6               	bcc .local2		 		;yes, so ignore it
-  1403  09fe 9f000417           	sta inbuff,x 		;any other character, so register it and store it
-  1404  0a02 8f12fc1b           	sta IO_CON_CHAROUT
-  1405  0a06 8f13fc1b           	sta IO_CON_REGISTER
-  1406  0a0a e8                 	inx
-  1407  0a0b a90d               	lda #$0d			;tee up a CR just in case we have to fall thru below
-  1408  0a0d e0fe03             	cpx #$3fe			;overrun end of buffer yet?
-  1409  0a10 d0d2               	bne .local2			;no, so get another char.. otherwise fall thru
-  1410                          .local3
-  1411  0a12 9f000417           	sta inbuff,x		;store CR
-  1412  0a16 8f17fc1b           	sta IO_CON_CR
-  1413  0a1a e8                 	inx
-  1414  0a1b a900               	lda #$00			;store zero to end it all
-  1415  0a1d 9f000417           	sta inbuff,x
-  1416  0a21 28                 	plp
-  1417  0a22 6b                 	rtl
-  1418                          .local4
-  1419  0a23 e00000             	cpx #$0000
-  1420  0a26 f0bc               	beq .local2			;no data in buffer yet, so nothing to backspace over
-  1421  0a28 a908               	lda #$08
-  1422  0a2a 8f12fc1b           	sta IO_CON_CHAROUT
-  1423  0a2e 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char, which backs up the cursor
-  1424  0a32 a920               	lda #$20
-  1425  0a34 8f12fc1b           	sta IO_CON_CHAROUT
-  1426  0a38 8f13fc1b           	sta IO_CON_REGISTER	;blot out the character with a space
-  1427  0a3c a908               	lda #$08
-  1428  0a3e 8f12fc1b           	sta IO_CON_CHAROUT
-  1429  0a42 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char again since we advanced the cursor
-  1430  0a46 ca                 	dex
-  1431  0a47 809b               	bra .local2
-  1432                          	
-  1433                          prinbuff				;feed location of input buffer into dpla and then print
-  1434  0a49 08                 	php
-  1435  0a4a c210               	rep #$10
-  1436  0a4c e220               	sep #$20
-  1437                          	!as
-  1438                          	!rl
-  1439  0a4e a917               	lda #$17
-  1440  0a50 853f               	sta dpla_h
-  1441  0a52 a904               	lda #$04
-  1442  0a54 853e               	sta dpla_m
-  1443  0a56 643d               	stz dpla
-  1444  0a58 225e0a1c           	jsl l_prcdpla
-  1445  0a5c 28                 	plp
-  1446  0a5d 6b                 	rtl
-  1447                          	
-  1448                          	!zone prcdpla
-  1449                          prcdpla					; print C string pointed to by dp locations $3d-$3f
-  1450  0a5e 08                 	php
-  1451  0a5f c210               	rep #$10
-  1452  0a61 e220               	sep #$20
-  1453                          	!as
-  1454                          	!rl
-  1455  0a63 a00000             	ldy #$0000
-  1456                          .local2
-  1457  0a66 b73d               	lda [dpla],y
-  1458  0a68 f00b               	beq .local3
-  1459  0a6a 8f12fc1b           	sta IO_CON_CHAROUT
-  1460  0a6e 8f13fc1b           	sta IO_CON_REGISTER
-  1461  0a72 c8                 	iny
-  1462  0a73 80f1               	bra .local2
-  1463                          .local3
-  1464  0a75 28                 	plp
-  1465  0a76 6b                 	rtl
-  1466                          
-  1467                          initstring
-  1468  0a77 494d4c2036353831...	!tx "IML 65816 1C Firmware v00"
-  1469  0a90 0d                 	!byte 0x0d
-  1470  0a91 53797374656d204d...	!tx "System Monitor"
-  1471  0a9f 0d                 	!byte 0x0d
-  1472  0aa0 0d                 	!byte 0x0d
-  1473  0aa1 00                 	!byte 0
-  1474                          
-  1475                          helpmsg
-  1476  0aa2 494d4c2036353831...	!tx "IML 65816 Monitor Commands"
-  1477  0abc 0d                 	!byte $0d
-  1478  0abd 41203c616464723e...	!tx "A <addr>  Dump ASCII"
-  1479  0ad1 0d                 	!byte $0d
-  1480  0ad2 42203c62616e6b3e...	!tx "B <bank>  Change bank"
-  1481  0ae7 0d                 	!byte $0d
-  1482  0ae8 43203c636f6c6f72...	!tx "C <color> Change terminal colors"
-  1483  0b08 0d                 	!byte $0d
-  1484  0b09 44203c616464723e...	!tx "D <addr>  Dump hex"
-  1485  0b1b 0d                 	!byte $0d
-  1486  0b1c 45203c616464723e...	!tx "E <addr> <byte> <byte>...  Enter bytes"
-  1487  0b42 0d                 	!byte $0d
-  1488  0b43 4c203c616464723e...	!tx "L <addr>  Disassemble 65816 Instructions"
-  1489  0b6b 0d                 	!byte $0d
-  1490  0b6c 4d203c6d6f64653e...	!tx "M <mode>  Change video mode, 8/9"
-  1491  0b8c 0d                 	!byte $0d
-  1492  0b8d 5120202020202020...	!tx "Q         Halt the processor"
-  1493  0ba9 0d                 	!byte $0d
-  1494  0baa 3f20202020202020...	!tx "?         This menu"
-  1495  0bbd 0d                 	!byte $0d
-  1496  0bbe 3c656e7465723e20...	!tx "<enter>   Repeat last dump command"
-  1497  0be0 0d                 	!byte $0d
-  1498  0be1 546f207370656369...	!tx "To specify range, use <addr1.addr2>"
-  1499  0c04 0d00               	!byte $0d, 00
-  1500                          	
-  1501  0c06 0000000000000000...!align $ffff, $ffff,$00	;fill up to top of memory
-  1502                          
+   579  03cf 48                 	pha					;save opcode
+   580  03d0 aa                 	tax
+   581  03d1 bd6508             	lda mnemlenmode,x
+   582  03d4 4a                 	lsr
+   583  03d5 4a                 	lsr
+   584  03d6 4a                 	lsr
+   585  03d7 4a                 	lsr
+   586  03d8 4a                 	lsr					;isolage opcode len
+   587  03d9 852f               	sta scratch1
+   588  03db a73a               	lda [mondump]
+   589  03dd 200a08             	jsr+2 is816
+   590  03e0 a52f               	lda scratch1
+   591  03e2 aa                 	tax
+   592  03e3 a00000             	ldy #$0000
+   593                          .nextbyte
+   594  03e6 b73a               	lda [mondump],y
+   595  03e8 205403             	jsr prhex			;print hex
+   596  03eb a920               	lda #' '
+   597  03ed 8f12fc1b           	sta IO_CON_CHAROUT
+   598  03f1 8f13fc1b           	sta IO_CON_REGISTER	;print space
+   599  03f5 c8                 	iny
+   600  03f6 ca                 	dex
+   601  03f7 d0ed               	bne .nextbyte
+   602  03f9 a916               	lda #$16
+   603  03fb 8f14fc1b           	sta IO_CON_CURSORH	;tab over
+   604  03ff 68                 	pla					;get opcode back
+   605  0400 aa                 	tax
+   606  0401 bd6509             	lda mnemlist,x
+   607  0404 8530               	sta enterbytes
+   608  0406 6431               	stz enterbytes_m	;save for 16 bit add
+   609  0408 da                 	phx					;stash our opcode
+   610  0409 c230               	rep #$30
+   611                          	!al
+   612  040b 29ff00             	and #$00ff			;switch to 16 bits, clear top
+   613  040e 0a                 	asl
+   614  040f 18                 	clc
+   615  0410 6530               	adc enterbytes		;multiply by 3
+   616  0412 aa                 	tax
+   617  0413 e220               	sep #$20
+   618                          	!as
+   619  0415 bd650a             	lda mnems, x
+   620  0418 8f12fc1b           	sta IO_CON_CHAROUT
+   621  041c 8f13fc1b           	sta IO_CON_REGISTER
+   622  0420 e8                 	inx
+   623  0421 bd650a             	lda mnems, x
+   624  0424 8f12fc1b           	sta IO_CON_CHAROUT
+   625  0428 8f13fc1b           	sta IO_CON_REGISTER
+   626  042c e8                 	inx
+   627  042d bd650a             	lda mnems, x
+   628  0430 8f12fc1b           	sta IO_CON_CHAROUT
+   629  0434 8f13fc1b           	sta IO_CON_REGISTER
+   630  0438 a920               	lda #' '
+   631  043a 8f12fc1b           	sta IO_CON_CHAROUT
+   632  043e 8f13fc1b           	sta IO_CON_REGISTER
+   633  0442 fa                 	plx					;get our opcode back in index
+   634  0443 a900               	lda #$00
+   635  0445 eb                 	xba					;clear top byte of A if it's dirty
+   636  0446 bd6508             	lda mnemlenmode,x
+   637  0449 291f               	and #$1f			;isolate the addressing mode
+   638  044b 0a                 	asl					;multiply by two
+   639  044c aa                 	tax
+   640  044d fc3b08             	jsr (listamod,x)
+   641  0450 af20fc1b           	lda IO_VIDMODE
+   642  0454 c909               	cmp #$09
+   643  0456 d01f               	bne .fixup1
+   644  0458 a925               	lda #$25
+   645  045a 8f14fc1b           	sta IO_CON_CURSORH		;tab over and print our bytes as ASCII in 80 column mode
+   646  045e e230               	sep #$30				;8 bit indexes here
+   647                          	!rs
+   648  0460 a000               	ldy #$00				;print disassembly bytes as ASCII... bonus when in mode 9!
+   649                          .asc2
+   650  0462 b73a               	lda [mondump],y
+   651  0464 c920               	cmp #$20
+   652  0466 b002               	bcs .asc4
+   653  0468 a92e               	lda #'.'				;substitute control character with a period
+   654                          .asc4
+   655  046a 8f12fc1b           	sta IO_CON_CHAROUT
+   656  046e 8f13fc1b           	sta IO_CON_REGISTER
+   657  0472 c8                 	iny
+   658  0473 c42f               	cpy scratch1
+   659  0475 d0eb               	bne .asc2
+   660                          .fixup1
+   661  0477 c210               	rep #$10
+   662                          	!rl
+   663  0479 8f17fc1b           	sta IO_CON_CR
+   664                          .fixup
+   665  047d a52f               	lda scratch1		;get our fixup
+   666  047f 18                 	clc
+   667  0480 653a               	adc mondump
+   668  0482 853a               	sta mondump
+   669  0484 a53b               	lda mondump_m
+   670  0486 6900               	adc #$00
+   671  0488 853b               	sta mondump_m
+   672  048a a53c               	lda mondump_h
+   673  048c 6900               	adc #$00
+   674  048e 853c               	sta mondump_h
+   675                          .goback
+   676  0490 60                 	rts
+   677                          
+   678                          amod0
+   679  0491 a924               	lda #'$'
+   680  0493 8f12fc1b           	sta IO_CON_CHAROUT
+   681  0497 8f13fc1b           	sta IO_CON_REGISTER
+   682  049b a00100             	ldy #$0001
+   683  049e b73a               	lda [mondump],y
+   684  04a0 205403             	jsr prhex
+   685  04a3 60                 	rts
+   686                          amod1
+   687  04a4 a928               	lda #'('
+   688  04a6 8f12fc1b           	sta IO_CON_CHAROUT
+   689  04aa 8f13fc1b           	sta IO_CON_REGISTER
+   690  04ae a924               	lda #'$'
+   691  04b0 8f12fc1b           	sta IO_CON_CHAROUT
+   692  04b4 8f13fc1b           	sta IO_CON_REGISTER
+   693  04b8 a00100             	ldy #$0001
+   694  04bb b73a               	lda [mondump],y
+   695  04bd 205403             	jsr prhex
+   696  04c0 a92c               	lda #','
+   697  04c2 8f12fc1b           	sta IO_CON_CHAROUT
+   698  04c6 8f13fc1b           	sta IO_CON_REGISTER
+   699  04ca a958               	lda #'X'
+   700  04cc 8f12fc1b           	sta IO_CON_CHAROUT
+   701  04d0 8f13fc1b           	sta IO_CON_REGISTER
+   702  04d4 a929               	lda #')'
+   703  04d6 8f12fc1b           	sta IO_CON_CHAROUT
+   704  04da 8f13fc1b           	sta IO_CON_REGISTER
+   705  04de 60                 	rts
+   706                          amod2
+   707  04df a00100             	ldy #$0001
+   708  04e2 b73a               	lda [mondump],y
+   709  04e4 205403             	jsr prhex
+   710  04e7 a92c               	lda #','
+   711  04e9 8f12fc1b           	sta IO_CON_CHAROUT
+   712  04ed 8f13fc1b           	sta IO_CON_REGISTER
+   713  04f1 a953               	lda #'S'
+   714  04f3 8f12fc1b           	sta IO_CON_CHAROUT
+   715  04f7 8f13fc1b           	sta IO_CON_REGISTER
+   716  04fb 60                 	rts
+   717                          amod3
+   718  04fc a95b               	lda #'['
+   719  04fe 8f12fc1b           	sta IO_CON_CHAROUT
+   720  0502 8f13fc1b           	sta IO_CON_REGISTER
+   721  0506 a924               	lda #'$'
+   722  0508 8f12fc1b           	sta IO_CON_CHAROUT
+   723  050c 8f13fc1b           	sta IO_CON_REGISTER
+   724  0510 a00100             	ldy #$0001
+   725  0513 b73a               	lda [mondump],y
+   726  0515 205403             	jsr prhex
+   727  0518 a95d               	lda #']'
+   728  051a 8f12fc1b           	sta IO_CON_CHAROUT
+   729  051e 8f13fc1b           	sta IO_CON_REGISTER
+   730                          amod4
+   731  0522 60                 	rts
+   732                          	!zone amod5
+   733                          amod5
+   734  0523 a923               	lda #'#'
+   735  0525 8f12fc1b           	sta IO_CON_CHAROUT
+   736  0529 8f13fc1b           	sta IO_CON_REGISTER
+   737  052d a924               	lda #'$'
+   738  052f 8f12fc1b           	sta IO_CON_CHAROUT
+   739  0533 8f13fc1b           	sta IO_CON_REGISTER
+   740  0537 a52f               	lda scratch1
+   741  0539 c902               	cmp #$02
+   742  053b f008               	beq .amod508
+   743                          .amod516
+   744  053d a00200             	ldy #$0002
+   745  0540 b73a               	lda [mondump],y
+   746  0542 205403             	jsr prhex
+   747                          .amod508
+   748  0545 a00100             	ldy #$0001
+   749  0548 b73a               	lda [mondump],y
+   750  054a 205403             	jsr prhex
+   751  054d 60                 	rts
+   752                          amod6
+   753  054e a924               	lda #'$'
+   754  0550 8f12fc1b           	sta IO_CON_CHAROUT
+   755  0554 8f13fc1b           	sta IO_CON_REGISTER
+   756  0558 a00200             	ldy #$0002
+   757  055b b73a               	lda [mondump],y
+   758  055d 205403             	jsr prhex
+   759  0560 88                 	dey
+   760  0561 b73a               	lda [mondump],y
+   761  0563 4c5403             	jmp prhex
+   762                          amod7
+   763  0566 a924               	lda #'$'
+   764  0568 8f12fc1b           	sta IO_CON_CHAROUT
+   765  056c 8f13fc1b           	sta IO_CON_REGISTER
+   766  0570 a00300             	ldy #$0003
+   767  0573 b73a               	lda [mondump],y
+   768  0575 205403             	jsr prhex
+   769  0578 88                 	dey
+   770  0579 b73a               	lda [mondump],y
+   771  057b 205403             	jsr prhex
+   772  057e 88                 	dey
+   773  057f b73a               	lda [mondump],y
+   774  0581 4c5403             	jmp prhex
+   775                          amod11
+   776  0584 a00300             	ldy #$0003
+   777  0587 842a               	sty scratch2			;number of bytes to bump offset
+   778  0589 a00200             	ldy #$0002
+   779  058c b73a               	lda [mondump],y
+   780  058e eb                 	xba
+   781  058f 88                 	dey
+   782  0590 b73a               	lda [mondump],y
+   783  0592 8014               	bra amod8nosign
+   784                          amod8
+   785  0594 a00200             	ldy #$0002
+   786  0597 842a               	sty scratch2
+   787  0599 a900               	lda #$00
+   788  059b eb                 	xba						;clear high byte of A
+   789                          amod8a
+   790  059c a00100             	ldy #$0001
+   791  059f b73a               	lda [mondump],y			;get rel byte
+   792  05a1 1005               	bpl amod8nosign
+   793  05a3 48                 	pha
+   794  05a4 a9ff               	lda #$ff
+   795  05a6 eb                 	xba						;sign extend if negative
+   796  05a7 68                 	pla
+   797                          amod8nosign
+   798  05a8 c230               	rep #$30
+   799                          	!al
+   800  05aa 18                 	clc
+   801  05ab 653a               	adc mondump				;add to our current disassembly address
+   802  05ad 18                 	clc
+   803  05ae 652a               	adc scratch2			;add offset for instruction size
+   804  05b0 aa                 	tax
+   805  05b1 e220               	sep #$20
+   806                          	!as
+   807  05b3 a924               	lda #'$'
+   808  05b5 8f12fc1b           	sta IO_CON_CHAROUT
+   809  05b9 8f13fc1b           	sta IO_CON_REGISTER
+   810  05bd 204a03             	jsr prhex16
+   811  05c0 60                 	rts
+   812                          amod9
+   813  05c1 a928               	lda #'('
+   814  05c3 8f12fc1b           	sta IO_CON_CHAROUT
+   815  05c7 8f13fc1b           	sta IO_CON_REGISTER
+   816  05cb a924               	lda #'$'
+   817  05cd 8f12fc1b           	sta IO_CON_CHAROUT
+   818  05d1 8f13fc1b           	sta IO_CON_REGISTER
+   819  05d5 a00100             	ldy #$0001
+   820  05d8 b73a               	lda [mondump],y
+   821  05da 205403             	jsr prhex
+   822  05dd a929               	lda #')'
+   823  05df 8f12fc1b           	sta IO_CON_CHAROUT
+   824  05e3 8f13fc1b           	sta IO_CON_REGISTER
+   825  05e7 a92c               	lda #','
+   826  05e9 8f12fc1b           	sta IO_CON_CHAROUT
+   827  05ed 8f13fc1b           	sta IO_CON_REGISTER
+   828  05f1 a959               	lda #'Y'
+   829  05f3 8f12fc1b           	sta IO_CON_CHAROUT
+   830  05f7 8f13fc1b           	sta IO_CON_REGISTER
+   831  05fb 60                 	rts
+   832                          amoda
+   833  05fc a928               	lda #'('
+   834  05fe 8f12fc1b           	sta IO_CON_CHAROUT
+   835  0602 8f13fc1b           	sta IO_CON_REGISTER
+   836  0606 a924               	lda #'$'
+   837  0608 8f12fc1b           	sta IO_CON_CHAROUT
+   838  060c 8f13fc1b           	sta IO_CON_REGISTER
+   839  0610 a00100             	ldy #$0001
+   840  0613 b73a               	lda [mondump],y
+   841  0615 205403             	jsr prhex
+   842  0618 a929               	lda #')'
+   843  061a 8f12fc1b           	sta IO_CON_CHAROUT
+   844  061e 8f13fc1b           	sta IO_CON_REGISTER
+   845  0622 60                 	rts
+   846                          amodb
+   847  0623 a928               	lda #'('
+   848  0625 8f12fc1b           	sta IO_CON_CHAROUT
+   849  0629 8f13fc1b           	sta IO_CON_REGISTER
+   850  062d a924               	lda #'$'
+   851  062f 8f12fc1b           	sta IO_CON_CHAROUT
+   852  0633 8f13fc1b           	sta IO_CON_REGISTER
+   853  0637 a00100             	ldy #$0001
+   854  063a b73a               	lda [mondump],y
+   855  063c 205403             	jsr prhex
+   856  063f a92c               	lda #','
+   857  0641 8f12fc1b           	sta IO_CON_CHAROUT
+   858  0645 8f13fc1b           	sta IO_CON_REGISTER
+   859  0649 a953               	lda #'S'
+   860  064b 8f12fc1b           	sta IO_CON_CHAROUT
+   861  064f 8f13fc1b           	sta IO_CON_REGISTER
+   862  0653 a929               	lda #')'
+   863  0655 8f12fc1b           	sta IO_CON_CHAROUT
+   864  0659 8f13fc1b           	sta IO_CON_REGISTER
+   865  065d a92c               	lda #','
+   866  065f 8f12fc1b           	sta IO_CON_CHAROUT
+   867  0663 8f13fc1b           	sta IO_CON_REGISTER
+   868  0667 a959               	lda #'Y'
+   869  0669 8f12fc1b           	sta IO_CON_CHAROUT
+   870  066d 8f13fc1b           	sta IO_CON_REGISTER
+   871  0671 60                 	rts
+   872                          amodc
+   873  0672 a924               	lda #'$'
+   874  0674 8f12fc1b           	sta IO_CON_CHAROUT
+   875  0678 8f13fc1b           	sta IO_CON_REGISTER
+   876  067c a00100             	ldy #$0001
+   877  067f b73a               	lda [mondump],y
+   878  0681 205403             	jsr prhex
+   879  0684 a92c               	lda #','
+   880  0686 8f12fc1b           	sta IO_CON_CHAROUT
+   881  068a 8f13fc1b           	sta IO_CON_REGISTER
+   882  068e a958               	lda #'X'
+   883  0690 8f12fc1b           	sta IO_CON_CHAROUT
+   884  0694 8f13fc1b           	sta IO_CON_REGISTER
+   885  0698 60                 	rts
+   886                          amodd
+   887  0699 a95b               	lda #'['
+   888  069b 8f12fc1b           	sta IO_CON_CHAROUT
+   889  069f 8f13fc1b           	sta IO_CON_REGISTER
+   890  06a3 a924               	lda #'$'
+   891  06a5 8f12fc1b           	sta IO_CON_CHAROUT
+   892  06a9 8f13fc1b           	sta IO_CON_REGISTER
+   893  06ad a00100             	ldy #$0001
+   894  06b0 b73a               	lda [mondump],y
+   895  06b2 205403             	jsr prhex
+   896  06b5 a95d               	lda #']'
+   897  06b7 8f12fc1b           	sta IO_CON_CHAROUT
+   898  06bb 8f13fc1b           	sta IO_CON_REGISTER
+   899  06bf a92c               	lda #','
+   900  06c1 8f12fc1b           	sta IO_CON_CHAROUT
+   901  06c5 8f13fc1b           	sta IO_CON_REGISTER
+   902  06c9 a959               	lda #'Y'
+   903  06cb 8f12fc1b           	sta IO_CON_CHAROUT
+   904  06cf 8f13fc1b           	sta IO_CON_REGISTER
+   905  06d3 60                 	rts
+   906                          amode
+   907  06d4 a924               	lda #'$'
+   908  06d6 8f12fc1b           	sta IO_CON_CHAROUT
+   909  06da 8f13fc1b           	sta IO_CON_REGISTER
+   910  06de a00200             	ldy #$0002
+   911  06e1 b73a               	lda [mondump],y
+   912  06e3 205403             	jsr prhex
+   913  06e6 88                 	dey
+   914  06e7 b73a               	lda [mondump],y
+   915  06e9 205403             	jsr prhex
+   916  06ec a92c               	lda #','
+   917  06ee 8f12fc1b           	sta IO_CON_CHAROUT
+   918  06f2 8f13fc1b           	sta IO_CON_REGISTER
+   919  06f6 a958               	lda #'X'
+   920  06f8 8f12fc1b           	sta IO_CON_CHAROUT
+   921  06fc 8f13fc1b           	sta IO_CON_REGISTER
+   922  0700 60                 	rts
+   923                          amodf
+   924  0701 a924               	lda #'$'
+   925  0703 8f12fc1b           	sta IO_CON_CHAROUT
+   926  0707 8f13fc1b           	sta IO_CON_REGISTER
+   927  070b a00200             	ldy #$0002
+   928  070e b73a               	lda [mondump],y
+   929  0710 205403             	jsr prhex
+   930  0713 88                 	dey
+   931  0714 b73a               	lda [mondump],y
+   932  0716 205403             	jsr prhex
+   933  0719 a92c               	lda #','
+   934  071b 8f12fc1b           	sta IO_CON_CHAROUT
+   935  071f 8f13fc1b           	sta IO_CON_REGISTER
+   936  0723 a959               	lda #'Y'
+   937  0725 8f12fc1b           	sta IO_CON_CHAROUT
+   938  0729 8f13fc1b           	sta IO_CON_REGISTER
+   939  072d 60                 	rts
+   940                          amod10
+   941  072e a924               	lda #'$'
+   942  0730 8f12fc1b           	sta IO_CON_CHAROUT
+   943  0734 8f13fc1b           	sta IO_CON_REGISTER
+   944  0738 a00300             	ldy #$0003
+   945  073b b73a               	lda [mondump],y
+   946  073d 205403             	jsr prhex
+   947  0740 88                 	dey
+   948  0741 b73a               	lda [mondump],y
+   949  0743 205403             	jsr prhex
+   950  0746 88                 	dey
+   951  0747 b73a               	lda [mondump],y
+   952  0749 205403             	jsr prhex
+   953  074c a92c               	lda #','
+   954  074e 8f12fc1b           	sta IO_CON_CHAROUT
+   955  0752 8f13fc1b           	sta IO_CON_REGISTER
+   956  0756 a958               	lda #'X'
+   957  0758 8f12fc1b           	sta IO_CON_CHAROUT
+   958  075c 8f13fc1b           	sta IO_CON_REGISTER
+   959  0760 60                 	rts
+   960                          amod12
+   961  0761 a928               	lda #'('
+   962  0763 8f12fc1b           	sta IO_CON_CHAROUT
+   963  0767 8f13fc1b           	sta IO_CON_REGISTER
+   964  076b a924               	lda #'$'
+   965  076d 8f12fc1b           	sta IO_CON_CHAROUT
+   966  0771 8f13fc1b           	sta IO_CON_REGISTER
+   967  0775 a00200             	ldy #$0002
+   968  0778 b73a               	lda [mondump],y
+   969  077a 205403             	jsr prhex
+   970  077d 88                 	dey
+   971  077e b73a               	lda [mondump],y
+   972  0780 205403             	jsr prhex
+   973  0783 a929               	lda #')'
+   974  0785 8f12fc1b           	sta IO_CON_CHAROUT
+   975  0789 8f13fc1b           	sta IO_CON_REGISTER
+   976  078d 60                 	rts
+   977                          amod13
+   978  078e a928               	lda #'('
+   979  0790 8f12fc1b           	sta IO_CON_CHAROUT
+   980  0794 8f13fc1b           	sta IO_CON_REGISTER
+   981  0798 a924               	lda #'$'
+   982  079a 8f12fc1b           	sta IO_CON_CHAROUT
+   983  079e 8f13fc1b           	sta IO_CON_REGISTER
+   984  07a2 a00200             	ldy #$0002
+   985  07a5 b73a               	lda [mondump],y
+   986  07a7 205403             	jsr prhex
+   987  07aa 88                 	dey
+   988  07ab b73a               	lda [mondump],y
+   989  07ad 205403             	jsr prhex
+   990  07b0 a92c               	lda #','
+   991  07b2 8f12fc1b           	sta IO_CON_CHAROUT
+   992  07b6 8f13fc1b           	sta IO_CON_REGISTER
+   993  07ba a958               	lda #'X'
+   994  07bc 8f12fc1b           	sta IO_CON_CHAROUT
+   995  07c0 8f13fc1b           	sta IO_CON_REGISTER
+   996  07c4 a929               	lda #')'
+   997  07c6 8f12fc1b           	sta IO_CON_CHAROUT
+   998  07ca 8f13fc1b           	sta IO_CON_REGISTER
+   999  07ce 60                 	rts
+  1000                          amod14
+  1001  07cf a924               	lda #'$'
+  1002  07d1 8f12fc1b           	sta IO_CON_CHAROUT
+  1003  07d5 8f13fc1b           	sta IO_CON_REGISTER
+  1004  07d9 a00100             	ldy #$0001
+  1005  07dc b73a               	lda [mondump],y
+  1006  07de 205403             	jsr prhex
+  1007  07e1 a92c               	lda #','
+  1008  07e3 8f12fc1b           	sta IO_CON_CHAROUT
+  1009  07e7 8f13fc1b           	sta IO_CON_REGISTER
+  1010  07eb a959               	lda #'Y'
+  1011  07ed 8f12fc1b           	sta IO_CON_CHAROUT
+  1012  07f1 8f13fc1b           	sta IO_CON_REGISTER
+  1013  07f5 60                 	rts
+  1014                          	
+  1015                          						;test branches for disassembly purposes..
+  1016  07f6 70d7               	bvs amod14
+  1017  07f8 7010               	bvs is816
+  1018  07fa 7092               	bvs amod13
+  1019  07fc 703d               	bvs listamod
+  1020  07fe 6260ff             	per amod12
+  1021  0801 620600             	per is816
+  1022  0804 6227ff             	per amod10
+  1023  0807 623100             	per listamod
+  1024                          	
+  1025                          	!zone is816
+  1026                          is816
+  1027  080a 48                 	pha
+  1028  080b 291f               	and #$1f
+  1029  080d c909               	cmp #$09				;09, 29, 49, etc?
+  1030  080f d006               	bne .testx
+  1031  0811 242d               	bit alarge				;16 bit?
+  1032  0813 3020               	bmi .is16
+  1033  0815 1018               	bpl .is8
+  1034                          .testx
+  1035  0817 68                 	pla
+  1036  0818 48                 	pha
+  1037  0819 c9a0               	cmp #$a0
+  1038  081b f00e               	beq .isx
+  1039  081d c9a2               	cmp #$a2
+  1040  081f f00a               	beq .isx
+  1041  0821 c9c0               	cmp #$c0
+  1042  0823 f006               	beq .isx
+  1043  0825 c9e0               	cmp #$e0
+  1044  0827 f002               	beq .isx
+  1045  0829 68                 	pla						;made it here, not an accumulator or index instruction
+  1046  082a 60                 	rts
+  1047                          .isx
+  1048  082b 242e               	bit xlarge
+  1049  082d 3006               	bmi .is16				;or else fall thru
+  1050                          .is8
+  1051  082f a902               	lda #$2
+  1052  0831 852f               	sta scratch1
+  1053  0833 68                 	pla
+  1054  0834 60                 	rts
+  1055                          .is16
+  1056  0835 a903               	lda #$3
+  1057  0837 852f               	sta scratch1
+  1058  0839 68                 	pla
+  1059  083a 60                 	rts
+  1060                          	
+  1061                          listamod
+  1062  083b 9104               	!16 amod0			;$xx
+  1063  083d a404               	!16 amod1			;($xx,X)
+  1064  083f df04               	!16 amod2			;x,S
+  1065  0841 fc04               	!16 amod3			;[$xx]
+  1066  0843 2205               	!16 amod4			;implied
+  1067  0845 2305               	!16 amod5			;#$xx (or #$yyxx)
+  1068  0847 4e05               	!16 amod6			;$yyxx
+  1069  0849 6605               	!16 amod7			;$zzyyxx
+  1070  084b 9405               	!16 amod8			;rel8
+  1071  084d c105               	!16 amod9			;($xx),Y
+  1072  084f fc05               	!16 amoda			;($xx)
+  1073  0851 2306               	!16 amodb			;(xx,S),Y
+  1074  0853 7206               	!16 amodc			;$xx,X
+  1075  0855 9906               	!16 amodd			;[$xx],Y
+  1076  0857 d406               	!16 amode			;$yyxx,X
+  1077  0859 0107               	!16 amodf			;$yyxx,Y
+  1078  085b 2e07               	!16 amod10			;$zzyyxx,X
+  1079  085d 8405               	!16 amod11			;rel16
+  1080  085f 6107               	!16 amod12			;($yyxx)
+  1081  0861 8e07               	!16 amod13			;($yyxx,X)
+  1082  0863 cf07               	!16 amod14			;$xx,Y
+  1083                          	
+  1084                          mnemlenmode
+  1085  0865 40                 	!byte %01000000		;00 brk 2/$xx
+  1086  0866 41                 	!byte %01000001		;01 ora 2/($xx,x)
+  1087  0867 40                 	!byte %01000000		;02 cop 2/$xx
+  1088  0868 42                 	!byte %01000010		;03 ora 2/x,s
+  1089  0869 40                 	!byte %01000000		;04 tsb 2/$xx
+  1090  086a 40                 	!byte %01000000		;05 ora 2/$xx
+  1091  086b 40                 	!byte %01000000		;06 asl 2/$xx
+  1092  086c 43                 	!byte %01000011		;07 ora 2/[$xx]
+  1093  086d 24                 	!byte %00100100		;08 php 1
+  1094  086e 45                 	!byte %01000101		;09 ora 2/#imm
+  1095  086f 24                 	!byte %00100100		;0a asl 1
+  1096  0870 24                 	!byte %00100100		;0b phd 1
+  1097  0871 66                 	!byte %01100110		;0c tsb 3/$yyxx
+  1098  0872 66                 	!byte %01100110		;0d ora 3/$yyxx
+  1099  0873 66                 	!byte %01100110		;0e asl 3/$yyxx
+  1100  0874 87                 	!byte %10000111		;0f ora 4/$zzyyxx
+  1101  0875 48                 	!byte %01001000		;10 bpl 2/rel8
+  1102  0876 49                 	!byte %01001001		;11 ora 2/($xx),Y
+  1103  0877 4a                 	!byte %01001010		;12 ora 2/($xx)
+  1104  0878 4b                 	!byte %01001011		;13 ora 2/(x,s),Y
+  1105  0879 40                 	!byte %01000000		;14 trb 2/$xx
+  1106  087a 4c                 	!byte %01001100		;15 ora 2/$xx,X
+  1107  087b 4c                 	!byte %01001100		;16 asl 2/$xx,X
+  1108  087c 4d                 	!byte %01001101		;17 ora 2/[$xx],Y
+  1109  087d 24                 	!byte %00100100		;18 clc 1
+  1110  087e 6f                 	!byte %01101111		;19 ora 3/$yyxx,Y
+  1111  087f 24                 	!byte %00100100		;1a inc 1
+  1112  0880 24                 	!byte %00100100		;1b tcs 1
+  1113  0881 66                 	!byte %01100110		;1c trb 3/$yyxx
+  1114  0882 6e                 	!byte %01101110		;1d ora 3/$yyxx,X
+  1115  0883 6e                 	!byte %01101110		;1e asl 3/$yyxx,X
+  1116  0884 90                 	!byte %10010000		;1f ora 4/$zzyyxx,X
+  1117  0885 66                 	!byte %01100110		;20 jsr 3/$yyxx
+  1118  0886 41                 	!byte %01000001		;21 and 2/($xx,x)
+  1119  0887 87                 	!byte %10000111		;22 jsl 4/$zzyyxx
+  1120  0888 42                 	!byte %01000010		;23 and 2/x,s
+  1121  0889 40                 	!byte %01000000		;24 bit 2/$xx
+  1122  088a 40                 	!byte %01000000		;25 and 2/$xx
+  1123  088b 40                 	!byte %01000000		;26 rol 2/$xx
+  1124  088c 43                 	!byte %01000011		;27 and 2/[$xx]
+  1125  088d 24                 	!byte %00100100		;28 plp 1
+  1126  088e 45                 	!byte %01000101		;29 and 2/#imm
+  1127  088f 24                 	!byte %00100100		;2a rol 1
+  1128  0890 24                 	!byte %00100100		;2b pld 1
+  1129  0891 66                 	!byte %01100110		;2c bit 3/$yyxx
+  1130  0892 66                 	!byte %01100110		;2d and 3/$yyxx
+  1131  0893 66                 	!byte %01100110		;2e rol 3/$yyxx
+  1132  0894 87                 	!byte %10000111		;2f and 4/$zzyyxx
+  1133  0895 48                 	!byte %01001000		;30 bmi 2/rel8
+  1134  0896 49                 	!byte %01001001		;31 and 2/($xx),Y
+  1135  0897 4a                 	!byte %01001010		;32 and 2/($xx)
+  1136  0898 4b                 	!byte %01001011		;33 and 2/(x,s),Y
+  1137  0899 4c                 	!byte %01001100		;34 bit 2/$xx,X
+  1138  089a 4c                 	!byte %01001100		;35 and 2/$xx,X
+  1139  089b 4c                 	!byte %01001100		;36 rol 2/$xx,X
+  1140  089c 4d                 	!byte %01001101		;37 and 2/[$xx],Y
+  1141  089d 24                 	!byte %00100100		;38 sec 1
+  1142  089e 6f                 	!byte %01101111		;39 and 3/$yyxx,Y
+  1143  089f 24                 	!byte %00100100		;3a dec 1
+  1144  08a0 24                 	!byte %00100100		;3b tsc 1
+  1145  08a1 6e                 	!byte %01101110		;3c bit 3/$yyxx,X
+  1146  08a2 6e                 	!byte %01101110		;3d and 3/$yyxx,X
+  1147  08a3 6e                 	!byte %01101110		;3e rol 3/$yyxx,X
+  1148  08a4 90                 	!byte %10010000		;3f and 4/$zzyyxx,X
+  1149  08a5 24                 	!byte %00100100		;40 ???
+  1150  08a6 41                 	!byte %01000001		;41 eor 2/($xx,x)
+  1151  08a7 40                 	!byte %01000000		;42 wdm 2/$00
+  1152  08a8 42                 	!byte %01000010		;43 eor 2/x,s
+  1153  08a9 24                 	!byte %00100100		;44 ???
+  1154  08aa 40                 	!byte %01000000		;45 eor 2/$xx
+  1155  08ab 40                 	!byte %01000000		;46 lsr 2/$xx
+  1156  08ac 43                 	!byte %01000011		;47 eor 2/[$xx]
+  1157  08ad 24                 	!byte %00100100		;48 pha 1
+  1158  08ae 45                 	!byte %01000101		;49 eor 2/#imm
+  1159  08af 24                 	!byte %00100100		;4a lsr 1
+  1160  08b0 24                 	!byte %00100100		;4b phk 1
+  1161  08b1 66                 	!byte %01100110		;4c jmp 3/$yyxx
+  1162  08b2 66                 	!byte %01100110		;4d eor 3/$yyxx
+  1163  08b3 66                 	!byte %01100110		;4e lsr 3/$yyxx
+  1164  08b4 87                 	!byte %10000111		;4f eor 4/$zzyyxx
+  1165  08b5 48                 	!byte %01001000		;50 bvc 2/rel8
+  1166  08b6 49                 	!byte %01001001		;51 eor 2/($xx),Y
+  1167  08b7 4a                 	!byte %01001010		;52 eor 2/($xx)
+  1168  08b8 4b                 	!byte %01001011		;53 eor 2/(x,s),Y
+  1169  08b9 24                 	!byte %00100100		;54 ???
+  1170  08ba 4c                 	!byte %01001100		;55 eor 2/$xx,X
+  1171  08bb 4c                 	!byte %01001100		;56 lsr 2/$xx,X
+  1172  08bc 4d                 	!byte %01001101		;57 eor 2/[$xx],Y
+  1173  08bd 24                 	!byte %00100100		;58 cli 1
+  1174  08be 6f                 	!byte %01101111		;59 eor 3/$yyxx,Y
+  1175  08bf 24                 	!byte %00100100		;5a phy 1
+  1176  08c0 24                 	!byte %00100100		;5b tcd 1
+  1177  08c1 87                 	!byte %10000111		;5c jml 4/$zzyyxx
+  1178  08c2 6e                 	!byte %01101110		;5d eor 3/$yyxx,X
+  1179  08c3 6e                 	!byte %01101110		;5e lsr 3/$yyxx,X
+  1180  08c4 90                 	!byte %10010000		;5f eor 4/$zzyyxx,X
+  1181  08c5 24                 	!byte %00100100		;60 rts
+  1182  08c6 41                 	!byte %01000001		;61 adc 2/($xx,x)
+  1183  08c7 71                 	!byte %01110001		;62 per 3/rel16
+  1184  08c8 42                 	!byte %01000010		;63 adc 2/x,s
+  1185  08c9 40                 	!byte %01000000		;64 stz 2/$xx
+  1186  08ca 40                 	!byte %01000000		;65 adc 2/$xx
+  1187  08cb 40                 	!byte %01000000		;66 ror 2/$xx
+  1188  08cc 43                 	!byte %01000011		;67 adc 2/[$xx]
+  1189  08cd 24                 	!byte %00100100		;68 pla 1
+  1190  08ce 45                 	!byte %01000101		;69 adc 2/#imm
+  1191  08cf 24                 	!byte %00100100		;6a ror 1
+  1192  08d0 24                 	!byte %00100100		;6b rtl 1
+  1193  08d1 72                 	!byte %01110010		;6c jmp 3/($yyxx)
+  1194  08d2 66                 	!byte %01100110		;6d adc 3/$yyxx
+  1195  08d3 66                 	!byte %01100110		;6e ror 3/$yyxx
+  1196  08d4 87                 	!byte %10000111		;6f adc 4/$zzyyxx
+  1197  08d5 48                 	!byte %01001000		;70 bvs 2/rel8
+  1198  08d6 49                 	!byte %01001001		;71 adc 2/($xx),Y
+  1199  08d7 4a                 	!byte %01001010		;72 adc 2/($xx)
+  1200  08d8 4b                 	!byte %01001011		;73 adc 2/(x,s),Y
+  1201  08d9 4c                 	!byte %01001100		;74 stz 2/$xx,X
+  1202  08da 4c                 	!byte %01001100		;75 adc 2/$xx,X
+  1203  08db 4c                 	!byte %01001100		;76 ror 2/$xx,X
+  1204  08dc 4d                 	!byte %01001101		;77 adc 2/[$xx],Y
+  1205  08dd 24                 	!byte %00100100		;78 sei 1
+  1206  08de 6f                 	!byte %01101111		;79 adc 3/$yyxx,Y
+  1207  08df 24                 	!byte %00100100		;7a ply 1
+  1208  08e0 24                 	!byte %00100100		;7b tdc 1
+  1209  08e1 73                 	!byte %01110011		;7c jmp 3/($yyxx,X)
+  1210  08e2 6e                 	!byte %01101110		;7d adc 3/$yyxx,X
+  1211  08e3 6e                 	!byte %01101110		;7e lsr 3/$yyxx,X
+  1212  08e4 90                 	!byte %10010000		;7f adc 4/$zzyyxx,X
+  1213  08e5 48                 	!byte %01001000		;80 bra 2/rel8
+  1214  08e6 41                 	!byte %01000001		;81 sta 2/($xx,x)
+  1215  08e7 71                 	!byte %01110001		;82 brl 3/rel16
+  1216  08e8 42                 	!byte %01000010		;83 sta 2/x,s
+  1217  08e9 40                 	!byte %01000000		;84 sty 2/$xx
+  1218  08ea 40                 	!byte %01000000		;85 sta 2/$xx
+  1219  08eb 40                 	!byte %01000000		;86 stx 2/$xx
+  1220  08ec 43                 	!byte %01000011		;87 sta 2/[$xx]
+  1221  08ed 24                 	!byte %00100100		;88 dey 1
+  1222  08ee 45                 	!byte %01000101		;89 bit 2/#imm
+  1223  08ef 24                 	!byte %00100100		;8a txa 1
+  1224  08f0 24                 	!byte %00100100		;8b phb 1
+  1225  08f1 66                 	!byte %01100110		;8c sty 3/$yyxx
+  1226  08f2 66                 	!byte %01100110		;8d sta 3/$yyxx
+  1227  08f3 66                 	!byte %01100110		;8e stx 3/$yyxx
+  1228  08f4 87                 	!byte %10000111		;8f sta 4/$zzyyxx
+  1229  08f5 48                 	!byte %01001000		;90 bcc 2/rel8
+  1230  08f6 49                 	!byte %01001001		;91 sta 2/($xx),Y
+  1231  08f7 4a                 	!byte %01001010		;92 sta 2/($xx)
+  1232  08f8 4b                 	!byte %01001011		;93 sta 2/(x,s),Y
+  1233  08f9 4c                 	!byte %01001100		;94 sty 2/$xx,X
+  1234  08fa 4c                 	!byte %01001100		;95 sta 2/$xx,X
+  1235  08fb 54                 	!byte %01010100		;96 stx 2/$xx,Y
+  1236  08fc 4d                 	!byte %01001101		;97 sta 2/[$xx],Y
+  1237  08fd 24                 	!byte %00100100		;98 txa 1
+  1238  08fe 6f                 	!byte %01101111		;99 sta 3/$yyxx,Y
+  1239  08ff 24                 	!byte %00100100		;9a txs 1
+  1240  0900 24                 	!byte %00100100		;9b txy 1
+  1241  0901 66                 	!byte %01100110		;9c stz 3/$yyxx
+  1242  0902 6e                 	!byte %01101110		;9d sta 3/$yyxx,X
+  1243  0903 6e                 	!byte %01101110		;9e stz 3/$yyxx,X
+  1244  0904 90                 	!byte %10010000		;9f sta 4/$zzyyxx,X
+  1245  0905 45                 	!byte %01000101		;a0 ldy 2/#imm
+  1246  0906 41                 	!byte %01000001		;a1 lda 2/($xx,x)
+  1247  0907 45                 	!byte %01000101		;a2 ldx 2/#imm
+  1248  0908 42                 	!byte %01000010		;a3 lda 2/x,s
+  1249  0909 40                 	!byte %01000000		;a4 ldy 2/$xx
+  1250  090a 40                 	!byte %01000000		;a5 sta 2/$xx
+  1251  090b 40                 	!byte %01000000		;a6 ldx 2/$xx
+  1252  090c 43                 	!byte %01000011		;a7 lda 2/[$xx]
+  1253  090d 24                 	!byte %00100100		;a8 tay 1
+  1254  090e 45                 	!byte %01000101		;a9 lda 2/#imm
+  1255  090f 24                 	!byte %00100100		;aa tax 1
+  1256  0910 24                 	!byte %00100100		;ab plb 1
+  1257  0911 66                 	!byte %01100110		;ac ldy 3/$yyxx
+  1258  0912 66                 	!byte %01100110		;ad lda 3/$yyxx
+  1259  0913 66                 	!byte %01100110		;ae ldx 3/$yyxx
+  1260  0914 87                 	!byte %10000111		;af lda 4/$zzyyxx
+  1261  0915 48                 	!byte %01001000		;b0 bcs 2/rel8
+  1262  0916 49                 	!byte %01001001		;b1 lda 2/($xx),Y
+  1263  0917 4a                 	!byte %01001010		;b2 lda 2/($xx)
+  1264  0918 4b                 	!byte %01001011		;b3 lda 2/(x,s),Y
+  1265  0919 4c                 	!byte %01001100		;b4 ldy 2/$xx,X
+  1266  091a 4c                 	!byte %01001100		;b5 lda 2/$xx,X
+  1267  091b 54                 	!byte %01010100		;b6 ldx 2/$xx,Y
+  1268  091c 4d                 	!byte %01001101		;b7 lda 2/[$xx],Y
+  1269  091d 24                 	!byte %00100100		;b8 clv 1
+  1270  091e 6f                 	!byte %01101111		;b9 lda 3/$yyxx,Y
+  1271  091f 24                 	!byte %00100100		;ba tsx 1
+  1272  0920 24                 	!byte %00100100		;bb tyx 1
+  1273  0921 66                 	!byte %01100110		;bc ldy 3/$yyxx
+  1274  0922 6e                 	!byte %01101110		;bd lda 3/$yyxx,X
+  1275  0923 6e                 	!byte %01101110		;be ldx 3/$yyxx,X
+  1276  0924 90                 	!byte %10010000		;bf lda 4/$zzyyxx,X
+  1277  0925 45                 	!byte %01000101		;c0 cpy 2/#imm
+  1278  0926 41                 	!byte %01000001		;c1 cmp 2/($xx,x)
+  1279  0927 45                 	!byte %01000101		;c2 rep 2/#imm
+  1280  0928 42                 	!byte %01000010		;c3 cmp 2/x,s
+  1281  0929 40                 	!byte %01000000		;c4 cpx 2/$xx
+  1282  092a 40                 	!byte %01000000		;c5 cmp 2/$xx
+  1283  092b 40                 	!byte %01000000		;c6 dec 2/$xx
+  1284  092c 43                 	!byte %01000011		;c7 cmp 2/[$xx]
+  1285  092d 24                 	!byte %00100100		;c8 iny 1
+  1286  092e 45                 	!byte %01000101		;c9 cmp 2/#imm
+  1287  092f 24                 	!byte %00100100		;ca dex 1
+  1288  0930 24                 	!byte %00100100		;cb wai 1
+  1289  0931 66                 	!byte %01100110		;cc cpy 3/$yyxx
+  1290  0932 66                 	!byte %01100110		;cd cmp 3/$yyxx
+  1291  0933 66                 	!byte %01100110		;ce dec 3/$yyxx
+  1292  0934 87                 	!byte %10000111		;cf cmp 4/$zzyyxx
+  1293  0935 48                 	!byte %01001000		;d0 bne 2/rel8
+  1294  0936 49                 	!byte %01001001		;d1 cmp 2/($xx),Y
+  1295  0937 4a                 	!byte %01001010		;d2 cmp 2/($xx)
+  1296  0938 4b                 	!byte %01001011		;d3 cmp 2/(x,s),Y
+  1297  0939 4a                 	!byte %01001010		;d4 pei 2/($xx)
+  1298  093a 4c                 	!byte %01001100		;d5 cmp 2/$xx,X
+  1299  093b 4c                 	!byte %01001100		;d6 dec 2/$xx,X
+  1300  093c 4d                 	!byte %01001101		;d7 cmp 2/[$xx],Y
+  1301  093d 24                 	!byte %00100100		;d8 cld 1
+  1302  093e 6f                 	!byte %01101111		;d9 cmp 3/$yyxx,Y
+  1303  093f 24                 	!byte %00100100		;da phx 1
+  1304  0940 24                 	!byte %00100100		;db stp 1
+  1305  0941 43                 	!byte %01000011		;dc jml 2/[$xx]
+  1306  0942 6e                 	!byte %01101110		;dd cmp 3/$yyxx,X
+  1307  0943 6e                 	!byte %01101110		;de dec 3/$yyxx,X
+  1308  0944 90                 	!byte %10010000		;df cmp 4/$zzyyxx,X
+  1309  0945 45                 	!byte %01000101		;e0 cpx 2/#imm
+  1310  0946 41                 	!byte %01000001		;e1 sbc 2/($xx,x)
+  1311  0947 45                 	!byte %01000101		;e2 sep 2/#imm
+  1312  0948 42                 	!byte %01000010		;e3 sbc 2/x,s
+  1313  0949 40                 	!byte %01000000		;e4 cpx 2/$xx
+  1314  094a 40                 	!byte %01000000		;e5 sbc 2/$xx
+  1315  094b 40                 	!byte %01000000		;e6 inc 2/$xx
+  1316  094c 43                 	!byte %01000011		;e7 sbc 2/[$xx]
+  1317  094d 24                 	!byte %00100100		;e8 inx 1
+  1318  094e 45                 	!byte %01000101		;e9 sbc 2/#imm
+  1319  094f 24                 	!byte %00100100		;ea nop 1
+  1320  0950 24                 	!byte %00100100		;eb xba 1
+  1321  0951 66                 	!byte %01100110		;ec cpx 3/$yyxx
+  1322  0952 66                 	!byte %01100110		;ed sbc 3/$yyxx
+  1323  0953 66                 	!byte %01100110		;ee inc 3/$yyxx
+  1324  0954 87                 	!byte %10000111		;ef sbc 4/$zzyyxx
+  1325  0955 48                 	!byte %01001000		;f0 beq 2/rel8
+  1326  0956 49                 	!byte %01001001		;f1 sbc 2/($xx),Y
+  1327  0957 4a                 	!byte %01001010		;f2 sbc 2/($xx)
+  1328  0958 4b                 	!byte %01001011		;f3 sbc 2/(x,s),Y
+  1329  0959 66                 	!byte %01100110		;f4 pea 3/$yyxx
+  1330  095a 4c                 	!byte %01001100		;f5 sbc 2/$xx,X
+  1331  095b 4c                 	!byte %01001100		;f6 inc 2/$xx,X
+  1332  095c 4d                 	!byte %01001101		;f7 sbc 2/[$xx],Y
+  1333  095d 24                 	!byte %00100100		;f8 sed 1
+  1334  095e 6f                 	!byte %01101111		;f9 sbc 3/$yyxx,Y
+  1335  095f 24                 	!byte %00100100		;fa plx 1
+  1336  0960 24                 	!byte %00100100		;fb xce 1
+  1337  0961 73                 	!byte %01110011		;fc jsr 3/($yyxx)
+  1338  0962 6e                 	!byte %01101110		;fd sbc 3/$yyxx,X
+  1339  0963 6e                 	!byte %01101110		;fe inc 3/$yyxx,X
+  1340  0964 90                 	!byte %10010000		;ff sbc 4/$zzyyxx,X
+  1341                          mnemlist
+  1342  0965 00                 	!byte $00			;00 brk
+  1343  0966 02                 	!byte $02			;01 ora
+  1344  0967 01                 	!byte $01			;02 cop
+  1345  0968 02                 	!byte $02			;03 ora
+  1346  0969 03                 	!byte $03			;04 tsb
+  1347  096a 02                 	!byte $02			;05 ora
+  1348  096b 04                 	!byte $04			;06 asl
+  1349  096c 02                 	!byte $02			;07 ora
+  1350  096d 05                 	!byte $05			;08 php
+  1351  096e 02                 	!byte $02			;09 ora
+  1352  096f 04                 	!byte $04			;0a asl
+  1353  0970 06                 	!byte $06			;0b phd
+  1354  0971 03                 	!byte $03			;0c tsb
+  1355  0972 02                 	!byte $02			;0d ora
+  1356  0973 04                 	!byte $04			;0e asl
+  1357  0974 02                 	!byte $02			;0f ora
+  1358  0975 07                 	!byte $07			;10 bpl
+  1359  0976 02                 	!byte $02			;11 ora
+  1360  0977 02                 	!byte $02			;12 ora
+  1361  0978 02                 	!byte $02			;13 ora
+  1362  0979 08                 	!byte $08			;14 trb
+  1363  097a 02                 	!byte $02			;15 ora
+  1364  097b 04                 	!byte $04			;16 asl
+  1365  097c 02                 	!byte $02			;17 ora
+  1366  097d 09                 	!byte $09			;18 clc
+  1367  097e 02                 	!byte $02			;19 ora
+  1368  097f 0a                 	!byte $0a			;1a inc
+  1369  0980 0b                 	!byte $0b			;1b tcs
+  1370  0981 08                 	!byte $08			;1c trb
+  1371  0982 02                 	!byte $02			;1d ora
+  1372  0983 04                 	!byte $04			;1e asl
+  1373  0984 02                 	!byte $02			;1f ora
+  1374  0985 0d                 	!byte $0d			;20 jsr
+  1375  0986 0c                 	!byte $0c			;21 and
+  1376  0987 0e                 	!byte $0e			;22 jsl
+  1377  0988 0c                 	!byte $0c			;23 and
+  1378  0989 10                 	!byte $10			;24 bit
+  1379  098a 0c                 	!byte $0c			;25 and
+  1380  098b 11                 	!byte $11			;26 rol
+  1381  098c 0c                 	!byte $0c			;27 and
+  1382  098d 12                 	!byte $12			;28 plp
+  1383  098e 0c                 	!byte $0c			;29 and
+  1384  098f 11                 	!byte $11			;2a rol
+  1385  0990 13                 	!byte $13			;2b pld
+  1386  0991 10                 	!byte $10			;2c bit
+  1387  0992 0c                 	!byte $0c			;2d and
+  1388  0993 11                 	!byte $11			;2e rol
+  1389  0994 0c                 	!byte $0c			;2f and
+  1390  0995 14                 	!byte $14			;30 bmi
+  1391  0996 0c                 	!byte $0c			;31 and
+  1392  0997 0c                 	!byte $0c			;32 and
+  1393  0998 0c                 	!byte $0c			;33 and
+  1394  0999 11                 	!byte $11			;34 bit
+  1395  099a 0c                 	!byte $0c			;35 and
+  1396  099b 11                 	!byte $11			;36 rol
+  1397  099c 0c                 	!byte $0c			;37 and
+  1398  099d 15                 	!byte $15			;38 sec
+  1399  099e 0c                 	!byte $0c			;39 and
+  1400  099f 0f                 	!byte $0f			;3a dec
+  1401  09a0 16                 	!byte $16			;3b tsc
+  1402  09a1 11                 	!byte $11			;3c bit
+  1403  09a2 0c                 	!byte $0c			;3d and
+  1404  09a3 11                 	!byte $11			;3e rol
+  1405  09a4 0c                 	!byte $0c			;3f and
+  1406  09a5 17                 	!byte $17			;40 ???
+  1407  09a6 18                 	!byte $18			;41 eor
+  1408  09a7 19                 	!byte $19			;42 wdm
+  1409  09a8 18                 	!byte $18			;43 eor
+  1410  09a9 17                 	!byte $17			;44 ???
+  1411  09aa 18                 	!byte $18			;45 eor
+  1412  09ab 1a                 	!byte $1a			;46 lsr
+  1413  09ac 18                 	!byte $18			;47 eor
+  1414  09ad 1b                 	!byte $1b			;48 pha
+  1415  09ae 18                 	!byte $18			;49 eor
+  1416  09af 1a                 	!byte $1a			;4a lsr
+  1417  09b0 1c                 	!byte $1c			;4b phk
+  1418  09b1 1d                 	!byte $1d			;4c jmp
+  1419  09b2 18                 	!byte $18			;4d eor
+  1420  09b3 1a                 	!byte $1a			;4e lsr
+  1421  09b4 18                 	!byte $18			;4f eor
+  1422  09b5 1e                 	!byte $1e			;50 bvc
+  1423  09b6 18                 	!byte $18			;51 eor
+  1424  09b7 18                 	!byte $18			;52 eor
+  1425  09b8 18                 	!byte $18			;53 eor
+  1426  09b9 17                 	!byte $17			;54 ???
+  1427  09ba 18                 	!byte $18			;55 eor
+  1428  09bb 1a                 	!byte $1a			;56 lsr
+  1429  09bc 18                 	!byte $18			;57 eor
+  1430  09bd 1f                 	!byte $1f			;58 cli
+  1431  09be 18                 	!byte $18			;59 eor
+  1432  09bf 20                 	!byte $20			;5a phy
+  1433  09c0 21                 	!byte $21			;5b tcd
+  1434  09c1 22                 	!byte $22			;5c jml
+  1435  09c2 18                 	!byte $18			;5d eor
+  1436  09c3 1a                 	!byte $1a			;5e lsr
+  1437  09c4 18                 	!byte $18			;5f eor
+  1438  09c5 23                 	!byte $23			;60 rts
+  1439  09c6 24                 	!byte $24			;61 adc
+  1440  09c7 25                 	!byte $25			;62 per
+  1441  09c8 24                 	!byte $24			;63 adc
+  1442  09c9 26                 	!byte $26			;64 stz
+  1443  09ca 24                 	!byte $24			;65 adc
+  1444  09cb 27                 	!byte $27			;66 ror
+  1445  09cc 24                 	!byte $24			;67 adc
+  1446  09cd 28                 	!byte $28			;68 pla
+  1447  09ce 24                 	!byte $24			;69 adc
+  1448  09cf 27                 	!byte $27			;6a ror
+  1449  09d0 29                 	!byte $29			;6b rtl
+  1450  09d1 1d                 	!byte $1d			;6c jmp
+  1451  09d2 24                 	!byte $24			;6d adc
+  1452  09d3 27                 	!byte $27			;6e ror
+  1453  09d4 24                 	!byte $24			;6f adc
+  1454  09d5 2a                 	!byte $2a			;70 bvs
+  1455  09d6 24                 	!byte $24			;71 adc
+  1456  09d7 24                 	!byte $24			;72 adc
+  1457  09d8 24                 	!byte $24			;73 adc
+  1458  09d9 26                 	!byte $26			;74 stz
+  1459  09da 24                 	!byte $24			;75 adc
+  1460  09db 27                 	!byte $27			;76 ror
+  1461  09dc 24                 	!byte $24			;77 adc
+  1462  09dd 2b                 	!byte $2b			;78 sei
+  1463  09de 24                 	!byte $24			;79 adc
+  1464  09df 2c                 	!byte $2c			;7a ply
+  1465  09e0 2d                 	!byte $2d			;7b tdc
+  1466  09e1 1d                 	!byte $1d			;7c jmp
+  1467  09e2 24                 	!byte $24			;7d adc
+  1468  09e3 27                 	!byte $27			;7e ror
+  1469  09e4 24                 	!byte $24			;7f adc
+  1470  09e5 2e                 	!byte $2e			;80 bra
+  1471  09e6 2f                 	!byte $2f			;81 sta
+  1472  09e7 30                 	!byte $30			;82 brl
+  1473  09e8 2f                 	!byte $2f			;83 sta
+  1474  09e9 31                 	!byte $31			;84 sty
+  1475  09ea 2f                 	!byte $2f			;85 sta
+  1476  09eb 32                 	!byte $32			;86 stx
+  1477  09ec 2f                 	!byte $2f			;87 sta
+  1478  09ed 33                 	!byte $33			;88 dey
+  1479  09ee 10                 	!byte $10			;89 bit
+  1480  09ef 34                 	!byte $34			;8a txa
+  1481  09f0 35                 	!byte $35			;8b phb
+  1482  09f1 31                 	!byte $31			;8c sty
+  1483  09f2 2f                 	!byte $2f			;8d sta
+  1484  09f3 32                 	!byte $32			;8e stx
+  1485  09f4 2f                 	!byte $2f			;8f sta
+  1486  09f5 36                 	!byte $36			;90 bcc
+  1487  09f6 2f                 	!byte $2f			;91 sta
+  1488  09f7 2f                 	!byte $2f			;92 sta
+  1489  09f8 2f                 	!byte $2f			;93 sta
+  1490  09f9 31                 	!byte $31			;94 sty
+  1491  09fa 2f                 	!byte $2f			;95 sta
+  1492  09fb 32                 	!byte $32			;96 stx
+  1493  09fc 2f                 	!byte $2f			;97 sta
+  1494  09fd 37                 	!byte $37			;98 tya
+  1495  09fe 2f                 	!byte $2f			;99 sta
+  1496  09ff 38                 	!byte $38			;9a txs
+  1497  0a00 39                 	!byte $39			;9b txy
+  1498  0a01 26                 	!byte $26			;9c stz
+  1499  0a02 2f                 	!byte $2f			;9d sta
+  1500  0a03 26                 	!byte $26			;9e stz
+  1501  0a04 2f                 	!byte $2f			;9f sta
+  1502  0a05 3c                 	!byte $3c			;a0 ldy
+  1503  0a06 3a                 	!byte $3a			;a1 lda
+  1504  0a07 3b                 	!byte $3b			;a2 ldx
+  1505  0a08 3a                 	!byte $3a			;a3 lda
+  1506  0a09 3c                 	!byte $3c			;a4 ldy
+  1507  0a0a 3a                 	!byte $3a			;a5 lda
+  1508  0a0b 3b                 	!byte $3b			;a6 ldx
+  1509  0a0c 3a                 	!byte $3a			;a7 lda
+  1510  0a0d 3d                 	!byte $3d			;a8 tay
+  1511  0a0e 3a                 	!byte $3a			;a9 lda
+  1512  0a0f 3e                 	!byte $3e			;aa tax
+  1513  0a10 3f                 	!byte $3f			;ab plb
+  1514  0a11 3c                 	!byte $3c			;ac ldy
+  1515  0a12 3a                 	!byte $3a			;ad lda
+  1516  0a13 3b                 	!byte $3b			;ae ldx
+  1517  0a14 3a                 	!byte $3a			;af lda
+  1518  0a15 40                 	!byte $40			;b0 bcs
+  1519  0a16 3a                 	!byte $3a			;b1 lda
+  1520  0a17 3a                 	!byte $3a			;b2 lda
+  1521  0a18 3a                 	!byte $3a			;b3 lda
+  1522  0a19 3c                 	!byte $3c			;b4 ldy
+  1523  0a1a 3a                 	!byte $3a			;b5 lda
+  1524  0a1b 3b                 	!byte $3b			;b6 ldx
+  1525  0a1c 3a                 	!byte $3a			;b7 lda
+  1526  0a1d 41                 	!byte $41			;b8 clv
+  1527  0a1e 3a                 	!byte $3a			;b9 lda
+  1528  0a1f 42                 	!byte $42			;ba tsx
+  1529  0a20 43                 	!byte $43			;bb tyx
+  1530  0a21 3c                 	!byte $3c			;bc ldy
+  1531  0a22 3a                 	!byte $3a			;bd lda
+  1532  0a23 3b                 	!byte $3b			;be ldx
+  1533  0a24 3a                 	!byte $3a			;bf lda
+  1534  0a25 46                 	!byte $46			;c0 cpy
+  1535  0a26 44                 	!byte $44			;c1 cmp
+  1536  0a27 47                 	!byte $47			;c2 rep
+  1537  0a28 44                 	!byte $44			;c3 cmp
+  1538  0a29 46                 	!byte $46			;c4 cpy
+  1539  0a2a 44                 	!byte $44			;c5 cmp
+  1540  0a2b 48                 	!byte $48			;c6 dec
+  1541  0a2c 44                 	!byte $44			;c7 cmp
+  1542  0a2d 49                 	!byte $49			;c8 iny
+  1543  0a2e 44                 	!byte $44			;c9 cmp
+  1544  0a2f 4a                 	!byte $4a			;ca dex
+  1545  0a30 4b                 	!byte $4b			;cb wai
+  1546  0a31 46                 	!byte $46			;cc cpy
+  1547  0a32 44                 	!byte $44			;cd cmp
+  1548  0a33 48                 	!byte $48			;ce dec
+  1549  0a34 44                 	!byte $44			;cf cmp
+  1550  0a35 4c                 	!byte $4c			;d0 bne
+  1551  0a36 44                 	!byte $44			;d1 cmp
+  1552  0a37 44                 	!byte $44			;d2 cmp
+  1553  0a38 44                 	!byte $44			;d3 cmp
+  1554  0a39 4d                 	!byte $4d			;d4 pei
+  1555  0a3a 44                 	!byte $44			;d5 cmp
+  1556  0a3b 48                 	!byte $48			;d6 dec
+  1557  0a3c 44                 	!byte $44			;d7 cmp
+  1558  0a3d 4e                 	!byte $4e			;d8 cld
+  1559  0a3e 44                 	!byte $44			;d9 cmp
+  1560  0a3f 4f                 	!byte $4f			;da phx
+  1561  0a40 50                 	!byte $50			;db stp
+  1562  0a41 22                 	!byte $22			;dc jml
+  1563  0a42 44                 	!byte $44			;dd cmp
+  1564  0a43 48                 	!byte $48			;de dec
+  1565  0a44 44                 	!byte $44			;df cmp
+  1566  0a45 51                 	!byte $51			;e0 cpx
+  1567  0a46 45                 	!byte $45			;e1 sbc
+  1568  0a47 52                 	!byte $52			;e2 sep
+  1569  0a48 45                 	!byte $45			;e3 sbc
+  1570  0a49 51                 	!byte $51			;e4 cpx
+  1571  0a4a 45                 	!byte $45			;e5 sbc
+  1572  0a4b 53                 	!byte $53			;e6 inc
+  1573  0a4c 45                 	!byte $45			;e7 sbc
+  1574  0a4d 54                 	!byte $54			;e8 inx
+  1575  0a4e 45                 	!byte $45			;e9 sbc
+  1576  0a4f 55                 	!byte $55			;ea nop
+  1577  0a50 56                 	!byte $56			;eb xba
+  1578  0a51 51                 	!byte $51			;ec cpx
+  1579  0a52 45                 	!byte $45			;ed sbc
+  1580  0a53 53                 	!byte $53			;ee inc
+  1581  0a54 45                 	!byte $45			;ef sbc
+  1582  0a55 57                 	!byte $57			;f0 beq
+  1583  0a56 45                 	!byte $45			;f1 sbc
+  1584  0a57 45                 	!byte $45			;f2 sbc
+  1585  0a58 45                 	!byte $45			;f3 sbc
+  1586  0a59 58                 	!byte $58			;f4 pea
+  1587  0a5a 45                 	!byte $45			;f5 sbc
+  1588  0a5b 53                 	!byte $53			;f6 inc
+  1589  0a5c 45                 	!byte $45			;f7 sbc
+  1590  0a5d 59                 	!byte $59			;f8 sed
+  1591  0a5e 45                 	!byte $45			;f9 sbc
+  1592  0a5f 5a                 	!byte $5a			;fa plx
+  1593  0a60 5b                 	!byte $5b			;fb xce
+  1594  0a61 0d                 	!byte $0d			;fc jsr
+  1595  0a62 45                 	!byte $45			;fd sbc
+  1596  0a63 53                 	!byte $53			;fe inc
+  1597  0a64 45                 	!byte $45			;ff sbc
+  1598                          mnems
+  1599  0a65 42524b             	!tx "BRK"			;0
+  1600  0a68 434f50             	!tx "COP"			;1
+  1601  0a6b 4f5241             	!tx "ORA"			;2
+  1602  0a6e 545342             	!tx "TSB"			;3
+  1603  0a71 41534c             	!tx "ASL"			;4
+  1604  0a74 504850             	!tx "PHP"			;5
+  1605  0a77 504844             	!tx "PHD"			;6
+  1606  0a7a 42504c             	!tx "BPL"			;7
+  1607  0a7d 545242             	!tx "TRB"			;8
+  1608  0a80 434c43             	!tx "CLC"			;9
+  1609  0a83 494e43             	!tx "INC"			;a
+  1610  0a86 544353             	!tx "TCS"			;b
+  1611  0a89 414e44             	!tx "AND"			;c
+  1612  0a8c 4a5352             	!tx "JSR"			;d
+  1613  0a8f 4a534c             	!tx "JSL"			;e
+  1614  0a92 444543             	!tx "DEC"			;f
+  1615  0a95 424954             	!tx "BIT"			;10
+  1616  0a98 524f4c             	!tx "ROL"			;11
+  1617  0a9b 504c50             	!tx "PLP"			;12
+  1618  0a9e 504c44             	!tx "PLD"			;13
+  1619  0aa1 424d49             	!tx "BMI"			;14
+  1620  0aa4 534543             	!tx "SEC"			;15
+  1621  0aa7 545343             	!tx "TSC"			;16
+  1622  0aaa 3f3f3f             	!tx "???"			;17
+  1623  0aad 454f52             	!tx "EOR"			;18
+  1624  0ab0 57444d             	!tx "WDM"			;19
+  1625  0ab3 4c5352             	!tx "LSR"			;1a
+  1626  0ab6 504841             	!tx "PHA"			;1b
+  1627  0ab9 50484b             	!tx "PHK"			;1c
+  1628  0abc 4a4d50             	!tx "JMP"			;1d
+  1629  0abf 425643             	!tx "BVC"			;1e
+  1630  0ac2 434c49             	!tx "CLI"			;1f
+  1631  0ac5 504859             	!tx "PHY"			;20
+  1632  0ac8 544344             	!tx "TCD"			;21
+  1633  0acb 4a4d4c             	!tx "JML"			;22
+  1634  0ace 525453             	!tx "RTS"			;23
+  1635  0ad1 414443             	!tx "ADC"			;24
+  1636  0ad4 504552             	!tx "PER"			;25
+  1637  0ad7 53545a             	!tx "STZ"			;26
+  1638  0ada 524f52             	!tx "ROR"			;27
+  1639  0add 504c41             	!tx "PLA"			;28
+  1640  0ae0 52544c             	!tx "RTL"			;29
+  1641  0ae3 425653             	!tx "BVS"			;2a
+  1642  0ae6 534549             	!tx "SEI"			;2b
+  1643  0ae9 504c59             	!tx "PLY"			;2c
+  1644  0aec 544443             	!tx "TDC"			;2d
+  1645  0aef 425241             	!tx "BRA"			;2e
+  1646  0af2 535441             	!tx "STA"			;2f
+  1647  0af5 42524c             	!tx "BRL"			;30
+  1648  0af8 535459             	!tx "STY"			;31
+  1649  0afb 535458             	!tx "STX"			;32
+  1650  0afe 444559             	!tx "DEY"			;33
+  1651  0b01 545841             	!tx "TXA"			;34
+  1652  0b04 504842             	!tx "PHB"			;35
+  1653  0b07 424343             	!tx "BCC"			;36
+  1654  0b0a 545941             	!tx "TYA"			;37
+  1655  0b0d 545853             	!tx "TXS"			;38
+  1656  0b10 545859             	!tx "TXY"			;39
+  1657  0b13 4c4441             	!tx "LDA"			;3a
+  1658  0b16 4c4458             	!tx "LDX"			;3b
+  1659  0b19 4c4459             	!tx "LDY"			;3c
+  1660  0b1c 544159             	!tx "TAY"			;3d
+  1661  0b1f 544158             	!tx "TAX"			;3e
+  1662  0b22 504c42             	!tx "PLB"			;3f
+  1663  0b25 424353             	!tx "BCS"			;40
+  1664  0b28 434c56             	!tx "CLV"			;41
+  1665  0b2b 545358             	!tx "TSX"			;42
+  1666  0b2e 545958             	!tx "TYX"			;43
+  1667  0b31 434d50             	!tx "CMP"			;44
+  1668  0b34 534243             	!tx "SBC"			;45
+  1669  0b37 435059             	!tx "CPY"			;46
+  1670  0b3a 524550             	!tx "REP"			;47
+  1671  0b3d 444543             	!tx "DEC"			;48
+  1672  0b40 494e59             	!tx "INY"			;49
+  1673  0b43 444558             	!tx "DEX"			;4a
+  1674  0b46 574149             	!tx "WAI"			;4b
+  1675  0b49 424e45             	!tx "BNE"			;4c
+  1676  0b4c 504549             	!tx "PEI"			;4d
+  1677  0b4f 434c44             	!tx "CLD"			;4e
+  1678  0b52 504858             	!tx "PHX"			;4f
+  1679  0b55 535450             	!tx "STP"			;50
+  1680  0b58 435058             	!tx "CPX"			;51
+  1681  0b5b 534550             	!tx "SEP"			;52
+  1682  0b5e 494e43             	!tx "INC"			;53
+  1683  0b61 494e58             	!tx "INX"			;54
+  1684  0b64 4e4f50             	!tx "NOP"			;55
+  1685  0b67 584241             	!tx "XBA"			;56
+  1686  0b6a 424551             	!tx "BEQ"			;57
+  1687  0b6d 504541             	!tx "PEA"			;58
+  1688  0b70 534544             	!tx "SED"			;59
+  1689  0b73 504c58             	!tx "PLX"			;5a
+  1690  0b76 584345             	!tx "XCE"			;5b
+  1691                          	
+  1692                          	!zone ucline
+  1693                          ucline					;convert inbuff at $170400 to upper case
+  1694  0b79 08                 	php
+  1695  0b7a c210               	rep #$10
+  1696  0b7c e220               	sep #$20
+  1697                          	!as
+  1698                          	!rl
+  1699  0b7e a20000             	ldx #$0000
+  1700                          .local2
+  1701  0b81 bf000417           	lda inbuff,x
+  1702  0b85 f012               	beq .local4			;hit the zero, so bail
+  1703  0b87 c961               	cmp #'a'
+  1704  0b89 900b               	bcc .local3			;less then lowercase a, so ignore
+  1705  0b8b c97b               	cmp #'z' + 1		;less than next character after lowercase z?
+  1706  0b8d b007               	bcs .local3			;greater than or equal, so ignore
+  1707  0b8f 38                 	sec
+  1708  0b90 e920               	sbc #('z' - 'Z')	;make upper case
+  1709  0b92 9f000417           	sta inbuff,x
+  1710                          .local3
+  1711  0b96 e8                 	inx
+  1712  0b97 80e8               	bra .local2
+  1713                          .local4
+  1714  0b99 28                 	plp
+  1715  0b9a 6b                 	rtl
+  1716                          	
+  1717                          	!zone getline
+  1718                          getline
+  1719  0b9b 08                 	php
+  1720  0b9c c210               	rep #$10
+  1721  0b9e e220               	sep #$20
+  1722                          	!as
+  1723                          	!rl
+  1724  0ba0 a20000             	ldx #$0000
+  1725                          .local2
+  1726  0ba3 af00fc1b           	lda IO_KEYQ_SIZE
+  1727  0ba7 f0fa               	beq .local2
+  1728  0ba9 af01fc1b           	lda IO_KEYQ_WAITING
+  1729  0bad 8f02fc1b           	sta IO_KEYQ_DEQUEUE
+  1730  0bb1 c90d               	cmp #$0d			;carriage return yet?
+  1731  0bb3 f01c               	beq .local3
+  1732  0bb5 c908               	cmp #$08			;backspace/back arrow?
+  1733  0bb7 f029               	beq .local4
+  1734  0bb9 c920               	cmp #$20 			;generally any control character besides what we're specifically looking for?
+  1735  0bbb 90e6               	bcc .local2		 		;yes, so ignore it
+  1736  0bbd 9f000417           	sta inbuff,x 		;any other character, so register it and store it
+  1737  0bc1 8f12fc1b           	sta IO_CON_CHAROUT
+  1738  0bc5 8f13fc1b           	sta IO_CON_REGISTER
+  1739  0bc9 e8                 	inx
+  1740  0bca a90d               	lda #$0d			;tee up a CR just in case we have to fall thru below
+  1741  0bcc e0fe03             	cpx #$3fe			;overrun end of buffer yet?
+  1742  0bcf d0d2               	bne .local2			;no, so get another char.. otherwise fall thru
+  1743                          .local3
+  1744  0bd1 9f000417           	sta inbuff,x		;store CR
+  1745  0bd5 8f17fc1b           	sta IO_CON_CR
+  1746  0bd9 e8                 	inx
+  1747  0bda a900               	lda #$00			;store zero to end it all
+  1748  0bdc 9f000417           	sta inbuff,x
+  1749  0be0 28                 	plp
+  1750  0be1 6b                 	rtl
+  1751                          .local4
+  1752  0be2 e00000             	cpx #$0000
+  1753  0be5 f0bc               	beq .local2			;no data in buffer yet, so nothing to backspace over
+  1754  0be7 a908               	lda #$08
+  1755  0be9 8f12fc1b           	sta IO_CON_CHAROUT
+  1756  0bed 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char, which backs up the cursor
+  1757  0bf1 a920               	lda #$20
+  1758  0bf3 8f12fc1b           	sta IO_CON_CHAROUT
+  1759  0bf7 8f13fc1b           	sta IO_CON_REGISTER	;blot out the character with a space
+  1760  0bfb a908               	lda #$08
+  1761  0bfd 8f12fc1b           	sta IO_CON_CHAROUT
+  1762  0c01 8f13fc1b           	sta IO_CON_REGISTER	;print backspace char again since we advanced the cursor
+  1763  0c05 ca                 	dex
+  1764  0c06 809b               	bra .local2
+  1765                          	
+  1766                          prinbuff				;feed location of input buffer into dpla and then print
+  1767  0c08 08                 	php
+  1768  0c09 c210               	rep #$10
+  1769  0c0b e220               	sep #$20
+  1770                          	!as
+  1771                          	!rl
+  1772  0c0d a917               	lda #$17
+  1773  0c0f 853f               	sta dpla_h
+  1774  0c11 a904               	lda #$04
+  1775  0c13 853e               	sta dpla_m
+  1776  0c15 643d               	stz dpla
+  1777  0c17 221d0c1c           	jsl l_prcdpla
+  1778  0c1b 28                 	plp
+  1779  0c1c 6b                 	rtl
+  1780                          	
+  1781                          	!zone prcdpla
+  1782                          prcdpla					; print C string pointed to by dp locations $3d-$3f
+  1783  0c1d 08                 	php
+  1784  0c1e c210               	rep #$10
+  1785  0c20 e220               	sep #$20
+  1786                          	!as
+  1787                          	!rl
+  1788  0c22 a00000             	ldy #$0000
+  1789                          .local2
+  1790  0c25 b73d               	lda [dpla],y
+  1791  0c27 f00b               	beq .local3
+  1792  0c29 8f12fc1b           	sta IO_CON_CHAROUT
+  1793  0c2d 8f13fc1b           	sta IO_CON_REGISTER
+  1794  0c31 c8                 	iny
+  1795  0c32 80f1               	bra .local2
+  1796                          .local3
+  1797  0c34 28                 	plp
+  1798  0c35 6b                 	rtl
+  1799                          
+  1800                          initstring
+  1801  0c36 494d4c2036353831...	!tx "IML 65816 1C Firmware v00"
+  1802  0c4f 0d                 	!byte 0x0d
+  1803  0c50 53797374656d204d...	!tx "System Monitor"
+  1804  0c5e 0d                 	!byte 0x0d
+  1805  0c5f 0d                 	!byte 0x0d
+  1806  0c60 00                 	!byte 0
+  1807                          
+  1808                          helpmsg
+  1809  0c61 494d4c2036353831...	!tx "IML 65816 Monitor Commands"
+  1810  0c7b 0d                 	!byte $0d
+  1811  0c7c 41203c616464723e...	!tx "A <addr>  Dump ASCII"
+  1812  0c90 0d                 	!byte $0d
+  1813  0c91 42203c62616e6b3e...	!tx "B <bank>  Change bank"
+  1814  0ca6 0d                 	!byte $0d
+  1815  0ca7 43203c636f6c6f72...	!tx "C <color> Change terminal colors"
+  1816  0cc7 0d                 	!byte $0d
+  1817  0cc8 44203c616464723e...	!tx "D <addr>  Dump hex"
+  1818  0cda 0d                 	!byte $0d
+  1819  0cdb 45203c616464723e...	!tx "E <addr> <byte> <byte>...  Enter bytes"
+  1820  0d01 0d                 	!byte $0d
+  1821  0d02 4c203c616464723e...	!tx "L <addr>  Disassemble 65816 Instructions"
+  1822  0d2a 0d                 	!byte $0d
+  1823  0d2b 4d203c6d6f64653e...	!tx "M <mode>  Change video mode, 8/9"
+  1824  0d4b 0d                 	!byte $0d
+  1825  0d4c 5120202020202020...	!tx "Q         Halt the processor"
+  1826  0d68 0d                 	!byte $0d
+  1827  0d69 3f20202020202020...	!tx "?         This menu"
+  1828  0d7c 0d                 	!byte $0d
+  1829  0d7d 3c656e7465723e20...	!tx "<enter>   Repeat last dump command"
+  1830  0d9f 0d                 	!byte $0d
+  1831  0da0 546f207370656369...	!tx "To specify range, use <addr1.addr2>"
+  1832  0dc3 0d00               	!byte $0d, 00
+  1833                          	
+  1834  0dc5 0000000000000000...!align $ffff, $ffff,$00	;fill up to top of memory
+  1835                          

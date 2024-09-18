@@ -38,7 +38,7 @@ romstart
 	sta IO_CON_CURSORV
 	ora #$80
 	sta IO_CON_CURSOR
-	lda #$0b
+	lda #$07
 	sta IO_CON_COLOR
 	lda #$20
 	sta IO_CON_CHAROUT

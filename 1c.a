@@ -576,10 +576,6 @@ listcmd
 	lda #$00
 	xba					;clear B
 	lda [mondump]				;get opcode
-	cmp #$80
-	bcc .dunno2
-	jmp .dunno
-.dunno2
 	pha					;save opcode
 	tax
 	lda mnemlenmode,x
@@ -608,11 +604,18 @@ listcmd
 	pla					;get opcode back
 	tax
 	lda mnemlist,x
+	sta enterbytes
+	stz enterbytes_m	;save for 16 bit add
 	phx					;stash our opcode
+	rep #$30
+	!al
+	and #$00ff			;switch to 16 bits, clear top
 	asl
 	clc
-	adc mnemlist,x		;multiply by 3
+	adc enterbytes		;multiply by 3
 	tax
+	sep #$20
+	!as
 	lda mnems, x
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
@@ -628,11 +631,35 @@ listcmd
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	plx					;get our opcode back in index
+	lda #$00
+	xba					;clear top byte of A if it's dirty
 	lda mnemlenmode,x
 	and #$1f			;isolate the addressing mode
 	asl					;multiply by two
 	tax
 	jsr (listamod,x)
+	lda IO_VIDMODE
+	cmp #$09
+	bne .fixup1
+	lda #$25
+	sta IO_CON_CURSORH		;tab over and print our bytes as ASCII in 80 column mode
+	sep #$30				;8 bit indexes here
+	!rs
+	ldy #$00				;print disassembly bytes as ASCII... bonus when in mode 9!
+.asc2
+	lda [mondump],y
+	cmp #$20
+	bcs .asc4
+	lda #'.'				;substitute control character with a period
+.asc4
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	iny
+	cpy scratch1
+	bne .asc2
+.fixup1
+	rep #$10
+	!rl
 	sta IO_CON_CR
 .fixup
 	lda scratch1		;get our fixup
@@ -647,19 +674,6 @@ listcmd
 	sta mondump_h
 .goback
 	rts
-.dunno
-	jsr prhex
-	lda #$16
-	sta IO_CON_CURSORH
-	lda #$01
-	sta scratch1		;fix up one byte
-	lda #'?'
-	sta IO_CON_CHAROUT
-	sta IO_CON_REGISTER
-	sta IO_CON_REGISTER
-	sta IO_CON_REGISTER
-	sta IO_CON_CR
-	bra .fixup
 
 amod0
 	lda #'$'
@@ -983,9 +997,23 @@ amod13
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	rts
+amod14
+	lda #'$'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldy #$0001
+	lda [mondump],y
+	jsr prhex
+	lda #','
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda #'Y'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	rts
 	
 						;test branches for disassembly purposes..
-	bvs amod12
+	bvs amod14
 	bvs is816
 	bvs amod13
 	bvs listamod
@@ -1004,6 +1032,8 @@ is816
 	bmi .is16
 	bpl .is8
 .testx
+	pla
+	pha
 	cmp #$a0
 	beq .isx
 	cmp #$a2
@@ -1049,6 +1079,7 @@ listamod
 	!16 amod11			;rel16
 	!16 amod12			;($yyxx)
 	!16 amod13			;($yyxx,X)
+	!16 amod14			;$xx,Y
 	
 mnemlenmode
 	!byte %01000000		;00 brk 2/$xx
@@ -1179,6 +1210,134 @@ mnemlenmode
 	!byte %01101110		;7d adc 3/$yyxx,X
 	!byte %01101110		;7e lsr 3/$yyxx,X
 	!byte %10010000		;7f adc 4/$zzyyxx,X
+	!byte %01001000		;80 bra 2/rel8
+	!byte %01000001		;81 sta 2/($xx,x)
+	!byte %01110001		;82 brl 3/rel16
+	!byte %01000010		;83 sta 2/x,s
+	!byte %01000000		;84 sty 2/$xx
+	!byte %01000000		;85 sta 2/$xx
+	!byte %01000000		;86 stx 2/$xx
+	!byte %01000011		;87 sta 2/[$xx]
+	!byte %00100100		;88 dey 1
+	!byte %01000101		;89 bit 2/#imm
+	!byte %00100100		;8a txa 1
+	!byte %00100100		;8b phb 1
+	!byte %01100110		;8c sty 3/$yyxx
+	!byte %01100110		;8d sta 3/$yyxx
+	!byte %01100110		;8e stx 3/$yyxx
+	!byte %10000111		;8f sta 4/$zzyyxx
+	!byte %01001000		;90 bcc 2/rel8
+	!byte %01001001		;91 sta 2/($xx),Y
+	!byte %01001010		;92 sta 2/($xx)
+	!byte %01001011		;93 sta 2/(x,s),Y
+	!byte %01001100		;94 sty 2/$xx,X
+	!byte %01001100		;95 sta 2/$xx,X
+	!byte %01010100		;96 stx 2/$xx,Y
+	!byte %01001101		;97 sta 2/[$xx],Y
+	!byte %00100100		;98 txa 1
+	!byte %01101111		;99 sta 3/$yyxx,Y
+	!byte %00100100		;9a txs 1
+	!byte %00100100		;9b txy 1
+	!byte %01100110		;9c stz 3/$yyxx
+	!byte %01101110		;9d sta 3/$yyxx,X
+	!byte %01101110		;9e stz 3/$yyxx,X
+	!byte %10010000		;9f sta 4/$zzyyxx,X
+	!byte %01000101		;a0 ldy 2/#imm
+	!byte %01000001		;a1 lda 2/($xx,x)
+	!byte %01000101		;a2 ldx 2/#imm
+	!byte %01000010		;a3 lda 2/x,s
+	!byte %01000000		;a4 ldy 2/$xx
+	!byte %01000000		;a5 sta 2/$xx
+	!byte %01000000		;a6 ldx 2/$xx
+	!byte %01000011		;a7 lda 2/[$xx]
+	!byte %00100100		;a8 tay 1
+	!byte %01000101		;a9 lda 2/#imm
+	!byte %00100100		;aa tax 1
+	!byte %00100100		;ab plb 1
+	!byte %01100110		;ac ldy 3/$yyxx
+	!byte %01100110		;ad lda 3/$yyxx
+	!byte %01100110		;ae ldx 3/$yyxx
+	!byte %10000111		;af lda 4/$zzyyxx
+	!byte %01001000		;b0 bcs 2/rel8
+	!byte %01001001		;b1 lda 2/($xx),Y
+	!byte %01001010		;b2 lda 2/($xx)
+	!byte %01001011		;b3 lda 2/(x,s),Y
+	!byte %01001100		;b4 ldy 2/$xx,X
+	!byte %01001100		;b5 lda 2/$xx,X
+	!byte %01010100		;b6 ldx 2/$xx,Y
+	!byte %01001101		;b7 lda 2/[$xx],Y
+	!byte %00100100		;b8 clv 1
+	!byte %01101111		;b9 lda 3/$yyxx,Y
+	!byte %00100100		;ba tsx 1
+	!byte %00100100		;bb tyx 1
+	!byte %01100110		;bc ldy 3/$yyxx
+	!byte %01101110		;bd lda 3/$yyxx,X
+	!byte %01101110		;be ldx 3/$yyxx,X
+	!byte %10010000		;bf lda 4/$zzyyxx,X
+	!byte %01000101		;c0 cpy 2/#imm
+	!byte %01000001		;c1 cmp 2/($xx,x)
+	!byte %01000101		;c2 rep 2/#imm
+	!byte %01000010		;c3 cmp 2/x,s
+	!byte %01000000		;c4 cpx 2/$xx
+	!byte %01000000		;c5 cmp 2/$xx
+	!byte %01000000		;c6 dec 2/$xx
+	!byte %01000011		;c7 cmp 2/[$xx]
+	!byte %00100100		;c8 iny 1
+	!byte %01000101		;c9 cmp 2/#imm
+	!byte %00100100		;ca dex 1
+	!byte %00100100		;cb wai 1
+	!byte %01100110		;cc cpy 3/$yyxx
+	!byte %01100110		;cd cmp 3/$yyxx
+	!byte %01100110		;ce dec 3/$yyxx
+	!byte %10000111		;cf cmp 4/$zzyyxx
+	!byte %01001000		;d0 bne 2/rel8
+	!byte %01001001		;d1 cmp 2/($xx),Y
+	!byte %01001010		;d2 cmp 2/($xx)
+	!byte %01001011		;d3 cmp 2/(x,s),Y
+	!byte %01001010		;d4 pei 2/($xx)
+	!byte %01001100		;d5 cmp 2/$xx,X
+	!byte %01001100		;d6 dec 2/$xx,X
+	!byte %01001101		;d7 cmp 2/[$xx],Y
+	!byte %00100100		;d8 cld 1
+	!byte %01101111		;d9 cmp 3/$yyxx,Y
+	!byte %00100100		;da phx 1
+	!byte %00100100		;db stp 1
+	!byte %01000011		;dc jml 2/[$xx]
+	!byte %01101110		;dd cmp 3/$yyxx,X
+	!byte %01101110		;de dec 3/$yyxx,X
+	!byte %10010000		;df cmp 4/$zzyyxx,X
+	!byte %01000101		;e0 cpx 2/#imm
+	!byte %01000001		;e1 sbc 2/($xx,x)
+	!byte %01000101		;e2 sep 2/#imm
+	!byte %01000010		;e3 sbc 2/x,s
+	!byte %01000000		;e4 cpx 2/$xx
+	!byte %01000000		;e5 sbc 2/$xx
+	!byte %01000000		;e6 inc 2/$xx
+	!byte %01000011		;e7 sbc 2/[$xx]
+	!byte %00100100		;e8 inx 1
+	!byte %01000101		;e9 sbc 2/#imm
+	!byte %00100100		;ea nop 1
+	!byte %00100100		;eb xba 1
+	!byte %01100110		;ec cpx 3/$yyxx
+	!byte %01100110		;ed sbc 3/$yyxx
+	!byte %01100110		;ee inc 3/$yyxx
+	!byte %10000111		;ef sbc 4/$zzyyxx
+	!byte %01001000		;f0 beq 2/rel8
+	!byte %01001001		;f1 sbc 2/($xx),Y
+	!byte %01001010		;f2 sbc 2/($xx)
+	!byte %01001011		;f3 sbc 2/(x,s),Y
+	!byte %01100110		;f4 pea 3/$yyxx
+	!byte %01001100		;f5 sbc 2/$xx,X
+	!byte %01001100		;f6 inc 2/$xx,X
+	!byte %01001101		;f7 sbc 2/[$xx],Y
+	!byte %00100100		;f8 sed 1
+	!byte %01101111		;f9 sbc 3/$yyxx,Y
+	!byte %00100100		;fa plx 1
+	!byte %00100100		;fb xce 1
+	!byte %01110011		;fc jsr 3/($yyxx)
+	!byte %01101110		;fd sbc 3/$yyxx,X
+	!byte %01101110		;fe inc 3/$yyxx,X
+	!byte %10010000		;ff sbc 4/$zzyyxx,X
 mnemlist
 	!byte $00			;00 brk
 	!byte $02			;01 ora
@@ -1308,6 +1467,134 @@ mnemlist
 	!byte $24			;7d adc
 	!byte $27			;7e ror
 	!byte $24			;7f adc
+	!byte $2e			;80 bra
+	!byte $2f			;81 sta
+	!byte $30			;82 brl
+	!byte $2f			;83 sta
+	!byte $31			;84 sty
+	!byte $2f			;85 sta
+	!byte $32			;86 stx
+	!byte $2f			;87 sta
+	!byte $33			;88 dey
+	!byte $10			;89 bit
+	!byte $34			;8a txa
+	!byte $35			;8b phb
+	!byte $31			;8c sty
+	!byte $2f			;8d sta
+	!byte $32			;8e stx
+	!byte $2f			;8f sta
+	!byte $36			;90 bcc
+	!byte $2f			;91 sta
+	!byte $2f			;92 sta
+	!byte $2f			;93 sta
+	!byte $31			;94 sty
+	!byte $2f			;95 sta
+	!byte $32			;96 stx
+	!byte $2f			;97 sta
+	!byte $37			;98 tya
+	!byte $2f			;99 sta
+	!byte $38			;9a txs
+	!byte $39			;9b txy
+	!byte $26			;9c stz
+	!byte $2f			;9d sta
+	!byte $26			;9e stz
+	!byte $2f			;9f sta
+	!byte $3c			;a0 ldy
+	!byte $3a			;a1 lda
+	!byte $3b			;a2 ldx
+	!byte $3a			;a3 lda
+	!byte $3c			;a4 ldy
+	!byte $3a			;a5 lda
+	!byte $3b			;a6 ldx
+	!byte $3a			;a7 lda
+	!byte $3d			;a8 tay
+	!byte $3a			;a9 lda
+	!byte $3e			;aa tax
+	!byte $3f			;ab plb
+	!byte $3c			;ac ldy
+	!byte $3a			;ad lda
+	!byte $3b			;ae ldx
+	!byte $3a			;af lda
+	!byte $40			;b0 bcs
+	!byte $3a			;b1 lda
+	!byte $3a			;b2 lda
+	!byte $3a			;b3 lda
+	!byte $3c			;b4 ldy
+	!byte $3a			;b5 lda
+	!byte $3b			;b6 ldx
+	!byte $3a			;b7 lda
+	!byte $41			;b8 clv
+	!byte $3a			;b9 lda
+	!byte $42			;ba tsx
+	!byte $43			;bb tyx
+	!byte $3c			;bc ldy
+	!byte $3a			;bd lda
+	!byte $3b			;be ldx
+	!byte $3a			;bf lda
+	!byte $46			;c0 cpy
+	!byte $44			;c1 cmp
+	!byte $47			;c2 rep
+	!byte $44			;c3 cmp
+	!byte $46			;c4 cpy
+	!byte $44			;c5 cmp
+	!byte $48			;c6 dec
+	!byte $44			;c7 cmp
+	!byte $49			;c8 iny
+	!byte $44			;c9 cmp
+	!byte $4a			;ca dex
+	!byte $4b			;cb wai
+	!byte $46			;cc cpy
+	!byte $44			;cd cmp
+	!byte $48			;ce dec
+	!byte $44			;cf cmp
+	!byte $4c			;d0 bne
+	!byte $44			;d1 cmp
+	!byte $44			;d2 cmp
+	!byte $44			;d3 cmp
+	!byte $4d			;d4 pei
+	!byte $44			;d5 cmp
+	!byte $48			;d6 dec
+	!byte $44			;d7 cmp
+	!byte $4e			;d8 cld
+	!byte $44			;d9 cmp
+	!byte $4f			;da phx
+	!byte $50			;db stp
+	!byte $22			;dc jml
+	!byte $44			;dd cmp
+	!byte $48			;de dec
+	!byte $44			;df cmp
+	!byte $51			;e0 cpx
+	!byte $45			;e1 sbc
+	!byte $52			;e2 sep
+	!byte $45			;e3 sbc
+	!byte $51			;e4 cpx
+	!byte $45			;e5 sbc
+	!byte $53			;e6 inc
+	!byte $45			;e7 sbc
+	!byte $54			;e8 inx
+	!byte $45			;e9 sbc
+	!byte $55			;ea nop
+	!byte $56			;eb xba
+	!byte $51			;ec cpx
+	!byte $45			;ed sbc
+	!byte $53			;ee inc
+	!byte $45			;ef sbc
+	!byte $57			;f0 beq
+	!byte $45			;f1 sbc
+	!byte $45			;f2 sbc
+	!byte $45			;f3 sbc
+	!byte $58			;f4 pea
+	!byte $45			;f5 sbc
+	!byte $53			;f6 inc
+	!byte $45			;f7 sbc
+	!byte $59			;f8 sed
+	!byte $45			;f9 sbc
+	!byte $5a			;fa plx
+	!byte $5b			;fb xce
+	!byte $0d			;fc jsr
+	!byte $45			;fd sbc
+	!byte $53			;fe inc
+	!byte $45			;ff sbc
 mnems
 	!tx "BRK"			;0
 	!tx "COP"			;1
@@ -1355,6 +1642,52 @@ mnems
 	!tx "SEI"			;2b
 	!tx "PLY"			;2c
 	!tx "TDC"			;2d
+	!tx "BRA"			;2e
+	!tx "STA"			;2f
+	!tx "BRL"			;30
+	!tx "STY"			;31
+	!tx "STX"			;32
+	!tx "DEY"			;33
+	!tx "TXA"			;34
+	!tx "PHB"			;35
+	!tx "BCC"			;36
+	!tx "TYA"			;37
+	!tx "TXS"			;38
+	!tx "TXY"			;39
+	!tx "LDA"			;3a
+	!tx "LDX"			;3b
+	!tx "LDY"			;3c
+	!tx "TAY"			;3d
+	!tx "TAX"			;3e
+	!tx "PLB"			;3f
+	!tx "BCS"			;40
+	!tx "CLV"			;41
+	!tx "TSX"			;42
+	!tx "TYX"			;43
+	!tx "CMP"			;44
+	!tx "SBC"			;45
+	!tx "CPY"			;46
+	!tx "REP"			;47
+	!tx "DEC"			;48
+	!tx "INY"			;49
+	!tx "DEX"			;4a
+	!tx "WAI"			;4b
+	!tx "BNE"			;4c
+	!tx "PEI"			;4d
+	!tx "CLD"			;4e
+	!tx "PHX"			;4f
+	!tx "STP"			;50
+	!tx "CPX"			;51
+	!tx "SEP"			;52
+	!tx "INC"			;53
+	!tx "INX"			;54
+	!tx "NOP"			;55
+	!tx "XBA"			;56
+	!tx "BEQ"			;57
+	!tx "PEA"			;58
+	!tx "SED"			;59
+	!tx "PLX"			;5a
+	!tx "XCE"			;5b
 	
 	!zone ucline
 ucline					;convert inbuff at $170400 to upper case

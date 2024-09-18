@@ -40,7 +40,7 @@
     38  e41d 8f15fc1b           	sta IO_CON_CURSORV
     39  e421 0980               	ora #$80
     40  e423 8f16fc1b           	sta IO_CON_CURSOR
-    41  e427 a90b               	lda #$0b
+    41  e427 a907               	lda #$07
     42  e429 8f11fc1b           	sta IO_CON_COLOR
     43  e42d a920               	lda #$20
     44  e42f 8f12fc1b           	sta IO_CON_CHAROUT
