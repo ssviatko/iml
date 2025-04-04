@@ -344,3 +344,13 @@ void con_cr()
 	g_shm_ptr[IOSTART + IO_CON_CURSORV] += 1;
 	scrollup();
 }
+
+/* z80 support */
+
+void z80_driver_startup()
+{
+}
+
+void z80_driver_shutdown()
+{
+}

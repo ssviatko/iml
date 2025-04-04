@@ -6,7 +6,7 @@
 #include <signal.h>
 
 #include "memio_driver.h"
-#include "65816_engine.h"
+#include "z80_engine.h"
 
 void ctrlc()
 {
@@ -61,34 +61,19 @@ int main(int argc, char **argv)
 	}
 	
 	// load ROMs
-	FILE *e4rom, *x1crom;
-	if ((e4rom = fopen("e4.o", "r")) == NULL)
+	FILE *zrom;
+	if ((zrom = fopen("zrom.bin", "r")) == NULL)
 	{
-		fprintf(stderr, "Cannot open ROM file.\nA file named \"e4.o\" must exist in this directory.\n");
+		fprintf(stderr, "Cannot open ROM file.\nA file named \"zrom.bin\" must exist in this directory.\n");
 		exit(-1);
 	}
-	if (fread(mem + E400ROMSTART, 1, 0x1c00, e4rom) != 0x1c00)
-	{
-		fprintf(stderr, "Cannot read ROM file. It may be corrupted.\n");
-		exit(-1);
-	}
-	fclose(e4rom);
-	if ((x1crom = fopen("1c.o", "r")) == NULL)
-	{
-		fprintf(stderr, "Cannot open ROM file.\nA file named \"1c.o\" must exist in this directory.\n");
-		exit(-1);
-	}
-	if (fread(mem + X1CROMSTART, 1, 0xffff, x1crom) != 0xffff)
-	{
-		fprintf(stderr, "Cannot read ROM file. It may be corrupted.\n");
-		exit(-1);
-	}
-	fclose(x1crom);
+	printf("read %x bytes.\n", fread(mem + 0, 1, 0x2000, zrom));
+	fclose(zrom);
 	
 	struct timeval start_time;
 	struct timeval end_time;
 	gettimeofday(&start_time, NULL);
-	engine_65816_init(mem, 0);
+	engine_z80_init();
 	
 	while (1) {
 		if (io_driver_wait_backchannel(&msg) == 0) {
@@ -102,8 +87,8 @@ int main(int argc, char **argv)
 			}
 		}
 			// start executing at PC
-		if (!engine_65816_halted()) {
-			engine_65816_step();
+		if (!engine_z80_halted()) {
+			engine_z80_step();
 		} else {
 			// nighty night
 			ts.tv_sec = 0;
@@ -112,11 +97,11 @@ int main(int argc, char **argv)
 		}
 	}
 	gettimeofday(&end_time, NULL);
-	printf("Executed %ld cycles.\n", engine_65816_cycle_count());
+	printf("Executed %ld cycles.\n", engine_z80_cycle_count());
 	long elapsed_secs = end_time.tv_sec - start_time.tv_sec - ((end_time.tv_usec - start_time.tv_usec < 0) ? 1 : 0); // subtract 1 if there was a usec rollover
 	long elapsed_usecs = end_time.tv_usec - start_time.tv_usec + ((end_time.tv_usec - start_time.tv_usec < 0) ? 1000000 : 0); // bump usecs by 1 million usec for rollover
 	printf("Elapsed time: %ld seconds %ld usecs.\n", elapsed_secs, elapsed_usecs);
-	printf("estimated emulation speed: %fMhz\n", ((double)engine_65816_cycle_count() / ((double)elapsed_secs + (double)(elapsed_usecs / 1000000.0))) / 1000000.0);
+	printf("estimated emulation speed: %fMhz\n", ((double)engine_z80_cycle_count() / ((double)elapsed_secs + (double)(elapsed_usecs / 1000000.0))) / 1000000.0);
 	
 	ctrlc(); // just use the ctrlc handler to shut everything down
 	return 0;

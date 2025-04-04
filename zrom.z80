@@ -1,0 +1,12 @@
+	org $0
+
+	jp romstart
+
+zpempty:
+	ds $100-zpempty,$ff
+	
+	org $100
+	
+romstart:
+	halt
+	

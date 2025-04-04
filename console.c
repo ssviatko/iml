@@ -575,6 +575,9 @@ int main(int argc, char **argv)
 	io_driver_post_backchannel(IO_CMD_CLIENTDEAD, 0);
 	printf("shutting down memory driver...\n");
 	mem_driver_shutdown();
+	ts.tv_sec = 0;
+	ts.tv_nsec = 500000000; // 500ms
+	nanosleep(&ts, NULL); // wait for server to receive CLIENTDEAD
 
 	return 0;
 }

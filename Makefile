@@ -8,6 +8,8 @@ CONS_LDFLAGS = -lX11
 
 65816_OBJS = 65816.o 65816_engine.o memio_driver.o
 65816_TARGET = 65816
+Z80_OBJS = z80.o z80_engine.o memio_driver.o
+Z80_TARGET = z80
 RV_OBJS = randvideo.o memio_driver.o
 RV_TARGET = randvideo
 KE_OBJS = kbdecho.o memio_driver.o
@@ -15,7 +17,7 @@ KE_TARGET = kbdecho
 CONS_OBJS = console.o memio_driver.o
 CONS_TARGET = console
 
-all: $(65816_TARGET) $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET)
+all: $(65816_TARGET) $(Z80_TARGET) $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET)
 
 $(65816_TARGET): $(65816_OBJS)
 
@@ -23,6 +25,11 @@ $(65816_TARGET): $(65816_OBJS)
 	acme -r 1c.r 1c.a
 	$(LD) $(65816_OBJS) -o $(65816_TARGET) $(LDFLAGS)
 
+$(Z80_TARGET): $(Z80_OBJS)
+
+	z80asm zrom.z80 -o zrom.bin -l
+	$(LD) $(Z80_OBJS) -o $(Z80_TARGET) $(LDFLAGS)
+	
 $(RV_TARGET): $(RV_OBJS)
 
 	$(LD) $(RV_OBJS) -o $(RV_TARGET) $(LDFLAGS)

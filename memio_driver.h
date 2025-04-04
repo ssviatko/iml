@@ -90,5 +90,7 @@ void con_register();
 void con_cr();
 
 // z80/8080/8085 support (16 bit address w/ 256 byte special I/O)
+void z80_driver_startup();
+void z80_driver_shutdown();
 
 #endif // IO_DRIVER_H
