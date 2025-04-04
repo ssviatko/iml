@@ -89,4 +89,6 @@ void con_cls();
 void con_register();
 void con_cr();
 
+// z80/8080/8085 support (16 bit address w/ 256 byte special I/O)
+
 #endif // IO_DRIVER_H
