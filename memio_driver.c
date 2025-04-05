@@ -347,10 +347,141 @@ void con_cr()
 
 /* z80 support */
 
+static uint8_t g_z80_window_8;
+static uint8_t g_z80_window_a;
+static uint8_t g_z80_window_c;
+static uint8_t g_z80_window_e;
+
 void z80_driver_startup()
 {
+	g_z80_window_8 = 0x04; // default to 0x008000
+	g_z80_window_a = 0x05; // default to 0x00a000
+	g_z80_window_c = 0x06; // default to 0x00c000
+	g_z80_window_e = VIDSTART / 0x2000; // default to 0x180000 (VIDSTART)
 }
 
 void z80_driver_shutdown()
 {
+}
+
+// these routines replace the mem_driver versions above, to allow for
+// mapping of higher memory to the 8, a, c, and e windows
+
+uint8_t z80_mem_read(uint16_t a_address)
+{
+	if (a_address < 0x8000) {
+		// straight address, just return value from buffer
+		return g_shm_ptr[a_address];
+	} else {
+		// windowed memory
+		uint32_t l_effadr = z80_effadr(a_address);
+//		printf("z80_mem_read: computed effective address %x for specified address %x.\n", l_effadr, a_address);
+		return mem_driver_read(l_effadr);
+	}
+}
+
+void z80_mem_write(uint16_t a_address, uint8_t a_byte)
+{
+	// note that the conventional rules about writing to ROM areas also apply:
+	// no writing to 0x00e400-0x00ffff
+	// no writing to 0x1c0000-0x1fffff
+	// normally the E window will be mapped to video, but if it's ever remapped
+	// back to page 7 (e000-ffff) this will be a concern.
+	// pages 0xc0-0xff are read-only even in z80 mode.
+	if (a_address <= Z80_ROM_END)
+		return; // ROM area, leave it alone
+	if (a_address < 0x8000) {
+		// straight address, write to buffer
+		mem_driver_write(a_address, a_byte);
+	} else {
+		// windowed memory
+		uint32_t l_effadr = z80_effadr(a_address);
+//		printf("z80_mem_write: computed effective address %x for specified address %x.\n", l_effadr, a_address);
+		mem_driver_write(l_effadr, a_byte);
+	}
+}
+
+uint32_t z80_effadr(uint32_t a_address)
+{
+	// assumes we're getting passed a value of $8000-$ffff
+	if ((a_address < 0x8000) || (a_address > 0xffff))
+		return a_address;
+	uint8_t hinib = (a_address & 0xf000) >> 12;
+	uint32_t lopart = a_address & 0x1fff;
+	uint32_t ret = 0;
+	switch (hinib) {
+		case 0x8:
+		case 0x9:
+			ret = lopart + (g_z80_window_8 * 0x2000);
+			break;
+		case 0xa:
+		case 0xb:
+			ret = lopart + (g_z80_window_a * 0x2000);
+			break;
+		case 0xc:
+		case 0xd:
+			ret = lopart + (g_z80_window_c * 0x2000);
+			break;
+		case 0xe:
+		case 0xf:
+			ret = lopart + (g_z80_window_e * 0x2000);
+			break;
+		default:
+			fprintf(stderr, "z80_effadr error: %x\n", hinib);
+			exit(-1);
+			break;
+	}
+	return ret;
+}
+
+// z80 I/O support:
+// a_address maps to IOSTART + a_address
+// if you want to use soft switches 0x100-0x3ff,
+// map page 0xdf (0x1be000-0x1bffff) to any window.
+
+uint8_t z80_io_read(uint8_t a_address)
+{
+	// z80 specific I/O
+	if ((a_address <= IO_Z80_WINDOW_E) && (a_address >= IO_Z80_WINDOW_8)) {
+		switch (a_address) {
+			case IO_Z80_WINDOW_8:
+				return g_z80_window_8;
+				break;
+			case IO_Z80_WINDOW_A:
+				return g_z80_window_a;
+				break;
+			case IO_Z80_WINDOW_C:
+				return g_z80_window_c;
+				break;
+			case IO_Z80_WINDOW_E:
+				return g_z80_window_e;
+				break;
+		}
+	}
+	
+	return mem_driver_read(IOSTART + a_address);
+}
+
+void z80_io_write(uint8_t a_address, uint8_t a_byte)
+{
+	// z80 specific I/O
+	if ((a_address <= IO_Z80_WINDOW_E) && (a_address >= IO_Z80_WINDOW_8)) {
+		switch (a_address) {
+			case IO_Z80_WINDOW_8:
+				g_z80_window_8 = a_byte;
+				break;
+			case IO_Z80_WINDOW_A:
+				g_z80_window_a = a_byte;
+				break;
+			case IO_Z80_WINDOW_C:
+				g_z80_window_c = a_byte;
+				break;
+			case IO_Z80_WINDOW_E:
+				g_z80_window_e = a_byte;
+				break;
+		}
+		return;
+	}
+	
+	mem_driver_write(IOSTART + a_address, a_byte);
 }

@@ -67,7 +67,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Cannot open ROM file.\nA file named \"zrom.bin\" must exist in this directory.\n");
 		exit(-1);
 	}
-	printf("read %x bytes.\n", fread(mem + 0, 1, 0x2000, zrom));
+	printf("read $%lx bytes.\n", fread(mem + 0, 1, 0x2000, zrom));
 	fclose(zrom);
 	
 	struct timeval start_time;

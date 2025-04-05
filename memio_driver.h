@@ -51,8 +51,11 @@ const static uint32_t IO_CON_CURSORH = 0x14;
 const static uint32_t IO_CON_CURSORV = 0x15;
 const static uint32_t IO_CON_CURSOR = 0x16;
 const static uint32_t IO_CON_CR = 0x17;
-
-const static uint16_t IO_VIDMODE = 0x0020;
+const static uint32_t IO_VIDMODE = 0x20;
+const static uint32_t IO_Z80_WINDOW_8 = 0x30;
+const static uint32_t IO_Z80_WINDOW_A = 0x31;
+const static uint32_t IO_Z80_WINDOW_C = 0x32;
+const static uint32_t IO_Z80_WINDOW_E = 0x33;
 
 const static uint16_t IO_CMD_SERVERALIVE = 0xF800;
 const static uint16_t IO_CMD_SERVERDEAD = 0xF801;
@@ -61,6 +64,9 @@ const static uint16_t IO_CMD_CLIENTDEAD = 0xF803;
 
 const static uint16_t IO_CMD_VIDEODIRTY = 0xF900;
 const static uint16_t IO_CMD_KEYPRESS = 0xF901;
+
+// Z80 constants
+const static uint16_t Z80_ROM_END = 0x1fff;
 
 // memory driver
 void mem_driver_startup();
@@ -90,7 +96,12 @@ void con_register();
 void con_cr();
 
 // z80/8080/8085 support (16 bit address w/ 256 byte special I/O)
+uint32_t z80_effadr(uint32_t a_address);
 void z80_driver_startup();
 void z80_driver_shutdown();
+uint8_t z80_mem_read(uint16_t a_address);
+void z80_mem_write(uint16_t a_address, uint8_t a_byte);
+uint8_t z80_io_read(uint8_t a_address);
+void z80_io_write(uint8_t a_address, uint8_t a_byte);
 
 #endif // IO_DRIVER_H
