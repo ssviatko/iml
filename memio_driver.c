@@ -397,6 +397,10 @@ void z80_mem_write(uint16_t a_address, uint8_t a_byte)
 		// windowed memory
 		uint32_t l_effadr = z80_effadr(a_address);
 //		printf("z80_mem_write: computed effective address %x for specified address %x.\n", l_effadr, a_address);
+		// protect z80 ROM area
+		if (l_effadr <= Z80_ROM_END)
+			return;
+		// conventional memory driver will protect other ROM areas.
 		mem_driver_write(l_effadr, a_byte);
 	}
 }
