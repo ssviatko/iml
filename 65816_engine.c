@@ -736,6 +736,11 @@ static void disass(void)
 	printf("%02X/%04X: %02X %02X%02X%02X ",k,pc.x,rmem(k,pc.x),rmem(k,pc.x+1),rmem(k,pc.x+2),rmem(k,pc.x+3));
 }
 
+void engine_65816_reset()
+{
+	reset();
+}
+
 int engine_65816_init(unsigned char *a_memory, int a_traceflag)
 {
 	engine_65816_cycles = 0;
@@ -746,7 +751,7 @@ int engine_65816_init(unsigned char *a_memory, int a_traceflag)
 	initops();
 
 	// initiate reset cycle
-	reset();
+	engine_65816_reset();
 
 	return 0;
 }

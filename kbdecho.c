@@ -96,7 +96,7 @@ int main(int argc, char **argv)
 			}
 			if (mem[IOSTART + IO_KEYQ_SIZE] > 0) {
 				uint8_t l_char = mem[IOSTART + IO_KEYQ_WAITING];
-//				printf("showing key %d\n", l_char);
+				printf("showing key %d\n", l_char);
 				mem_driver_write(IOSTART + IO_CON_CHAROUT, l_char);
 				mem_driver_write(IOSTART + IO_CON_REGISTER, 0);
 				mem_driver_write(IOSTART + IO_KEYQ_DEQUEUE, 0);

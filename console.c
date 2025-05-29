@@ -389,7 +389,7 @@ int main(int argc, char **argv)
 	
 	// start up X
 	int runFlag = 1;
-//	int ShiftState = 0, ControlState = 0, AltState = 0;
+	int ShiftState = 0, ControlState = 0, AltState = 0;
 	dpy = XOpenDisplay(0);
 	assert(dpy);
 
@@ -514,18 +514,23 @@ int main(int argc, char **argv)
 					switch(key_symbol) {
 						case XK_Shift_L:
 						case XK_Shift_R:
-//							ShiftState = 1;
+							ShiftState = 1;
 							break;
 						case XK_Control_L:
 						case XK_Control_R:
-//							ControlState = 1;
+							ControlState = 1;
 							break;
 						case XK_Alt_L:
 						case XK_Alt_R:
-//							AltState = 1;
+							AltState = 1;
 							break;
 						default:
 //							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+							if ((ControlState == 1) && (AltState == 1) && (key_symbol == 0xff57)) {
+								// control-alt-end to reset
+								io_driver_post_backchannel(IO_CMD_WARMRESET, 0);
+								break;
+							}
 							if (key_symbol == 0xff51)
 								xlat[0] = 0x8;
 							if (key_symbol == 0xff52)
@@ -542,15 +547,15 @@ int main(int argc, char **argv)
 					switch(key_symbol) {
 						case XK_Shift_L:
 						case XK_Shift_R:
-//							ShiftState = 0;
+							ShiftState = 0;
 							break;
 						case XK_Control_L:
 						case XK_Control_R:
-//							ControlState = 0;
+							ControlState = 0;
 							break;
 						case XK_Alt_L:
 						case XK_Alt_R:
-//							AltState = 0;
+							AltState = 0;
 							break;
 					}
 					break;

@@ -100,6 +100,10 @@ int main(int argc, char **argv)
 			if (msg.address == IO_CMD_KEYPRESS) {
 				kbd_enqueue(msg.byte);
 			}
+			if (msg.address == IO_CMD_WARMRESET) {
+				printf("warm reset request received, resetting 65816...\n");
+				engine_65816_reset();
+			}
 		}
 			// start executing at PC
 		if (!engine_65816_halted()) {

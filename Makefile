@@ -49,4 +49,7 @@ clean:
 	rm -f *.o
 	rm -f *~
 	rm -f $(RV_TARGET)
+	rm -f $(KE_TARGET)
+	rm -f $(Z80_TARGET)
 	rm -f $(CONS_TARGET)
+	rm -f $(65816_TARGET)

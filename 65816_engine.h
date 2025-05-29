@@ -34,6 +34,7 @@ enum {
 };
 
 int engine_65816_init(unsigned char *a_memory, int a_traceflag);
+void engine_65816_reset();
 void engine_65816_step();
 long engine_65816_cycle_count();
 int engine_65816_halted(); 

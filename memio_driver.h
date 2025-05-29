@@ -64,6 +64,7 @@ const static uint16_t IO_CMD_CLIENTDEAD = 0xF803;
 
 const static uint16_t IO_CMD_VIDEODIRTY = 0xF900;
 const static uint16_t IO_CMD_KEYPRESS = 0xF901;
+const static uint16_t IO_CMD_WARMRESET = 0xF902;
 
 // Z80 constants
 const static uint16_t Z80_ROM_END = 0x1fff;
