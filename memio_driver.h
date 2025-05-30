@@ -37,6 +37,12 @@ const static uint32_t X1CROMEND = 0x1fffff;
 const static uint32_t E4SHADOWSTART = 0x1fe400;
 const static uint32_t E4SHADOWEND = 0x1fffff;
 
+// floating point registers
+const static uint32_t FPASCII = 0x1bfcc0; // 24 byte ASCII buffer
+const static uint32_t FPINT = 0x1bfcd8; // 64 bit integer buffer
+const static uint32_t FPACCUMULATOR = 0x1bfce0;
+const static uint32_t FPARGUMENT = 0x1bfcf0;
+
 // IO address space is from 0000-03ff. 0400-F7FF is reserved.
 // Commands/conditions begin at F800.
 const static uint32_t IO_KEYQ_SIZE = 0x00;
@@ -56,6 +62,16 @@ const static uint32_t IO_Z80_WINDOW_8 = 0x30;
 const static uint32_t IO_Z80_WINDOW_A = 0x31;
 const static uint32_t IO_Z80_WINDOW_C = 0x32;
 const static uint32_t IO_Z80_WINDOW_E = 0x33;
+
+// command format for floating point operations:
+// bit 7: 0=float 1=double
+// bit 6: 0=accumulator, 1=argument
+// bit 5: 0=float/double 1=intel 80 bit
+// bits 0-4: 5 bit of command data
+
+const static uint16_t IO_FP_INIT_CONSTANT = 0x40;
+const static uint16_t IO_FP_TO_ASCII = 0x41;
+const static uint16_t IO_FP_MULTIPLY = 0x42;
 
 const static uint16_t IO_CMD_SERVERALIVE = 0xF800;
 const static uint16_t IO_CMD_SERVERDEAD = 0xF801;
@@ -104,5 +120,10 @@ uint8_t z80_mem_read(uint16_t a_address);
 void z80_mem_write(uint16_t a_address, uint8_t a_byte);
 uint8_t z80_io_read(uint8_t a_address);
 void z80_io_write(uint8_t a_address, uint8_t a_byte);
+
+// floating point support
+void fp_init_constant(uint8_t a_byte);
+void fp_to_ascii(uint8_t a_byte);
+void fp_multiply(uint8_t a_byte);
 
 #endif // IO_DRIVER_H

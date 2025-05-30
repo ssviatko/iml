@@ -175,6 +175,15 @@ void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 			g_shm_ptr[IOSTART + IO_CON_CURSORV] = 0;
 		}
 	}
+	if (a_address == IOSTART + IO_FP_INIT_CONSTANT) {
+		fp_init_constant(a_byte);
+	}
+	if (a_address == IOSTART + IO_FP_TO_ASCII) {
+		fp_to_ascii(a_byte);
+	}
+	if (a_address == IOSTART + IO_FP_MULTIPLY) {
+		fp_multiply(a_byte);
+	}
 	g_shm_ptr[a_address] = a_byte;
 	// addresses we need to report to the console
 	switch (a_address) {
@@ -488,4 +497,214 @@ void z80_io_write(uint8_t a_address, uint8_t a_byte)
 	}
 	
 	mem_driver_write(IOSTART + a_address, a_byte);
+}
+
+// floating point support
+
+unsigned int fp_width;
+unsigned int fp_reg;
+unsigned int fp_extended;
+unsigned int fp_cmd;
+uint32_t fp_addr;
+
+void fp_parse_command(uint8_t a_byte)
+{
+	// split up command byte into its components
+	fp_width = (a_byte & 0x80) >> 7;
+	fp_reg = (a_byte & 0x40) >> 6;
+	fp_extended = (a_byte & 0x20) >> 5;
+	fp_cmd = a_byte & 0x1f;
+	fp_addr = fp_reg ? FPARGUMENT : FPACCUMULATOR;
+}
+
+void fp_writeback(long double a_wb)
+{
+	// writes back a_wb to FPACCUMULATOR or FPARGUMENT
+	// register is dependent on fp_addr
+	// size depends on fp_width and/or fp_extended (as set by fp_parse_command)
+
+	int i;
+	double fp_const_d = 0.0;
+	float fp_const_f = 0.0;
+	
+	// zero out entire register space
+	for (i = 0; i < 16; ++i)
+		g_shm_ptr[fp_addr + i] = 0;
+	
+	// extended?
+	if (fp_extended > 0) {
+		uint8_t *fp_const_ptr = (uint8_t *)&a_wb;
+		for (i = 0; i < 10; ++i) {
+			g_shm_ptr[fp_addr + i] = fp_const_ptr[i];
+		}
+		return;
+	}
+	
+	// little endian copy of IEEE real to our memory space
+	if (fp_width > 0) {
+		// double
+		fp_const_d = a_wb;
+		uint8_t *fp_const_d_ptr = (uint8_t *)&fp_const_d;
+		for (i = 0; i < 8; ++i) {
+			g_shm_ptr[fp_addr + i] = fp_const_d_ptr[i];
+		}
+	} else {
+		// float
+		fp_const_f = a_wb;
+		uint8_t *fp_const_f_ptr = (uint8_t *)&fp_const_f;
+		for (i = 0; i < 4; ++i) {
+			g_shm_ptr[fp_addr + i] = fp_const_f_ptr[i];
+		}
+	}
+}
+
+long double fp_read_extended(int a_reg)
+{
+	union {
+		long double ld;
+		uint8_t ld_buff[10];
+	} ldu;
+	int i;
+	uint32_t read_addr = a_reg ? FPARGUMENT : FPACCUMULATOR;
+	for (i = 0; i < 10; ++i) {
+		ldu.ld_buff[i] = g_shm_ptr[read_addr + i];
+	}
+	return ldu.ld;
+}
+
+long double fp_read_double(int a_reg)
+{
+	union {
+		double d;
+		uint8_t d_buff[8];
+	} du;
+	int i;
+	long double ret;
+	uint32_t read_addr = a_reg ? FPARGUMENT : FPACCUMULATOR;
+	for (i = 0; i < 8; ++i) {
+		du.d_buff[i] = g_shm_ptr[read_addr + i];
+	}
+	ret = (long double)du.d;
+	return ret;
+}
+
+long double fp_read_float(int a_reg)
+{
+	union {
+		float f;
+		uint8_t f_buff[4];
+	} fu;
+	int i;
+	long double ret;
+	uint32_t read_addr = a_reg ? FPARGUMENT : FPACCUMULATOR;
+	for (i = 0; i < 4; ++i) {
+		fu.f_buff[i] = g_shm_ptr[read_addr + i];
+	}
+	ret = (long double)fu.f;
+	return ret;
+}
+
+long double fp_read_specified(int a_width, int a_extended, int a_reg)
+{
+	if (a_extended > 0) {
+		return fp_read_extended(a_reg);
+	} else {
+		if (a_width > 0) {
+			return fp_read_double(a_reg);
+		} else {
+			return fp_read_float(a_reg);
+		}
+	}
+}
+
+void fp_init_constant(uint8_t a_byte)
+{
+	// command format:
+	// bit 7: float/double
+	// bit 6: acc/arg
+	// bit 5: extended
+	// bits 0-4: constant to select
+	
+	long double fp_const = 0.0;
+	
+	fp_parse_command(a_byte);
+	
+	switch (fp_cmd) {
+		case 0:
+			fp_const = 0.0L;
+			break;
+		case 1:
+			fp_const = 1.0L;
+			break;
+		case 2:
+			fp_const = 2.0L;
+			break;
+		case 3:
+			fp_const = 3.0L;
+			break;
+		case 4:
+			fp_const = 4.0L;
+			break;
+		case 5:
+			fp_const = 5.0L;
+			break;
+		case 6:
+			fp_const = 10.0L;
+			break;
+		case 8:
+			fp_const = -1.0L;
+			break;
+		case 16:
+			fp_const = 3.141592653589793238462643383279L;
+			break;
+		case 17:
+			fp_const = 2.7182818284590452353602874L;
+			break;
+		default:
+			fp_const = 0.0L;
+			break;
+	}
+	fp_writeback(fp_const);
+}
+
+void fp_to_ascii(uint8_t a_byte)
+{
+	// command format:
+	// bit 7: float/double
+	// bit 6: acc/arg
+	// bit 5: extended
+	// bits 0-4: ignored
+	
+	char buff[24];
+	memset(buff, 0, 24);
+	long double fp_val = 0.0L;
+	int i;
+	fp_parse_command(a_byte);
+	
+	// acquire the value we need
+	fp_val = fp_read_specified(fp_width, fp_extended, fp_reg);
+	
+	// convert it to ascii and write buffer out to 1bfcc0
+	printf("fp_val is %20.20Lf\n", fp_val);
+	snprintf(buff, 24, "%20.20Lf", fp_val);
+	for (i = 0; i < 24; ++i)
+		g_shm_ptr[FPASCII + i] = buff[i];
+	return;
+}
+
+void fp_multiply(uint8_t a_byte)
+{
+	// preforms FPACCUMULATOR * FPARGUMENT
+	//
+	// command format:
+	// bit 7: float/double
+	// bit 6: acc/arg (location to write back to)
+	// bit 5: extended
+	// bits 0-4: ignored
+	long double acc, arg, res;
+	fp_parse_command(a_byte);
+	acc = fp_read_specified(fp_width, fp_extended, 0);
+	arg = fp_read_specified(fp_width, fp_extended, 1);
+	res = acc * arg;
+	fp_writeback(res);
 }
