@@ -8,7 +8,7 @@
 
 int g_countdown = 6;
 
-void ctrlc()
+void ctrlc(int)
 {
 	printf("shutting down memory and io driver...\n");
 	mem_driver_shutdown();
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 		randvideo();
 		sleep(1);
 	}
-	ctrlc(); // just use the ctrlc handler to shut everything down
+	ctrlc(0); // just use the ctrlc handler to shut everything down
 	return 0;
 }
 

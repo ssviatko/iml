@@ -6,7 +6,7 @@
 
 #include "memio_driver.h"
 
-void ctrlc()
+void ctrlc(int)
 {
 	printf("shutting down memory and io driver...\n");
 	mem_driver_shutdown();
@@ -108,6 +108,6 @@ int main(int argc, char **argv)
 		ts.tv_nsec = 10000000;
 		nanosleep(&ts, NULL);			
 	}
-	ctrlc(); // just use the ctrlc handler to shut everything down
+	ctrlc(0); // just use the ctrlc handler to shut everything down
 	return 0;
 }

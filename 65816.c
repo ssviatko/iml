@@ -8,7 +8,7 @@
 #include "memio_driver.h"
 #include "65816_engine.h"
 
-void ctrlc()
+void ctrlc(int)
 {
 	printf("shutting down memory and io driver...\n");
 	mem_driver_shutdown();
@@ -122,6 +122,6 @@ int main(int argc, char **argv)
 	printf("Elapsed time: %ld seconds %ld usecs.\n", elapsed_secs, elapsed_usecs);
 	printf("estimated emulation speed: %fMhz\n", ((double)engine_65816_cycle_count() / ((double)elapsed_secs + (double)(elapsed_usecs / 1000000.0))) / 1000000.0);
 	
-	ctrlc(); // just use the ctrlc handler to shut everything down
+	ctrlc(0); // just use the ctrlc handler to shut everything down
 	return 0;
 }

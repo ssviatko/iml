@@ -526,7 +526,7 @@ int main(int argc, char **argv)
 							break;
 						default:
 //							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
-							if ((ControlState == 1) && (AltState == 1) && (key_symbol == 0xff57)) {
+							if ((ShiftState == 0) && (ControlState == 1) && (AltState == 1) && (key_symbol == 0xff57)) {
 								// control-alt-end to reset
 								io_driver_post_backchannel(IO_CMD_WARMRESET, 0);
 								break;
