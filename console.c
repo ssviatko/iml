@@ -217,7 +217,7 @@ void draw(void)
         default: // default to low-res
             l_gr_w = 40;
             l_gr_h = 17;
-            l_pixel_size = 4;
+            l_pixel_size = 2;
             break;
         }
 		Pixmap l_charimg;
