@@ -124,6 +124,7 @@ static int get_shm(char **a_shm_ptr)
 
 void mem_driver_startup()
 {
+	srand(time(NULL));
 	g_shmid = get_shm(&g_shm_ptr);
 	// init soft switches
 	g_shm_ptr[IOSTART + IO_VIDMODE] = 8; // Lo-res text
@@ -154,6 +155,8 @@ unsigned char *mem_driver_buffer()
 
 void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 {
+	if (a_address > MEMTOP)
+		return; // no memory there
 	if ((a_address >= 0x1c0000) && (a_address <= 0x1fffff))
 		return; // no write to ROM
 	if ((a_address >= 0xe400) && (a_address <= 0xffff))
@@ -174,6 +177,11 @@ void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 			g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
 			g_shm_ptr[IOSTART + IO_CON_CURSORV] = 0;
 		}
+	}
+	if (a_address == IOSTART + IO_RANDBYTE) {
+		// implement the random byte feature right here
+		a_byte = rand() % 256;
+		// and then fall through to where we write it out below
 	}
 	if (a_address == IOSTART + IO_FP_INIT_CONSTANT) {
 		fp_init_constant(a_byte);

@@ -3,7 +3,6 @@
 #include <X11/Xutil.h> // for XLookupString
 #include <assert.h>
 #include <stdio.h>
-#include <signal.h>
 #include <time.h>
 #include <getopt.h>
 #include <stdarg.h>

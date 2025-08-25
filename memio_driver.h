@@ -10,10 +10,12 @@
 #include <sys/shm.h>
 #include <sys/ipc.h> // for ftok
 #include <errno.h>
+#include <time.h>
 
 #define SHM_SIZE 2097152
 #define SHM_MODE 0600
 #define MSQ_MODE 0600
+#define MEMTOP 0x1fffff
 
 typedef struct __attribute__((packed)) {
 	long type;
@@ -45,10 +47,14 @@ const static uint32_t FPARGUMENT = 0x1bfcf0;
 
 // IO address space is from 0000-03ff. 0400-F7FF is reserved.
 // Commands/conditions begin at F800.
+
+// Keyboard
 const static uint32_t IO_KEYQ_SIZE = 0x00;
 const static uint32_t IO_KEYQ_WAITING = 0x01;
 const static uint32_t IO_KEYQ_DEQUEUE = 0x02;
 const static uint32_t IO_KEYQ_CLEAR = 0x03;
+
+// Console
 const static uint32_t IO_CON_CLS = 0x10;
 const static uint32_t IO_CON_COLOR = 0x11;
 const static uint32_t IO_CON_CHAROUT = 0x12;
@@ -57,7 +63,12 @@ const static uint32_t IO_CON_CURSORH = 0x14;
 const static uint32_t IO_CON_CURSORV = 0x15;
 const static uint32_t IO_CON_CURSOR = 0x16;
 const static uint32_t IO_CON_CR = 0x17;
+
+// Misc environment
 const static uint32_t IO_VIDMODE = 0x20;
+const static uint32_t IO_RANDBYTE = 0x21;
+
+// Z80 mode memory shadowing
 const static uint32_t IO_Z80_WINDOW_8 = 0x30;
 const static uint32_t IO_Z80_WINDOW_A = 0x31;
 const static uint32_t IO_Z80_WINDOW_C = 0x32;
