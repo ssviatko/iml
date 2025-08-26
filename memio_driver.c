@@ -198,6 +198,8 @@ void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 		fp_subtract(a_byte);
 	} else if (a_address == IOSTART + IO_FP_LN) {
 		fp_ln(a_byte);
+	} else if (a_address == IOSTART + IO_FP_ILOAD) {
+		fp_iload(a_byte);
 	}
 	
 	g_shm_ptr[a_address] = a_byte;
@@ -819,6 +821,22 @@ void fp_ln(uint8_t a_byte)
 	fp_parse_command(a_byte);
 	op = fp_read_specified(fp_width, fp_extended, fp_reg);
 	op = logl(op);
+	fp_writeback(op);
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_iload(uint8_t a_byte)
+{
+	union {
+		int64_t i64;
+		char bytes[8];
+	} l_fpint;
+	// loads 64 byte integer at FPINT into
+	// floating point register.
+	fp_parse_command(a_byte);
+	for (int i = 0; i < 8; ++i)
+		l_fpint.bytes[i] = g_shm_ptr[FPINT + i];
+	long double op = (long double)l_fpint.i64;
 	fp_writeback(op);
 	g_shm_ptr[FPCOND] = 0;
 }

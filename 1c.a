@@ -26,12 +26,14 @@ IO_FP_DIVIDE = $1bfc43
 IO_FP_ADD = $1bfc44
 IO_FP_SUBTRACT = $1bfc45
 IO_FP_LN = $1bfc46
+IO_FP_ILOAD = $1bfc47
 
-FPCOND = 0x1bfcbf
-FPASCII = 0x1bfcc0
-FPASCII_LO16 = 0xfcc0
-FPACCUMULATOR = 0x1bfce0
-FPARGUMENT = 0x1bfcf0
+FPCOND = $1bfcbf
+FPASCII = $1bfcc0
+FPASCII_LO16 = $fcc0
+FPINT = $1bfcd8
+FPACCUMULATOR = $1bfce0
+FPARGUMENT = $1bfcf0
 
 promptchar = '*'
 
@@ -253,7 +255,9 @@ fpcmd
 	jmp fploadconst
 .fpcmd2
 	cmp #'*'
-	beq fpmultiply
+	bne .fpcmd6
+	jmp fpmultiply
+.fpcmd6
 	cmp #'/'
 	bne .fpcmd5
 	jmp fpdivide
@@ -268,6 +272,8 @@ fpcmd
 .fpcmd3
 	cmp #'N'
 	beq fpln
+	cmp #'I'
+	beq fpiload
 	jmp monerror			;unrecognized FP command so fall thru to syntax error
 
 fpgetmask					;construct mask from size specifier, carry set if unregognized
@@ -313,6 +319,20 @@ fpgetregspec
 .localgrs4
 	sec
 	rts
+
+fpiload
+	jsr fpgetmask
+	bcc .fpil1
+	jmp monerror
+.fpil1
+	jsr fpgetregspec
+	bcc .fpil2
+	jmp monerror
+.fpil2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_ILOAD
+	jmp moncmd
 
 fpln
 	jsr fpgetmask
@@ -416,6 +436,9 @@ fpfargtxt
 fpcondtxt
 	!tx "FPCOND: "
 	!byte $00
+fpinttxt
+	!tx "FPINT: "
+	!byte $00
 fpdisp2
 	ldx #fpfacctxt			;print FACC: tag
 	stx dpla
@@ -490,6 +513,22 @@ fpdisp2
 	sta IO_CON_REGISTER
 	lda FPCOND
 	jsr+2 prhex
+	sta IO_CON_CR
+	
+	ldx #fpinttxt			;print FPINT tab
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldx #7
+.fpdisp3
+	lda FPINT,x
+	jsr+2 prhex
+	dex
+	bpl .fpdisp3
 	sta IO_CON_CR
 	
 	jmp moncmd
@@ -2128,6 +2167,8 @@ fphelpmsg
 	!tx "FD<sz>    Display FACC/FARG"
 	!byte $0d
 	!tx "FC<sz><reg> <constID> Load Constant"
+	!byte $0d
+	!tx "FI<sz><reg> Load Integer from FPINT"
 	!byte $0d
 	!tx "F<op><sz><reg> Bin Op, result in <reg>"
 	!byte $0d
