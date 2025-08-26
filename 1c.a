@@ -27,6 +27,7 @@ IO_FP_ADD = $1bfc44
 IO_FP_SUBTRACT = $1bfc45
 IO_FP_LN = $1bfc46
 IO_FP_ILOAD = $1bfc47
+IO_FP_ISAVE = $1bfc48
 
 FPCOND = $1bfcbf
 FPASCII = $1bfcc0
@@ -274,6 +275,8 @@ fpcmd
 	beq fpln
 	cmp #'I'
 	beq fpiload
+	cmp #'V'
+	beq fpisave
 	jmp monerror			;unrecognized FP command so fall thru to syntax error
 
 fpgetmask					;construct mask from size specifier, carry set if unregognized
@@ -332,6 +335,20 @@ fpiload
 	lda fpmask
 	ora fpregspec
 	sta IO_FP_ILOAD
+	jmp moncmd
+
+fpisave
+	jsr fpgetmask
+	bcc .fpis1
+	jmp monerror
+.fpis1
+	jsr fpgetregspec
+	bcc .fpis2
+	jmp monerror
+.fpis2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_ISAVE
 	jmp moncmd
 
 fpln
@@ -2169,6 +2186,8 @@ fphelpmsg
 	!tx "FC<sz><reg> <constID> Load Constant"
 	!byte $0d
 	!tx "FI<sz><reg> Load Integer from FPINT"
+	!byte $0d
+	!tx "FV<sz><reg> Save int(reg) to FPINT"
 	!byte $0d
 	!tx "F<op><sz><reg> Bin Op, result in <reg>"
 	!byte $0d

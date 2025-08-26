@@ -100,6 +100,7 @@ const static uint16_t IO_FP_ADD = 0x44;
 const static uint16_t IO_FP_SUBTRACT = 0x45;
 const static uint16_t IO_FP_LN = 0x46;
 const static uint16_t IO_FP_ILOAD = 0x47;
+const static uint16_t IO_FP_ISAVE = 0x48;
 
 const static uint16_t IO_CMD_SERVERALIVE = 0xF800;
 const static uint16_t IO_CMD_SERVERDEAD = 0xF801;
@@ -158,5 +159,6 @@ void fp_add(uint8_t a_byte);
 void fp_subtract(uint8_t a_byte);
 void fp_ln(uint8_t a_byte);
 void fp_iload(uint8_t a_byte);
+void fp_isave(uint8_t a_byte);
 
 #endif // IO_DRIVER_H
