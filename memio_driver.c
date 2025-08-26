@@ -155,56 +155,53 @@ unsigned char *mem_driver_buffer()
 
 void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 {
+	// dealbreakers, check these right off the bat
 	if (a_address > MEMTOP)
 		return; // no memory there
 	if ((a_address >= 0x1c0000) && (a_address <= 0x1fffff))
 		return; // no write to ROM
 	if ((a_address >= 0xe400) && (a_address <= 0xffff))
 		return; // no write to ROM
-	if (a_address == IOSTART + IO_KEYQ_DEQUEUE)
+		
+	// soft switch functions
+	if (a_address == IOSTART + IO_KEYQ_DEQUEUE) {
 		kbd_dequeue();
-	if (a_address == IOSTART + IO_KEYQ_CLEAR)
+	} else if (a_address == IOSTART + IO_KEYQ_CLEAR) {
 		kbd_clear();
-	if (a_address == IOSTART + IO_CON_CLS)
+	} else if (a_address == IOSTART + IO_CON_CLS) {
 		con_cls();
-	if (a_address == IOSTART + IO_CON_REGISTER)
+	} else if (a_address == IOSTART + IO_CON_REGISTER) {
 		con_register();
-	if (a_address == IOSTART + IO_CON_CR)
+	} else if (a_address == IOSTART + IO_CON_CR) {
 		con_cr();
-	if (a_address == IOSTART + IO_VIDMODE) {
+	} else if (a_address == IOSTART + IO_VIDMODE) {
 		// if we're on the text screen, reset the cursor to the top left
 		if (a_byte >= 8) {
 			g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
 			g_shm_ptr[IOSTART + IO_CON_CURSORV] = 0;
 		}
-	}
-	if (a_address == IOSTART + IO_RANDBYTE) {
+	} else if (a_address == IOSTART + IO_RANDBYTE) {
 		// implement the random byte feature right here
 		a_byte = rand() % 256;
 		// and then fall through to where we write it out below
-	}
-	if (a_address == IOSTART + IO_FP_INIT_CONSTANT) {
+	} else if (a_address == IOSTART + IO_FP_INIT_CONSTANT) {
 		fp_init_constant(a_byte);
-	}
-	if (a_address == IOSTART + IO_FP_TO_ASCII) {
+	} else if (a_address == IOSTART + IO_FP_TO_ASCII) {
 		fp_to_ascii(a_byte);
-	}
-	if (a_address == IOSTART + IO_FP_MULTIPLY) {
+	} else if (a_address == IOSTART + IO_FP_MULTIPLY) {
 		fp_multiply(a_byte);
-	}
-	if (a_address == IOSTART + IO_FP_DIVIDE) {
+	} else if (a_address == IOSTART + IO_FP_DIVIDE) {
 		fp_divide(a_byte);
-	}
-	if (a_address == IOSTART + IO_FP_ADD) {
+	} else if (a_address == IOSTART + IO_FP_ADD) {
 		fp_add(a_byte);
-	}
-	if (a_address == IOSTART + IO_FP_SUBTRACT) {
+	} else if (a_address == IOSTART + IO_FP_SUBTRACT) {
 		fp_subtract(a_byte);
-	}
-	if (a_address == IOSTART + IO_FP_LN) {
+	} else if (a_address == IOSTART + IO_FP_LN) {
 		fp_ln(a_byte);
 	}
+	
 	g_shm_ptr[a_address] = a_byte;
+	
 	// addresses we need to report to the console
 	switch (a_address) {
 		case IOSTART + IO_VIDMODE:
