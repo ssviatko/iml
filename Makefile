@@ -3,8 +3,8 @@ CFLAGS = -Wall -O3 $(INCL)
 UNAME = $(shell uname)
 CC = gcc
 LD = gcc
-LDFLAGS =
-CONS_LDFLAGS = -lX11
+LDFLAGS = -lm
+CONS_LDFLAGS = -lX11 -lm
 
 65816_OBJS = 65816.o 65816_engine.o memio_driver.o
 65816_TARGET = 65816

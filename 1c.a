@@ -25,6 +25,7 @@ IO_FP_MULTIPLY = $1bfc42
 IO_FP_DIVIDE = $1bfc43
 IO_FP_ADD = $1bfc44
 IO_FP_SUBTRACT = $1bfc45
+IO_FP_LN = $1bfc46
 
 FPCOND = 0x1bfcbf
 FPASCII = 0x1bfcc0
@@ -254,13 +255,19 @@ fpcmd
 	cmp #'*'
 	beq fpmultiply
 	cmp #'/'
-	beq fpdivide
+	bne .fpcmd5
+	jmp fpdivide
+.fpcmd5
 	cmp #'+'
-	beq fpadd
+	bne .fpcmd4
+	jmp fpadd
+.fpcmd4
 	cmp #'-'
 	bne .fpcmd3
 	jmp fpsubtract
 .fpcmd3
+	cmp #'N'
+	beq fpln
 	jmp monerror			;unrecognized FP command so fall thru to syntax error
 
 fpgetmask					;construct mask from size specifier, carry set if unregognized
@@ -307,6 +314,20 @@ fpgetregspec
 	sec
 	rts
 
+fpln
+	jsr fpgetmask
+	bcc .fpln1
+	jmp monerror
+.fpln1
+	jsr fpgetregspec
+	bcc .fpln2
+	jmp monerror
+.fpln2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_LN
+	jmp moncmd
+	
 fpmultiply
 	jsr fpgetmask
 	bcc .fpmultiply1
@@ -2111,6 +2132,8 @@ fphelpmsg
 	!tx "F<op><sz><reg> Bin Op, result in <reg>"
 	!byte $0d
 	!tx "Binary Ops: *, /, +, -"
+	!tx $0d
+	!tx "FN<sz><reg> Natural Log of <reg>"
 	!tx $0d
 	!byte $00
 	

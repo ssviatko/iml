@@ -11,6 +11,7 @@
 #include <sys/ipc.h> // for ftok
 #include <errno.h>
 #include <time.h>
+#include <tgmath.h>
 
 #define SHM_SIZE 2097152
 #define SHM_MODE 0600
@@ -97,6 +98,7 @@ const static uint16_t IO_FP_MULTIPLY = 0x42;
 const static uint16_t IO_FP_DIVIDE = 0x43;
 const static uint16_t IO_FP_ADD = 0x44;
 const static uint16_t IO_FP_SUBTRACT = 0x45;
+const static uint16_t IO_FP_LN = 0x46;
 
 const static uint16_t IO_CMD_SERVERALIVE = 0xF800;
 const static uint16_t IO_CMD_SERVERDEAD = 0xF801;
@@ -153,5 +155,6 @@ void fp_multiply(uint8_t a_byte);
 void fp_divide(uint8_t a_byte);
 void fp_add(uint8_t a_byte);
 void fp_subtract(uint8_t a_byte);
+void fp_ln(uint8_t a_byte);
 
 #endif // IO_DRIVER_H

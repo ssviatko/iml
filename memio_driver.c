@@ -201,6 +201,9 @@ void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 	if (a_address == IOSTART + IO_FP_SUBTRACT) {
 		fp_subtract(a_byte);
 	}
+	if (a_address == IOSTART + IO_FP_LN) {
+		fp_ln(a_byte);
+	}
 	g_shm_ptr[a_address] = a_byte;
 	// addresses we need to report to the console
 	switch (a_address) {
@@ -727,7 +730,7 @@ void fp_to_ascii(uint8_t a_byte)
 	fp_val = fp_read_specified(fp_width, fp_extended, fp_reg);
 	
 	// convert it to ascii and write buffer out to 1bfcc0
-	printf("fp_val is %20.20Lf\n", fp_val);
+//	printf("fp_val is %20.20Lf\n", fp_val);
 	snprintf(buff, 24, "%20.20Lf", fp_val);
 	for (i = 0; i < 24; ++i)
 		g_shm_ptr[FPASCII + i] = buff[i];
@@ -807,5 +810,18 @@ void fp_subtract(uint8_t a_byte)
 	arg = fp_read_specified(fp_width, fp_extended, 1);
 	res = acc - arg;
 	fp_writeback(res);
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_ln(uint8_t a_byte)
+{
+	// preforms ln(FACC/FARG)
+	// chooses register based on bit 6 of command
+	// writes back to itself
+	long double op;
+	fp_parse_command(a_byte);
+	op = fp_read_specified(fp_width, fp_extended, fp_reg);
+	op = logl(op);
+	fp_writeback(op);
 	g_shm_ptr[FPCOND] = 0;
 }
