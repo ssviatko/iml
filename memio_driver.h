@@ -40,6 +40,17 @@ const static uint32_t E4SHADOWSTART = 0x1fe400;
 const static uint32_t E4SHADOWEND = 0x1fffff;
 
 // floating point registers
+const static uint32_t FPCOND = 0x1bfcbf; // condition/error byte
+// FPCOND bits:
+// 7 = division by zero error (set)
+// 6 =
+// 5 =
+// 4 =
+// 3 =
+// 2 =
+// 1 =
+// 0 = equality (when set)
+
 const static uint32_t FPASCII = 0x1bfcc0; // 24 byte ASCII buffer
 const static uint32_t FPINT = 0x1bfcd8; // 64 bit integer buffer
 const static uint32_t FPACCUMULATOR = 0x1bfce0;
@@ -83,6 +94,9 @@ const static uint32_t IO_Z80_WINDOW_E = 0x33;
 const static uint16_t IO_FP_INIT_CONSTANT = 0x40;
 const static uint16_t IO_FP_TO_ASCII = 0x41;
 const static uint16_t IO_FP_MULTIPLY = 0x42;
+const static uint16_t IO_FP_DIVIDE = 0x43;
+const static uint16_t IO_FP_ADD = 0x44;
+const static uint16_t IO_FP_SUBTRACT = 0x45;
 
 const static uint16_t IO_CMD_SERVERALIVE = 0xF800;
 const static uint16_t IO_CMD_SERVERDEAD = 0xF801;
@@ -136,5 +150,8 @@ void z80_io_write(uint8_t a_address, uint8_t a_byte);
 void fp_init_constant(uint8_t a_byte);
 void fp_to_ascii(uint8_t a_byte);
 void fp_multiply(uint8_t a_byte);
+void fp_divide(uint8_t a_byte);
+void fp_add(uint8_t a_byte);
+void fp_subtract(uint8_t a_byte);
 
 #endif // IO_DRIVER_H

@@ -192,6 +192,15 @@ void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 	if (a_address == IOSTART + IO_FP_MULTIPLY) {
 		fp_multiply(a_byte);
 	}
+	if (a_address == IOSTART + IO_FP_DIVIDE) {
+		fp_divide(a_byte);
+	}
+	if (a_address == IOSTART + IO_FP_ADD) {
+		fp_add(a_byte);
+	}
+	if (a_address == IOSTART + IO_FP_SUBTRACT) {
+		fp_subtract(a_byte);
+	}
 	g_shm_ptr[a_address] = a_byte;
 	// addresses we need to report to the console
 	switch (a_address) {
@@ -659,8 +668,26 @@ void fp_init_constant(uint8_t a_byte)
 		case 6:
 			fp_const = 10.0L;
 			break;
+		case 7:
+			fp_const = 100.0L;
+			break;
 		case 8:
 			fp_const = -1.0L;
+			break;
+		case 9:
+			fp_const = -2.0L;
+			break;
+		case 10:
+			fp_const = -3.0L;
+			break;
+		case 11:
+			fp_const = -4.0L;
+			break;
+		case 12:
+			fp_const = -5.0L;
+			break;
+		case 13:
+			fp_const = -10.0L;
 			break;
 		case 16:
 			fp_const = 3.141592653589793238462643383279L;
@@ -668,11 +695,18 @@ void fp_init_constant(uint8_t a_byte)
 		case 17:
 			fp_const = 2.7182818284590452353602874L;
 			break;
+		case 18:
+			fp_const = 1.414213562373095048801688724209698078569671875376948073176679L;
+			break;
+		case 19:
+			fp_const = 1.6180339887498948482045868343656381177203091798057628621354486227L;
+			break;
 		default:
 			fp_const = 0.0L;
 			break;
 	}
 	fp_writeback(fp_const);
+	g_shm_ptr[FPCOND] = 0;
 }
 
 void fp_to_ascii(uint8_t a_byte)
@@ -715,4 +749,63 @@ void fp_multiply(uint8_t a_byte)
 	arg = fp_read_specified(fp_width, fp_extended, 1);
 	res = acc * arg;
 	fp_writeback(res);
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_divide(uint8_t a_byte)
+{
+	// preforms FPACCUMULATOR / FPARGUMENT
+	//
+	// command format:
+	// bit 7: float/double
+	// bit 6: acc/arg (location to write back to)
+	// bit 5: extended
+	// bits 0-4: ignored
+	long double acc, arg, res;
+	fp_parse_command(a_byte);
+	acc = fp_read_specified(fp_width, fp_extended, 0);
+	arg = fp_read_specified(fp_width, fp_extended, 1);
+	// test for division by zero
+	if (arg == 0.0) {
+		g_shm_ptr[FPCOND] = 0x80;
+		return;
+	}
+	res = acc / arg;
+	fp_writeback(res);
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_add(uint8_t a_byte)
+{
+	// preforms FPACCUMULATOR + FPARGUMENT
+	//
+	// command format:
+	// bit 7: float/double
+	// bit 6: acc/arg (location to write back to)
+	// bit 5: extended
+	// bits 0-4: ignored
+	long double acc, arg, res;
+	fp_parse_command(a_byte);
+	acc = fp_read_specified(fp_width, fp_extended, 0);
+	arg = fp_read_specified(fp_width, fp_extended, 1);
+	res = acc + arg;
+	fp_writeback(res);
+	g_shm_ptr[FPCOND] = 0;
+}
+void fp_subtract(uint8_t a_byte)
+{
+	// preforms FPACCUMULATOR - FPARGUMENT
+	//
+	// command format:
+	// bit 7: float/double
+	// bit 6: acc/arg (location to write back to)
+	// bit 5: extended
+	// bits 0-4: ignored
+	long double acc, arg, res;
+	fp_parse_command(a_byte);
+	acc = fp_read_specified(fp_width, fp_extended, 0);
+	arg = fp_read_specified(fp_width, fp_extended, 1);
+	res = acc - arg;
+	fp_writeback(res);
+	g_shm_ptr[FPCOND] = 0;
 }

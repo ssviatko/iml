@@ -19,6 +19,19 @@ IO_CON_CR = $1bfc17
 
 IO_VIDMODE = $1bfc20
 
+IO_FP_INIT_CONSTANT = $1bfc40
+IO_FP_TO_ASCII = $1bfc41
+IO_FP_MULTIPLY = $1bfc42
+IO_FP_DIVIDE = $1bfc43
+IO_FP_ADD = $1bfc44
+IO_FP_SUBTRACT = $1bfc45
+
+FPCOND = 0x1bfcbf
+FPASCII = 0x1bfcc0
+FPASCII_LO16 = 0xfcc0
+FPACCUMULATOR = 0x1bfce0
+FPARGUMENT = 0x1bfcf0
+
 promptchar = '*'
 
 l_getline = $1c0000 + getline
@@ -26,6 +39,8 @@ l_prinbuff = $1c0000 + prinbuff
 l_prcdpla = $1c0000 + prcdpla
 l_ucline = $1c0000 + ucline
 
+fpregspec = $28
+fpmask = $29
 scratch2 = $2a
 scratch2_m = $2b
 scratch2_h = $2c
@@ -215,6 +230,248 @@ adjdumpaddr					;add 8 to dump address
 	sta mondump_h
 	plp
 	rts
+
+	!zone fpcmd
+fphelp
+	ldx #fphelpmsg
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
+	jmp moncmd
+fpcmd
+	jsr parse_getchar
+	cmp #'?'
+	beq fphelp
+	cmp #'D'
+	bne .fpcmd1
+	jmp fpdisp
+.fpcmd1
+	cmp #'C'
+	bne .fpcmd2
+	jmp fploadconst
+.fpcmd2
+	cmp #'*'
+	beq fpmultiply
+	cmp #'/'
+	beq fpdivide
+	cmp #'+'
+	beq fpadd
+	cmp #'-'
+	bne .fpcmd3
+	jmp fpsubtract
+.fpcmd3
+	jmp monerror			;unrecognized FP command so fall thru to syntax error
+
+fpgetmask					;construct mask from size specifier, carry set if unregognized
+	jsr parse_getchar
+	cmp #'F'
+	bne .local1
+	lda #$00
+	sta fpmask				;set bits 5/7 of fp mask to 0
+	bra .local4
+.local1
+	cmp #'D'
+	bne .local2
+	lda #$80				;bit 7=1, bit 5=0
+	sta fpmask
+	bra .local4
+.local2
+	cmp #'E'
+	bne .local3
+	lda #$20				;bit 7=0, bit 5=1
+	sta fpmask
+	bra .local4
+.local3
+	sec						;unknown size
+	rts
+.local4
+	clc
+	rts
+	
+fpgetregspec
+	jsr parse_getchar		;set fpregspec to 00 or 40 depending on register specified
+	cmp #'A'
+	bne .localgrs1
+	stz fpregspec
+	bra .localgrs3
+.localgrs1
+	cmp #'B'
+	bne .localgrs4
+	lda #$40
+	sta fpregspec
+.localgrs3
+	clc
+	rts
+.localgrs4
+	sec
+	rts
+
+fpmultiply
+	jsr fpgetmask
+	bcc .fpmultiply1
+	jmp monerror
+.fpmultiply1
+	jsr fpgetregspec
+	bcc .fpmultiply2
+	jmp monerror
+.fpmultiply2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_MULTIPLY
+	jmp moncmd
+	
+fpdivide
+	jsr fpgetmask
+	bcc .fpdivide1
+	jmp monerror
+.fpdivide1
+	jsr fpgetregspec
+	bcc .fpdivide2
+	jmp monerror
+.fpdivide2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_DIVIDE
+	jmp moncmd
+	
+fpadd
+	jsr fpgetmask
+	bcc .fpadd1
+	jmp monerror
+.fpadd1
+	jsr fpgetregspec
+	bcc .fpadd2
+	jmp monerror
+.fpadd2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_ADD
+	jmp moncmd
+	
+fpsubtract
+	jsr fpgetmask
+	bcc .fpsubtract1
+	jmp monerror
+.fpsubtract1
+	jsr fpgetregspec
+	bcc .fpsubtract2
+	jmp monerror
+.fpsubtract2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_SUBTRACT
+	jmp moncmd
+	
+fploadconst
+	jsr fpgetmask
+	bcc .fploadconst1
+	jmp monerror
+.fploadconst1
+	jsr fpgetregspec
+	bcc .fploadconst2
+	jmp monerror
+.fploadconst2
+	jsr parse_addr			;get const specifier
+	rep #$30
+	tya
+	sep #$20
+	and #$1f				;we're only interested in values 0-31
+	ora fpmask
+	ora fpregspec
+	sta IO_FP_INIT_CONSTANT
+	jmp moncmd
+
+fpdisp
+	jsr fpgetmask
+	bcc fpdisp2
+	jmp monerror
+fpfacctxt
+	!tx "FACC: "
+	!byte $00
+fpfargtxt
+	!tx "FARG: "
+	!byte $00
+fpcondtxt
+	!tx "FPCOND: "
+	!byte $00
+fpdisp2
+	ldx #fpfacctxt			;print FACC: tag
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
+	ldx #9
+	lda fpmask
+	and #$20
+	bne .facchex			;bit 5 set, so fall through and print 10 bytes
+	ldx #7
+	lda fpmask
+	and #$80
+	bne .facchex			;bit 5 clear, but bit 7 set, print 8 bytes
+	ldx #3					;bit 5/7 both clear, float, print 4 bytes, fall thru
+.facchex					;print X number of hex bytes in reverse order
+	lda FPACCUMULATOR,x
+	jsr+2 prhex
+	dex
+	bpl .facchex
+	lda fpmask
+	sta IO_FP_TO_ASCII
+	lda #'/'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldx #FPASCII_LO16
+	stx dpla
+	lda #$1b
+	sta dpla_h
+	jsl l_prcdpla
+	sta IO_CON_CR
+	
+	ldx #fpfargtxt			;print FARG: tag
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
+	ldx #9
+	lda fpmask
+	and #$20
+	bne .farghex			;bit 5 set, so fall through and print 10 bytes
+	ldx #7
+	lda fpmask
+	and #$80
+	bne .farghex			;bit 5 clear, but bit 7 set, print 8 bytes
+	ldx #3					;bit 5/7 both clear, float, print 4 bytes, fall thru
+.farghex					;print X number of hex bytes in reverse order
+	lda FPARGUMENT,x
+	jsr+2 prhex
+	dex
+	bpl .farghex
+	lda fpmask
+	ora #$40				;select FARG this time
+	sta IO_FP_TO_ASCII
+	lda #'/'
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	ldx #FPASCII_LO16
+	stx dpla
+	lda #$1b
+	sta dpla_h
+	jsl l_prcdpla
+	sta IO_CON_CR
+	
+	ldx #fpcondtxt			;print FPCOND: tag
+	stx dpla
+	lda #$1c
+	sta dpla_h
+	jsl l_prcdpla
+	lda #' '
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	lda FPCOND
+	jsr+2 prhex
+	sta IO_CON_CR
+	
+	jmp moncmd
 	
 bankcmd
 	jsr parse_addr
@@ -318,6 +575,11 @@ moncmd
 .local9
 	cmp #'?'
 	beq helpcmd
+	cmp #'F'
+	beq .localfp
+	jmp moncmd
+.localfp
+	jsr fpcmd
 	jmp moncmd
 	
 helpcmd
@@ -1818,7 +2080,9 @@ helpmsg
 	!byte $0d
 	!tx "E <addr> <byte> <byte>...  Enter bytes"
 	!byte $0d
-	!tx "L <addr>  Disassemble 65816 Instructions"
+	!tx "F?        Floating Point Support Help"
+	!byte $0d
+	!tx "L <addr>  Disassemble 65816 Inst."
 	!byte $0d
 	!tx "M <mode>  Change video mode, 8/9"
 	!byte $0d
@@ -1830,6 +2094,25 @@ helpmsg
 	!byte $0d
 	!tx "To specify range, use <addr1.addr2>"
 	!byte $0d, 00
+
+fphelpmsg
+	!tx "IML Floating Point Support"
+	!byte $0d
+	!tx "Format: F<cmd><sz><reg>"
+	!byte $0d
+	!tx "Sizes: F=float D=double E=extended"
+	!byte $0d
+	!tx "Registers: A=FACC B=FARG"
+	!byte $0d
+	!tx "FD<sz>    Display FACC/FARG"
+	!byte $0d
+	!tx "FC<sz><reg> <constID> Load Constant"
+	!byte $0d
+	!tx "F<op><sz><reg> Bin Op, result in <reg>"
+	!byte $0d
+	!tx "Binary Ops: *, /, +, -"
+	!tx $0d
+	!byte $00
 	
 !align $ffff, $ffff,$00	;fill up to top of memory
 
