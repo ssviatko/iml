@@ -4,8 +4,10 @@
 #include <assert.h>
 #include <stdio.h>
 #include <time.h>
+#include <sys/time.h>
 #include <getopt.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 #include "memio_driver.h"
 
@@ -30,6 +32,7 @@ Pixmap osb;
 int g_flashing;
 int g_flash_countdown;
 const int g_flash_rate = 15;
+uint64_t g_frames = 0;
 
 const uint8_t g_standard_colors[][3] = {
     { 0x00, 0x00, 0x00 }, // Black
@@ -188,10 +191,11 @@ void draw(void)
     g_flash_countdown--;
     if (g_flash_countdown < 0) {
         g_flash_countdown = g_flash_rate;
-        if (g_flashing == 1)
+        if (g_flashing == 1) {
 			g_flashing = 0;
-		else
+		} else {
 			g_flashing = 1;
+		}
     }
 
     int l_pixel_size;
@@ -342,6 +346,7 @@ void draw(void)
 void redraw(void)
 {
 	XCopyArea(dpy, osb, win, gc, 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale, 0, 0);
+	++g_frames;
 }
 
 void load_server(char *path)
@@ -351,7 +356,7 @@ void load_server(char *path)
 		char *execargs[1] = { NULL };
 		int success = execvp(path, execargs);
 		if (success < 0) {
-			fprintf(stderr, "exec of server binary failed. errno=%d (%s)\n", errno, strerror(errno));
+			fprintf(stderr, "console: exec of server binary failed. errno=%d (%s)\n", errno, strerror(errno));
 			exit(-1);
 		}
 		// don't clutter the screen
@@ -381,10 +386,10 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 	
-	printf("starting up memory and io driver..\n");
+	printf("console: starting up memory and io driver..\n");
 	mem_driver_startup();
 	io_driver_startup();
-	printf("started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
+	printf("console: started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
 	
 	// start up X
 	int runFlag = 1;
@@ -395,7 +400,7 @@ int main(int argc, char **argv)
 	blackColor = BlackPixel(dpy, DefaultScreen(dpy));
 	whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
 
-	printf("Starting X: Creating window...\n");
+	printf("console: Starting X: Creating window...\n");
 	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale, 0, blackColor, blackColor);
 
 	// constrict window to set size
@@ -422,21 +427,21 @@ int main(int argc, char **argv)
 	struct timespec ts;
 	io_message_t msg;
 	// wait indefinitely for SERVERALIVE. Nothing to do if the server isn't there
-	printf("waiting for server to appear...\n");
+	printf("console: waiting for server to appear...\n");
 	while (io_driver_wait_forward(&msg) == -1) {
 		ts.tv_sec = 0;
 		ts.tv_nsec = 20000000; // 20ms
 		nanosleep(&ts, NULL);
 	}
 	if (msg.address != IO_CMD_SERVERALIVE) {
-		fprintf(stderr, "expected IO_CMD_SERVERALIVE from server!\n");
+		fprintf(stderr, "console: expected IO_CMD_SERVERALIVE from server!\n");
 		exit(-1);
 	}
 	// send CLIENTALIVE
 	io_driver_post_backchannel(IO_CMD_CLIENTALIVE, 0);
 	
 	// "map" the window (make it appear)
-	printf("Mapping window...\n");
+	printf("console: Mapping window...\n");
 	XMapWindow(dpy, win);
 
 	gc = XCreateGC(dpy, osb, 0, 0);
@@ -452,7 +457,12 @@ int main(int argc, char **argv)
 
 	draw();
 	redraw();
-		
+
+	// keep track of our FPS in case we're on a slow machine
+	struct timeval start_time;
+	struct timeval end_time;
+	gettimeofday(&start_time, NULL);
+
 	// wait for an event
 	int x11_fd = ConnectionNumber(dpy);
 	fd_set in_fds;
@@ -462,35 +472,30 @@ int main(int argc, char **argv)
 		FD_ZERO(&in_fds);
 		FD_SET(x11_fd, &in_fds);
 
-        // Set our timer.  1/30th of a second
-		struct timeval tv;
-		tv.tv_usec = 33000;
-		tv.tv_sec = 0;
+        // Set our FPS cap = theoretical max 40FPS, ~30-32FPS on 12gen i7
+		struct timespec l_frame_ts;
+		l_frame_ts.tv_nsec = 25000000;
+		l_frame_ts.tv_sec = 0;
 
-		// Wait for X Event or a Timer
-		int num_ready_fds = select(x11_fd + 1, &in_fds, NULL, NULL, &tv);
-		if (num_ready_fds > 0) {
-//			printf("Event Received!\n");
-		} else if (num_ready_fds == 0) {
-			// Handle timer here
-//			printf("33ms timeout\n");
-			// respond to message queue
-			while (io_driver_wait_forward(&msg) != -1) {
-				if (msg.address == IO_VIDMODE) {
-					// we read our vidmode right out of softswitches now
-//					printf("IO_VIDMODE\n");
-				}
-				if (msg.address == IO_CMD_SERVERDEAD) {
-					printf("server died!\n");
-					break;
-				}
+		nanosleep(&l_frame_ts, NULL);
+		
+		// respond to message queue
+		while (io_driver_wait_forward(&msg) != -1) {
+			if (msg.address == IO_VIDMODE) {
+				// we read our vidmode right out of softswitches now
+//				printf("IO_VIDMODE\n");
 			}
-			draw();
-			redraw();
-		} else {
-			fprintf(stderr, "An error occured with X fd_set timeout mechanism.\n");
+			if (msg.address == IO_CMD_SERVERDEAD) {
+				printf("console: server died!\n");
+				break;
+			}
 		}
 		
+		// redraw the screen
+		draw();
+		redraw();
+
+		// handle any events
 		while (XPending(dpy)) {
 			XEvent e;
 			XNextEvent(dpy, &e);
@@ -559,10 +564,10 @@ int main(int argc, char **argv)
 					}
 					break;
 				case ButtonPress:
-					printf("Button %d at: X%d, Y%d\n",e.xbutton.button,e.xbutton.x,e.xbutton.y);
+					printf("console: Button %d at: X%d, Y%d\n",e.xbutton.button,e.xbutton.x,e.xbutton.y);
 					break;
 				case ClientMessage:
-					char *str = XGetAtomName(dpy,e.xclient.message_type);
+					char *str = XGetAtomName(dpy, e.xclient.message_type);
 //					printf("ClientMessage: %s\n",str);
 //					if (!strcmp(str,"WM_PROTOCOLS"))
 						runFlag = 0;
@@ -572,16 +577,22 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("Shutting down X Windows...\n");
+	printf("console: Shutting down X Windows...\n");
 	XFreePixmap(dpy, osb);
 	XFreeGC(dpy, gc);
 	XCloseDisplay(dpy);
 	io_driver_post_backchannel(IO_CMD_CLIENTDEAD, 0);
-	printf("shutting down memory driver...\n");
+	printf("console: shutting down memory driver...\n");
 	mem_driver_shutdown();
 	ts.tv_sec = 0;
 	ts.tv_nsec = 500000000; // 500ms
 	nanosleep(&ts, NULL); // wait for server to receive CLIENTDEAD
+
+	gettimeofday(&end_time, NULL);
+	long elapsed_secs = end_time.tv_sec - start_time.tv_sec - ((end_time.tv_usec - start_time.tv_usec < 0) ? 1 : 0); // subtract 1 if there was a usec rollover
+	long elapsed_usecs = end_time.tv_usec - start_time.tv_usec + ((end_time.tv_usec - start_time.tv_usec < 0) ? 1000000 : 0); // bump usecs by 1 million usec for rollover
+	printf("console: %ld frames displayed in %ld seconds %ld usecs.\n", g_frames, elapsed_secs, elapsed_usecs);
+	printf("console: estimated console FPS: %f\n", (double)g_frames / ((double)elapsed_secs + (double)(elapsed_usecs / 1000000.0)));
 
 	return 0;
 }
