@@ -117,7 +117,7 @@ int main(int argc, char **argv)
 			}
 		}
 		randvideo();
-		sleep(1);
+		sleep(10);
 	}
 	ctrlc(0); // just use the ctrlc handler to shut everything down
 	return 0;

@@ -41,6 +41,7 @@ promptchar = '*'
 l_getline = $1c0000 + getline
 l_prinbuff = $1c0000 + prinbuff
 l_prcdpla = $1c0000 + prcdpla
+l_prcoldpla = $1c0000 + prcoldpla
 l_ucline = $1c0000 + ucline
 
 fpregspec = $28
@@ -76,10 +77,13 @@ x1crominit
 	!rl
 	sep #$20
 	!as
-	ldx #initstring
+	ldx #initbanner
 	stx dpla
 	lda #$1c
 	sta dpla_h
+	jsl l_prcoldpla
+	ldx #initstring
+	stx dpla
 	jsl l_prcdpla
 	jmp+2 monstart
 
@@ -2119,33 +2123,88 @@ prinbuff				;feed location of input buffer into dpla and then print
 	
 	!zone prcdpla
 prcdpla					; print C string pointed to by dp locations $3d-$3f
-	php
-	rep #$10
+	php					; modified for color coding (0x01/color byte to change colors)
+	rep #$10			;  0x02 = return to default color
 	sep #$20
 	!as
 	!rl
+	lda IO_CON_COLOR
+	sta scratch1
 	ldy #$0000
 .local2
 	lda [dpla],y
 	beq .local3
+	cmp #$01
+	beq .local4
+	cmp #$02
+	beq .local5
 	sta IO_CON_CHAROUT
 	sta IO_CON_REGISTER
 	iny
 	bra .local2
 .local3
+	lda scratch1
+	sta IO_CON_COLOR
+	plp
+	rtl
+.local4
+	iny
+	lda [dpla],y
+	sta IO_CON_COLOR
+	iny
+	bra .local2
+.local5
+	lda scratch1
+	sta IO_CON_COLOR
+	iny
+	bra .local2
+	
+	!zone prcoldpla
+prcoldpla				;print colored C string (color byte/character byte pairs) pointed to by dpla
+	php
+	rep #$10
+	sep #$20
+	!as
+	!rl
+	lda IO_CON_COLOR
+	sta scratch1
+	ldy #$0000
+.local2
+	lda [dpla],y
+	beq .local3
+	sta IO_CON_COLOR
+	iny
+	lda [dpla],y
+	sta IO_CON_CHAROUT
+	sta IO_CON_REGISTER
+	iny
+	bra .local2
+.local3
+	lda scratch1
+	sta IO_CON_COLOR
 	plp
 	rtl
 
+initbanner
+	!byte 0x0b, 'I', 0x01, 'M', 0x09, 'L', 0x01, ' '
+	!byte 0x03, '6', 0x03, '5', 0x03, '8', 0x03, '1', 0x03, '6', 0x03, ' '
+	!byte 0x0c, '1', 0x0c, 'C', 0x0c, ' '
+	!byte 0x06, 'F', 0x06, 'i', 0x06, 'r', 0x06, 'm', 0x06, 'w', 0x06, 'a', 0x06, 'r', 0x06, 'e', 0x06, ' '
+	!byte 0x0d, 'v', 0x0d, '0', 0x0d, '0'
+	!byte 0x01, 0x0d
+	!byte 0x00
+
 initstring
-	!tx "IML 65816 1C Firmware v00"
-	!byte 0x0d
+	!byte 0x01, 0x01
 	!tx "System Monitor"
 	!byte 0x0d
 	!byte 0x0d
 	!byte 0
 
 helpmsg
+	!byte 0x01, 0x0e
 	!tx "IML 65816 Monitor Commands"
+	!byte 0x02
 	!byte $0d
 	!tx "A <addr>  Dump ASCII"
 	!byte $0d
@@ -2173,7 +2232,9 @@ helpmsg
 	!byte $0d, 00
 
 fphelpmsg
+	!byte 0x01, 0x0e
 	!tx "IML Floating Point Support"
+	!byte 0x02
 	!byte $0d
 	!tx "Format: F<cmd><sz><reg>"
 	!byte $0d
