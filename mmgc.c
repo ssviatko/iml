@@ -17,6 +17,11 @@ uint8_t g_con_cursorh = 0;
 uint8_t g_con_cursorv = 0;
 uint8_t g_con_charout;
 uint8_t g_con_color;
+uint8_t g_con_default_color = 0x07; // light blue on black background
+
+static uint8_t g_kbd_q[256];
+static uint8_t g_kbd_qsize = 0;
+
 char *g_mem;
 
 int g_run = 0;
@@ -381,7 +386,8 @@ mmgc_error mmgc_startup(uint32_t a_scale, char *a_title)
 	}
 
 	g_vidmode = 8; // lo res text screen
-	mmgc_con_cls(' ', 0x07);
+	g_con_cursor = 0x80; // show the cursor
+	mmgc_con_cls(' ', g_con_default_color);
 	mmgc_draw();
 	mmgc_redraw();
 	
@@ -403,6 +409,65 @@ mmgc_error mmgc_close_requested()
 		return ERROR_CLOSE_REQUESTED;
 	else
 		return ERROR_NONE;
+}
+
+/* keyboard queue */
+
+static void kbd_enqueue(uint8_t a_char)
+{
+	if (g_kbd_qsize == 255)
+		return; // queue full
+	g_kbd_q[g_kbd_qsize++] = a_char;
+}
+
+static void kbd_dequeue()
+{
+	if (g_kbd_qsize == 0)
+		return;
+	if (g_kbd_qsize == 1) {
+		g_kbd_qsize = 0;
+		g_kbd_q[0] = 0;
+	} else {
+		for (uint8_t i = 1; i <= g_kbd_qsize; ++i)
+			g_kbd_q[i -1] = g_kbd_q[i];
+		g_kbd_qsize--;
+	}
+}
+
+static void kbd_clear()
+{
+	g_kbd_qsize = 0;
+}
+
+uint8_t mmgc_key_retrieve()
+{
+	// retrieve and then dequeue next character
+	uint8_t ret = g_kbd_q[0];
+	kbd_dequeue();
+	return ret;
+}
+
+mmgc_error mmgc_key_waiting()
+{
+	if (g_kbd_qsize > 0)
+		return ERROR_KEY_WAITING;
+	else
+		return ERROR_NONE;
+}
+
+uint8_t mmgc_getc()
+{
+	struct timespec l_key_ts;
+	while (mmgc_key_waiting() == ERROR_NONE) {
+		// check if close box has been hit
+		if (g_close > 0)
+			return 0xff; // close indicated
+		// wait 10ms and try again
+		l_key_ts.tv_nsec = 10000000;
+		l_key_ts.tv_sec = 0;
+		nanosleep(&l_key_ts, NULL);
+	}
+	return mmgc_key_retrieve();
 }
 
 void *x_tf(void *arg) {
@@ -449,7 +514,7 @@ void *x_tf(void *arg) {
 							AltState = 1;
 							break;
 						default:
-							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+//							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
 //							if ((ShiftState == 0) && (ControlState == 1) && (AltState == 1) && (key_symbol == 0xff57)) {
 //								// control-alt-end to reset
 //								io_driver_post_backchannel(IO_CMD_WARMRESET, 0);
@@ -464,6 +529,7 @@ void *x_tf(void *arg) {
 							if (key_symbol == 0xff54)
 								xlat[0] = 0xa;
 //							io_driver_post_backchannel(IO_CMD_KEYPRESS, xlat[0]);
+							kbd_enqueue(xlat[0]);
 							break;
 					}
 					break;
@@ -524,6 +590,11 @@ mmgc_error mmgc_shutdown()
 }
 
 /* console handling */
+
+void mmgc_con_color(uint8_t a_color)
+{
+	g_con_color = a_color;
+}
 
 void mmgc_con_cls(uint8_t a_charout, uint8_t a_color)
 {
@@ -651,6 +722,23 @@ void mmgc_puts(char *a_str)
 		con_register();
 		l_instr++;
 	}
+	mmgc_draw();
+	mmgc_redraw();
+}
+
+void mmgc_putc(uint8_t a_char)
+{
+	g_con_charout = a_char;
+	con_register();
+	mmgc_draw();
+	mmgc_redraw();
+}
+
+uint8_t mmgc_vidmode(uint8_t a_mode)
+{
+	g_vidmode = a_mode;
+	if (g_vidmode >= 8)
+		mmgc_con_cls(' ', g_con_default_color);
 	mmgc_draw();
 	mmgc_redraw();
 }

@@ -19,7 +19,8 @@
 
 typedef enum {
 	ERROR_NONE = 0,
-	ERROR_CLOSE_REQUESTED
+	ERROR_CLOSE_REQUESTED,
+	ERROR_KEY_WAITING
 } mmgc_error;
 
 mmgc_error mmgc_startup(uint32_t a_scale, char *a_title);
@@ -30,4 +31,10 @@ mmgc_error mmgc_redraw();
 char *mmgc_mem();
 void mmgc_con_cls(uint8_t a_charout, uint8_t a_color);
 void mmgc_con_cr();
+void mmgc_con_color(uint8_t a_color);
 void mmgc_puts(char *a_str);
+void mmgc_putc(uint8_t a_char);
+mmgc_error mmgc_key_waiting();
+uint8_t mmgc_key_retrieve();
+uint8_t mmgc_getc();
+uint8_t mmgc_vidmode(uint8_t a_mode);
