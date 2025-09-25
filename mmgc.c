@@ -643,7 +643,7 @@ static void scrollup()
 		// blank out the last line
 		for (uint32_t d = (l_w * 2) * (l_h - 1); d < (l_w * 2) * l_h; d += 2) {
 			g_mem[d] = 0x20;
-			g_mem[d + 1] = g_con_color;
+			g_mem[d + 1] = g_con_default_color;
 		}
 	}
 }
