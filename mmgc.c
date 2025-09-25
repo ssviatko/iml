@@ -1,0 +1,656 @@
+#include "mmgc.h"
+
+#define DEFAULTX 480
+#define DEFAULTY 272
+
+// X globals
+Display *dpy;
+int blackColor, whiteColor;
+Window win;
+GC gc;
+Pixmap osb;
+
+uint32_t g_scale;
+uint8_t g_vidmode = 0;
+uint8_t g_con_cursor = 0;
+uint8_t g_con_cursorh = 0;
+uint8_t g_con_cursorv = 0;
+uint8_t g_con_charout;
+uint8_t g_con_color;
+char *g_mem;
+
+int g_run = 0;
+int g_close = 0;
+pthread_t xthread;
+void *x_tf(void *arg);
+
+const uint8_t g_standard_colors[][3] = {
+    { 0x00, 0x00, 0x00 }, // Black
+    { 0xdd, 0x00, 0x33 }, // Deep Red
+    { 0x00, 0x00, 0x99 }, // Dark Blue
+    { 0xdd, 0x22, 0xdd }, // Purple
+    { 0x00, 0x77, 0x22 }, // Dark Green
+    { 0x55, 0x55, 0x55 }, // Dark Gray
+    { 0x22, 0x22, 0xff }, // Medium Blue
+    { 0x66, 0xaa, 0xff }, // Light Blue
+    { 0x88, 0x55, 0x00 }, // Brown
+    { 0xff, 0x66, 0x00 }, // Orange
+    { 0xaa, 0xaa, 0xaa }, // Light Gray
+    { 0xff, 0x99, 0x88 }, // Pink
+    { 0x11, 0xdd, 0x00 }, // Light Green
+    { 0xff, 0xff, 0x00 }, // Yellow
+    { 0x44, 0xff, 0x99 }, // Aquamarine
+    { 0xff, 0xff, 0xff }  // White
+};
+
+const uint8_t g_char_rom[256][8] = {
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 00
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 01
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 02
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 03
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 04
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 05
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 06
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 07
+    { 0x00, 0x08, 0x10, 0x3e, 0x10, 0x08, 0x00, 0x00 }, // 08
+    { 0x00, 0x08, 0x1c, 0x2a, 0x08, 0x08, 0x00, 0x00 }, // 09
+    { 0x00, 0x08, 0x08, 0x2a, 0x1c, 0x08, 0x00, 0x00 }, // 0a
+    { 0x00, 0x08, 0x04, 0x3e, 0x04, 0x08, 0x00, 0x00 }, // 0b
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 0c
+    { 0x00, 0x02, 0x0a, 0x12, 0x3e, 0x10, 0x08, 0x00 }, // 0d
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 0e
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 0f
+    { 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14 }, // 10
+    { 0x00, 0x00, 0x3f, 0x00, 0x3f, 0x00, 0x00, 0x00 }, // 11
+    { 0x00, 0x00, 0x1f, 0x10, 0x17, 0x14, 0x14, 0x14 }, // 12
+    { 0x00, 0x00, 0x3c, 0x04, 0x34, 0x14, 0x14, 0x14 }, // 13
+    { 0x14, 0x14, 0x34, 0x04, 0x3c, 0x00, 0x00, 0x00 }, // 14
+    { 0x14, 0x14, 0x17, 0x10, 0x1f, 0x00, 0x00, 0x00 }, // 15
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 16
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 17
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 18
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 19
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 1a
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 1b
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 1c
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 1d
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 1e
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a }, // 1f
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, // 20
+    { 0x08, 0x08, 0x08, 0x08, 0x00, 0x00, 0x08, 0x00 }, // 21 !
+    { 0x14, 0x14, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00 }, // 22 "
+    { 0x14, 0x14, 0x3e, 0x14, 0x3e, 0x14, 0x14, 0x00 }, // 23 #
+    { 0x08, 0x1e, 0x28, 0x1c, 0x0a, 0x3c, 0x08, 0x00 }, // 24 $
+    { 0x30, 0x32, 0x04, 0x08, 0x10, 0x26, 0x06, 0x00 }, // 25 %
+    { 0x18, 0x24, 0x28, 0x10, 0x2a, 0x24, 0x1a, 0x00 }, // 26 &
+    { 0x18, 0x08, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00 }, // 27 '
+    { 0x04, 0x08, 0x10, 0x10, 0x10, 0x08, 0x04, 0x00 }, // 28 (
+    { 0x10, 0x08, 0x04, 0x04, 0x04, 0x08, 0x10, 0x00 }, // 29 )
+    { 0x00, 0x08, 0x2a, 0x1c, 0x2a, 0x08, 0x00, 0x00 }, // 2a *
+    { 0x00, 0x08, 0x08, 0x3e, 0x08, 0x08, 0x00, 0x00 }, // 2b +
+    { 0x00, 0x00, 0x00, 0x00, 0x18, 0x08, 0x10, 0x00 }, // 2c ,
+    { 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00, 0x00, 0x00 }, // 2d -
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00 }, // 2e .
+    { 0x00, 0x02, 0x04, 0x08, 0x10, 0x20, 0x00, 0x00 }, // 2f /
+    { 0x1c, 0x22, 0x26, 0x2a, 0x32, 0x22, 0x1c, 0x00 }, // 30 0
+    { 0x08, 0x18, 0x08, 0x08, 0x08, 0x08, 0x1c, 0x00 }, // 31 1
+    { 0x1c, 0x22, 0x02, 0x04, 0x08, 0x10, 0x3e, 0x00 }, // 32 2
+    { 0x3e, 0x04, 0x08, 0x04, 0x02, 0x22, 0x1c, 0x00 }, // 33 3
+    { 0x04, 0x0c, 0x14, 0x24, 0x3e, 0x04, 0x04, 0x00 }, // 34 4
+    { 0x3e, 0x20, 0x3c, 0x02, 0x02, 0x22, 0x1c, 0x00 }, // 35 5
+    { 0x0c, 0x10, 0x20, 0x3c, 0x22, 0x22, 0x1c, 0x00 }, // 36 6
+    { 0x3e, 0x02, 0x04, 0x08, 0x10, 0x10, 0x10, 0x00 }, // 37 7
+    { 0x1c, 0x22, 0x22, 0x1c, 0x22, 0x22, 0x1c, 0x00 }, // 38 8
+    { 0x1c, 0x22, 0x22, 0x1e, 0x02, 0x04, 0x18, 0x00 }, // 39 9
+    { 0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x00, 0x00 }, // 3a :
+    { 0x00, 0x18, 0x18, 0x00, 0x18, 0x08, 0x10, 0x00 }, // 3b ;
+    { 0x04, 0x08, 0x10, 0x20, 0x10, 0x08, 0x04, 0x00 }, // 3c >
+    { 0x00, 0x00, 0x3e, 0x00, 0x3e, 0x00, 0x00, 0x00 }, // 3d =
+    { 0x10, 0x08, 0x04, 0x02, 0x04, 0x08, 0x10, 0x00 }, // 3e <
+    { 0x1c, 0x22, 0x02, 0x04, 0x08, 0x00, 0x08, 0x00 }, // 3f ?
+    { 0x1c, 0x22, 0x02, 0x1a, 0x2a, 0x2a, 0x1c, 0x00 }, // 40 @
+    { 0x1c, 0x22, 0x22, 0x22, 0x3e, 0x22, 0x22, 0x00 }, // 41 A
+    { 0x3c, 0x22, 0x22, 0x3c, 0x22, 0x22, 0x3c, 0x00 }, // 42 B
+    { 0x1c, 0x22, 0x20, 0x20, 0x20, 0x22, 0x1c, 0x00 }, // 43 C
+    { 0x38, 0x24, 0x22, 0x22, 0x22, 0x24, 0x38, 0x00 }, // 44 D
+    { 0x3e, 0x20, 0x20, 0x3c, 0x20, 0x20, 0x3e, 0x00 }, // 45 E
+    { 0x3e, 0x20, 0x20, 0x3c, 0x20, 0x20, 0x20, 0x00 }, // 46 F
+    { 0x1c, 0x22, 0x20, 0x2e, 0x22, 0x22, 0x1e, 0x00 }, // 47 G
+    { 0x22, 0x22, 0x22, 0x3e, 0x22, 0x22, 0x22, 0x00 }, // 48 H
+    { 0x1c, 0x08, 0x08, 0x08, 0x08, 0x08, 0x1c, 0x00 }, // 49 I
+    { 0x0e, 0x04, 0x04, 0x04, 0x04, 0x24, 0x18, 0x00 }, // 4a J
+    { 0x22, 0x24, 0x28, 0x30, 0x28, 0x24, 0x22, 0x00 }, // 4b K
+    { 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x3e, 0x00 }, // 4c L
+    { 0x22, 0x36, 0x2a, 0x2a, 0x22, 0x22, 0x22, 0x00 }, // 4d M
+    { 0x22, 0x22, 0x32, 0x2a, 0x26, 0x22, 0x22, 0x00 }, // 4e N
+    { 0x1c, 0x22, 0x22, 0x22, 0x22, 0x22, 0x1c, 0x00 }, // 4f O
+    { 0x3c, 0x22, 0x22, 0x3c, 0x20, 0x20, 0x20, 0x00 }, // 50 P
+    { 0x1c, 0x22, 0x22, 0x22, 0x2a, 0x24, 0x1a, 0x00 }, // 51 Q
+    { 0x3c, 0x22, 0x22, 0x3c, 0x28, 0x24, 0x22, 0x00 }, // 52 R
+    { 0x1e, 0x20, 0x20, 0x1c, 0x02, 0x02, 0x3c, 0x00 }, // 53 S
+    { 0x3e, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x00 }, // 54 T
+    { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x1c, 0x00 }, // 55 U
+    { 0x22, 0x22, 0x22, 0x22, 0x22, 0x14, 0x08, 0x00 }, // 56 V
+    { 0x22, 0x22, 0x22, 0x2a, 0x2a, 0x2a, 0x14, 0x00 }, // 57 W
+    { 0x22, 0x22, 0x14, 0x08, 0x14, 0x22, 0x22, 0x00 }, // 58 X
+    { 0x22, 0x22, 0x22, 0x14, 0x08, 0x08, 0x08, 0x00 }, // 59 Y
+    { 0x3e, 0x02, 0x04, 0x08, 0x10, 0x20, 0x3e, 0x00 }, // 5a Z
+    { 0x1c, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1c, 0x00 }, // 5b [
+    { 0x00, 0x20, 0x10, 0x08, 0x04, 0x02, 0x00, 0x00 }, // 5c \ .
+    { 0x1c, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1c, 0x00 }, // 5d ]
+    { 0x08, 0x14, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00 }, // 5e ^
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e }, // 5f _
+    { 0x10, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00 }, // 60 `
+    { 0x00, 0x00, 0x1c, 0x02, 0x1e, 0x22, 0x1e, 0x00 }, // 61 a
+    { 0x20, 0x20, 0x2c, 0x32, 0x22, 0x22, 0x3c, 0x00 }, // 62 b
+    { 0x00, 0x00, 0x1c, 0x20, 0x20, 0x22, 0x1c, 0x00 }, // 63 c
+    { 0x02, 0x02, 0x1a, 0x26, 0x22, 0x22, 0x1e, 0x00 }, // 64 d
+    { 0x00, 0x00, 0x1c, 0x22, 0x3e, 0x20, 0x1c, 0x00 }, // 65 e
+    { 0x0c, 0x12, 0x10, 0x38, 0x10, 0x10, 0x10, 0x00 }, // 66 f
+    { 0x00, 0x1e, 0x22, 0x22, 0x1e, 0x02, 0x1c, 0x00 }, // 67 g
+    { 0x20, 0x20, 0x2c, 0x32, 0x22, 0x22, 0x22, 0x00 }, // 68 h
+    { 0x08, 0x00, 0x18, 0x08, 0x08, 0x08, 0x1c, 0x00 }, // 69 i
+    { 0x04, 0x00, 0x0c, 0x04, 0x04, 0x24, 0x18, 0x00 }, // 6a j
+    { 0x20, 0x20, 0x24, 0x28, 0x30, 0x28, 0x24, 0x00 }, // 6b k
+    { 0x18, 0x08, 0x08, 0x08, 0x08, 0x08, 0x1c, 0x00 }, // 6c l
+    { 0x00, 0x00, 0x34, 0x2a, 0x2a, 0x22, 0x22, 0x00 }, // 6d m
+    { 0x00, 0x00, 0x2c, 0x32, 0x22, 0x22, 0x22, 0x00 }, // 6e n
+    { 0x00, 0x00, 0x1c, 0x22, 0x22, 0x22, 0x1c, 0x00 }, // 6f o
+    { 0x00, 0x00, 0x3c, 0x22, 0x3c, 0x20, 0x20, 0x00 }, // 70 p
+    { 0x00, 0x00, 0x1a, 0x26, 0x1e, 0x02, 0x02, 0x00 }, // 71 q
+    { 0x00, 0x00, 0x2c, 0x32, 0x20, 0x20, 0x20, 0x00 }, // 72 r
+    { 0x00, 0x00, 0x1c, 0x20, 0x1c, 0x02, 0x3c, 0x00 }, // 73 s
+    { 0x10, 0x10, 0x38, 0x10, 0x10, 0x12, 0x0c, 0x00 }, // 74 t
+    { 0x00, 0x00, 0x22, 0x22, 0x22, 0x26, 0x1a, 0x00 }, // 75 u
+    { 0x00, 0x00, 0x22, 0x22, 0x22, 0x14, 0x08, 0x00 }, // 76 v
+    { 0x00, 0x00, 0x22, 0x22, 0x2a, 0x2a, 0x14, 0x00 }, // 77 w
+    { 0x00, 0x00, 0x22, 0x14, 0x08, 0x14, 0x22, 0x00 }, // 78 x
+    { 0x00, 0x00, 0x22, 0x22, 0x1e, 0x02, 0x1c, 0x00 }, // 79 y
+    { 0x00, 0x00, 0x3e, 0x04, 0x08, 0x10, 0x3e, 0x00 }, // 7a z
+    { 0x04, 0x08, 0x08, 0x10, 0x08, 0x08, 0x04, 0x00 }, // 7b {
+    { 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x00 }, // 7c |
+    { 0x10, 0x08, 0x08, 0x04, 0x08, 0x08, 0x10, 0x00 }, // 7d }
+    { 0x00, 0x00, 0x10, 0x2a, 0x04, 0x00, 0x00, 0x00 }, // 7e ~
+    { 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a, 0x15, 0x2a } // 7f rubout
+};
+
+mmgc_error mmgc_draw()
+{
+    int l_pixel_size;
+    int l_gr_w;
+    int l_gr_h;
+    int l_4096;
+ 
+    if (g_vidmode >= 8) {
+        switch (g_vidmode) {
+        case 8: // 40 x 17 text mode
+            l_gr_w = 40;
+            l_gr_h = 17;
+            l_pixel_size = 2;
+            break;
+        case 9: // 80 x 34 text mode
+            l_gr_w = 80;
+            l_gr_h = 34;
+            l_pixel_size = 1;
+            break;
+        default: // default to low-res
+            l_gr_w = 40;
+            l_gr_h = 17;
+            l_pixel_size = 2;
+            break;
+        }
+		Pixmap l_charimg;
+		l_charimg = XCreatePixmap(dpy, win, l_pixel_size * 6 * g_scale, l_pixel_size * 8 * g_scale, 24);
+
+//		printf("IO_CON_CURSOR %d IO_CON_CURSORH %d IO_CON_CURSORV %d\n", mem[IOSTART + IO_CON_CURSOR], mem[IOSTART + IO_CON_CURSORH], mem[IOSTART + IO_CON_CURSORV]);
+		for (int w = 0; w < l_gr_w; ++w) {
+			for (int h = 0; h < l_gr_h; ++h) {
+				// compute base address and get character/color info out of memory
+				uint32_t l_baseaddr = (h * l_gr_w * 2) + (w * 2);
+				uint8_t l_char = g_mem[l_baseaddr];
+				uint8_t l_color = g_mem[l_baseaddr + 1] & 0x0f;
+				uint8_t l_backcolor = (g_mem[l_baseaddr + 1] >> 4) & 0x0f;
+				if ((g_con_cursor >= 0x80) && ((g_con_cursorh == w) && (g_con_cursorv == h))) {
+					// invert this block.. but don't flash it
+//					printf("showing cursor at %d, %d\n", w, h);
+					uint8_t l_temp = l_color;
+					l_color = l_backcolor;
+					l_backcolor = l_temp;
+				}
+				// blot out our character stencil with the background color
+				XSetForeground(dpy, gc, ((g_standard_colors[l_backcolor][0] * 65536) + (g_standard_colors[l_backcolor][1] * 256) + g_standard_colors[l_backcolor][2]));
+				XFillRectangle(dpy, l_charimg, gc, 0, 0, l_pixel_size * 6 * g_scale, l_pixel_size * 8 * g_scale);
+				XSetForeground(dpy, gc, ((g_standard_colors[l_color][0] * 65536) + (g_standard_colors[l_color][1] * 256) + g_standard_colors[l_color][2]));
+				for (int iy = 0; iy <= 7; ++iy) {
+					for (int ix = 0; ix <= 5; ++ix) {
+						if (((g_char_rom[l_char][iy] << (ix + 2)) & 0x80) == 0x80) {
+							XFillRectangle(dpy, l_charimg, gc, ix * l_pixel_size * g_scale, iy * l_pixel_size * g_scale, l_pixel_size * g_scale, l_pixel_size * g_scale);
+						}
+					}
+				}
+				XCopyArea(dpy, l_charimg, osb, gc, 0, 0, l_pixel_size * 6 * g_scale, l_pixel_size * 8 * g_scale, w * l_pixel_size * 6 * g_scale, h * l_pixel_size * 8 * g_scale);
+			}
+		}
+		XFreePixmap(dpy, l_charimg);
+    } else {
+        switch (g_vidmode) {
+        case 0: // 120 x 68, 16 colors, 4k
+            l_gr_w = 120;
+            l_gr_h = 68;
+            l_pixel_size = 8;
+            l_4096 = 0;
+            break;
+        case 1: // 240 x 136, 16 colors, 16k
+            l_gr_w = 240;
+            l_gr_h = 136;
+            l_pixel_size = 4;
+            l_4096 = 0;
+            break;
+        case 2: // 480 x 272, 16 colors, 64k
+            l_gr_w = 480;
+            l_gr_h = 272;
+            l_pixel_size = 2;
+            l_4096 = 0;
+            break;
+        case 4: // 120 x 68, 4096 colors, 16k
+            l_gr_w = 120;
+            l_gr_h = 68;
+            l_pixel_size = 8;
+            l_4096 = 1;
+            break;
+        case 5: // 240 x 136, 4096 colors, 64k
+            l_gr_w = 240;
+            l_gr_h = 136;
+            l_pixel_size = 4;
+            l_4096 = 1;
+            break;
+        case 6: // 480 x 272, 4096 colors, 256k
+            l_gr_w = 480;
+            l_gr_h = 272;
+            l_pixel_size = 2;
+            l_4096 = 1;
+            break;
+        default: // anything we don't recognize behaves as mode 0
+            l_gr_w = 120;
+            l_gr_h = 68;
+            l_pixel_size = 8;
+            l_4096 = 0;
+            break;
+        }
+        for (int w = 0; w < l_gr_w; ++w) {
+            for (int h = 0; h < l_gr_h; ++h) {
+                uint8_t l_pix_l, l_pix_h;
+                uint8_t l_pix_red, l_pix_green, l_pix_blue;
+               if (l_4096 == 1) {
+                    l_pix_l = g_mem[(h * (l_gr_w * 2)) + (w * 2)];
+                    l_pix_h = g_mem[(h * (l_gr_w * 2)) + (w * 2) + 1];
+                    l_pix_red = ((l_pix_h & 0b00001111) << 4) + (l_pix_h & 0b00001111);
+                    l_pix_green = (l_pix_l & 0b11110000) + ((l_pix_l & 0b11110000) >> 4);
+                    l_pix_blue = ((l_pix_l & 0b00001111) << 4) + (l_pix_l & 0b00001111);
+                } else {
+                    l_pix_l = g_mem[(h * (l_gr_w / 2)) + (w >> 1)];
+                   if (w % 2) {
+                        l_pix_l &= 0x0f;
+				   } else {
+                        l_pix_l >>= 4;
+				   }
+					l_pix_red = g_standard_colors[l_pix_l][0];
+					l_pix_green = g_standard_colors[l_pix_l][1];
+					l_pix_blue = g_standard_colors[l_pix_l][2];
+                }
+				XSetForeground(dpy, gc, ((l_pix_red * 65536) + (l_pix_green * 256) + l_pix_blue));
+				int l_adj_w = w * l_pixel_size * g_scale;
+				int l_adj_h = h * l_pixel_size * g_scale;
+				int l_adj_w2 = l_adj_w + (l_pixel_size * g_scale);
+				int l_adj_h2 = l_adj_h + (l_pixel_size * g_scale);
+				XFillRectangle(dpy, osb, gc, l_adj_w, l_adj_h, l_adj_w2, l_adj_h2);
+            }
+        }
+    }
+	
+	XFlush(dpy);
+	return ERROR_NONE;
+}
+
+mmgc_error mmgc_redraw()
+{
+	XCopyArea(dpy, osb, win, gc, 0, 0, DEFAULTX * g_scale, DEFAULTY * g_scale, 0, 0);
+	return ERROR_NONE;
+}
+
+mmgc_error mmgc_startup(uint32_t a_scale, char *a_title)
+{
+	// sanity check the scale
+	if ((a_scale < 1) || (a_scale > 8)) {
+		fprintf(stderr, "mmgc: scale value must be between 1-8.\n");
+		exit(-1);
+	}
+	g_scale = a_scale;
+	
+	// get our video memory buffer
+	g_mem = malloc(1048576);
+	if (g_mem == NULL) {
+		fprintf(stderr, "mmgc: can't allocate video buffer.\n");
+		exit(-1);
+	}
+	
+	// start up X
+	dpy = XOpenDisplay(0);
+	assert(dpy);
+
+	blackColor = BlackPixel(dpy, DefaultScreen(dpy));
+	whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
+
+//	printf("console: Starting X: Creating window...\n");
+	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, DEFAULTX * a_scale, DEFAULTY * a_scale, 0, blackColor, blackColor);
+
+	// constrict window to set size
+	XSizeHints sizehints;
+	sizehints.flags = PSize | PMinSize | PMaxSize;
+	sizehints.min_width = DEFAULTX * a_scale;
+	sizehints.max_width = DEFAULTX * a_scale;
+	sizehints.min_height = DEFAULTY * a_scale;
+	sizehints.max_height = DEFAULTY * a_scale;
+	XSetWMNormalHints(dpy, win, &sizehints);
+
+	// we want to get MapNotify events
+	XSelectInput(dpy, win, StructureNotifyMask | ExposureMask | ButtonPressMask | PointerMotionMask | KeyPressMask | KeyReleaseMask | ButtonReleaseMask);
+
+	// create off-screen bitmap
+	osb = XCreatePixmap(dpy, win, DEFAULTX * a_scale, DEFAULTY * a_scale, 24);
+	
+	Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", 1);
+	XSetWMProtocols(dpy, win, &wm_delete, 1);
+
+	// set the window's title
+	XStoreName(dpy, win, a_title);
+	
+	// "map" the window (make it appear)
+//	printf("console: Mapping window...\n");
+	XMapWindow(dpy, win);
+
+	gc = XCreateGC(dpy, osb, 0, 0);
+
+	// wait for window to get mapped
+	for(;;)
+	{
+		XEvent e;
+		XNextEvent(dpy, &e);
+		if (e.type == MapNotify)
+			break;
+	}
+
+	g_vidmode = 8; // lo res text screen
+	mmgc_con_cls(' ', 0x07);
+	mmgc_draw();
+	mmgc_redraw();
+	
+	// start up X event loop thread
+	int res;
+	g_run = 1;
+	res = pthread_create(&xthread, NULL, x_tf, NULL);
+	if (res != 0) {
+		fprintf(stderr, "mmgc: hread creation failed\n");
+		exit(-1);
+	}
+	
+	return ERROR_NONE;
+}
+
+mmgc_error mmgc_close_requested()
+{
+	if (g_close == 1)
+		return ERROR_CLOSE_REQUESTED;
+	else
+		return ERROR_NONE;
+}
+
+void *x_tf(void *arg) {
+	struct timespec l_frame_ts;
+	int ShiftState = 0, ControlState = 0, AltState = 0;
+	
+	while (g_run == 1) {
+		// teeny weeny sleep to prevent 100% cpu usage
+		l_frame_ts.tv_nsec = 25000000;
+		l_frame_ts.tv_sec = 0;
+		nanosleep(&l_frame_ts, NULL);
+		
+		// handle any events
+		while (XPending(dpy)) {
+			XEvent e;
+			XNextEvent(dpy, &e);
+			//KeySym key_symbol = XKeycodeToKeysym(dpy, e.xkey.keycode, 0);
+			KeySym key_symbol;
+			char xlat[10];
+			if ((e.type == KeyPress) || (e.type == KeyRelease))
+				XLookupString(&e.xkey, xlat, 10, &key_symbol, NULL);
+
+			switch(e.type)
+			{
+				case ConfigureNotify:
+//					printf("ConfigureNotify event\n");
+					break;
+				case Expose:
+					mmgc_redraw();
+//					printf("Expose event\n");
+					break;
+				case KeyPress:
+					switch(key_symbol) {
+						case XK_Shift_L:
+						case XK_Shift_R:
+							ShiftState = 1;
+							break;
+						case XK_Control_L:
+						case XK_Control_R:
+							ControlState = 1;
+							break;
+						case XK_Alt_L:
+						case XK_Alt_R:
+							AltState = 1;
+							break;
+						default:
+							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+//							if ((ShiftState == 0) && (ControlState == 1) && (AltState == 1) && (key_symbol == 0xff57)) {
+//								// control-alt-end to reset
+//								io_driver_post_backchannel(IO_CMD_WARMRESET, 0);
+//								break;
+//							}
+							if (key_symbol == 0xff51)
+								xlat[0] = 0x8;
+							if (key_symbol == 0xff52)
+								xlat[0] = 0x9;
+							if (key_symbol == 0xff53)
+								xlat[0] = 0xb;
+							if (key_symbol == 0xff54)
+								xlat[0] = 0xa;
+//							io_driver_post_backchannel(IO_CMD_KEYPRESS, xlat[0]);
+							break;
+					}
+					break;
+				case KeyRelease:
+					switch(key_symbol) {
+						case XK_Shift_L:
+						case XK_Shift_R:
+							ShiftState = 0;
+							break;
+						case XK_Control_L:
+						case XK_Control_R:
+							ControlState = 0;
+							break;
+						case XK_Alt_L:
+						case XK_Alt_R:
+							AltState = 0;
+							break;
+					}
+					break;
+				case ButtonPress:
+					printf("console: Button %d at: X%d, Y%d\n",e.xbutton.button,e.xbutton.x,e.xbutton.y);
+					break;
+				case ClientMessage:
+					char *str = XGetAtomName(dpy, e.xclient.message_type);
+//					printf("ClientMessage: %s\n",str);
+//					if (!strcmp(str,"WM_PROTOCOLS"))
+						g_close = 1;
+					XFree(str);
+					break;
+			}
+		}
+		
+	}
+	pthread_exit(NULL);
+}
+
+char *mmgc_mem()
+{
+	return g_mem;
+}
+
+mmgc_error mmgc_shutdown()
+{
+	// shut off the thread with the runflag
+	g_run = 0;
+	// join the thread
+	int res;
+	res = pthread_join(xthread, NULL);
+	if (res != 0) {
+		fprintf(stderr, "mmgc: thread join failed.\n");
+		exit(-1);
+	}
+	XFreePixmap(dpy, osb);
+	XFreeGC(dpy, gc);
+	XCloseDisplay(dpy);
+	free(g_mem);
+	return ERROR_NONE;
+}
+
+/* console handling */
+
+void mmgc_con_cls(uint8_t a_charout, uint8_t a_color)
+{
+	g_con_charout = a_charout;
+	g_con_color = a_color;
+	
+	// clear the text screen
+	uint8_t l_w;
+	uint8_t l_h;
+	if (g_vidmode == 0x08) {
+		l_w = 40;
+		l_h = 17;
+	} else if (g_vidmode == 0x09) {
+		l_w = 80;
+		l_h = 34;
+	} else {
+		// not in either of the text modes, so do nothing
+		l_w = 0;
+		l_h = 0;
+	}
+	for (unsigned int h = 0; h < l_h; ++h) {
+		for (unsigned int w = 0; w < l_w; ++w) {
+			g_mem[(h * l_w * 2) + (w * 2)] = g_con_charout;
+			g_mem[(h * l_w * 2) + (w * 2) + 1] = g_con_color;
+		}
+	}
+}
+
+static void scrollup()
+{
+	uint8_t l_w = 0;
+	uint8_t l_h = 0;
+	if (g_vidmode == 0x08) {
+		l_w = 40;
+		l_h = 17;
+	} else if (g_vidmode == 0x09) {
+		l_w = 80;
+		l_h = 34;
+	}
+	if (g_con_cursorv >= l_h) {
+		g_con_cursorv = l_h - 1;
+		// scroll the screen
+		for (uint32_t d = 0; d < (l_w * 2) * (l_h - 1); ++d) {
+			g_mem[d] = g_mem[d + (l_w * 2)];
+		}
+		// blank out the last line
+		for (uint32_t d = (l_w * 2) * (l_h - 1); d < (l_w * 2) * l_h; d += 2) {
+			g_mem[d] = 0x20;
+			g_mem[d + 1] = g_con_color;
+		}
+	}
+}
+
+static void con_register()
+{
+	uint8_t l_w;
+	if (g_vidmode == 0x08) {
+		l_w = 40;
+	} else if (g_vidmode == 0x09) {
+		l_w = 80;
+	} else {
+		// not in either of the text modes, so print no character
+		return;
+	}
+	// check for CR
+	if (g_con_charout == 0x0d) {
+		mmgc_con_cr();
+		return;
+	}
+	// ctrl-H (0x08)
+	if (g_con_charout == 0x08) {
+		if (g_con_cursorh != 0) {
+			g_con_cursorh--;
+		} else {
+			if (g_con_cursorv != 0) {
+				g_con_cursorv--;
+				g_con_cursorh = l_w - 1;
+			}
+		}
+		return;
+	}
+	// ctrl-I (0x09)
+	if (g_con_charout == 0x09) {
+		if (g_con_cursorv != 0) {
+			g_con_cursorv--;
+		}
+		return;
+	}
+	// ctrl-J (0x0a)
+	if (g_con_charout == 0x0a) {
+		g_con_cursorv += 1;
+		scrollup();
+		return;
+	}
+	// ctrl-k (0x0b)
+	if (g_con_charout == 0x0b) {
+		goto register_advance;
+	}
+	// place the character at the cursor position
+	uint32_t l_base = (g_con_cursorh * 2) + (l_w * g_con_cursorv * 2);
+    g_mem[l_base] = g_con_charout;
+    g_mem[l_base + 1] = g_con_color;
+	// advance the cursor
+register_advance:
+	g_con_cursorh += 1;
+	if (g_con_cursorh >= l_w) {
+		g_con_cursorh = 0;
+		g_con_cursorv += 1;
+		scrollup();
+	}
+}
+
+void mmgc_con_cr()
+{
+	g_con_cursorh = 0;
+	g_con_cursorv += 1;
+	scrollup();
+}
+
+void mmgc_puts(char *a_str)
+{
+	int l_instr = 0;
+	while (a_str[l_instr] != 0) {
+		g_con_charout = a_str[l_instr];
+		con_register();
+		l_instr++;
+	}
+	mmgc_draw();
+	mmgc_redraw();
+}

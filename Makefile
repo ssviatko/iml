@@ -16,8 +16,10 @@ KE_OBJS = kbdecho.o memio_driver.o
 KE_TARGET = kbdecho
 CONS_OBJS = console.o memio_driver.o
 CONS_TARGET = console
+MMGC_OBJS = mmgc.o mmgc_test.o
+MMGC_TARGET = mmgc_test
 
-all: $(65816_TARGET) $(Z80_TARGET) $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET)
+all: $(65816_TARGET) $(Z80_TARGET) $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET)
 
 $(65816_TARGET): $(65816_OBJS)
 
@@ -42,6 +44,10 @@ $(CONS_TARGET): $(CONS_OBJS)
 
 	$(LD) $(CONS_OBJS) -o $(CONS_TARGET) $(CONS_LDFLAGS)
 
+$(MMGC_TARGET): $(MMGC_OBJS)
+
+	$(LD) $(MMGC_OBJS) -o $(MMGC_TARGET) $(CONS_LDFLAGS)
+	
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
 
@@ -53,3 +59,4 @@ clean:
 	rm -f $(Z80_TARGET)
 	rm -f $(CONS_TARGET)
 	rm -f $(65816_TARGET)
+	rm -f $(MMGC_TARGET)
