@@ -14,6 +14,15 @@ int main(int argc, char **argv)
 //	mmgc_vidmode(9);
 	sprintf(buff, "This is a test of the\rMemory-mapped Graphics Context.\r");
 	mmgc_puts(buff);
+	mmgc_flush();
+	for (int i = 0; i < 8; ++i) {
+		mmgc_printf("I did it ");
+		mmgc_con_color(0x4d);
+		mmgc_printf("%d", i);
+		mmgc_con_color_default();
+		mmgc_printf(" times.\r");
+		mmgc_flush();
+	}
 	while (mmgc_close_requested() == ERROR_NONE) {
 		l_mychar = mmgc_getc();
 		if (l_mychar == 0xff)

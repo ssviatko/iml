@@ -528,7 +528,6 @@ void *x_tf(void *arg) {
 								xlat[0] = 0xb;
 							if (key_symbol == 0xff54)
 								xlat[0] = 0xa;
-//							io_driver_post_backchannel(IO_CMD_KEYPRESS, xlat[0]);
 							kbd_enqueue(xlat[0]);
 							break;
 					}
@@ -550,7 +549,7 @@ void *x_tf(void *arg) {
 					}
 					break;
 				case ButtonPress:
-					printf("console: Button %d at: X%d, Y%d\n",e.xbutton.button,e.xbutton.x,e.xbutton.y);
+//					printf("console: Button %d at: X%d, Y%d\n",e.xbutton.button,e.xbutton.x,e.xbutton.y);
 					break;
 				case ClientMessage:
 					char *str = XGetAtomName(dpy, e.xclient.message_type);
@@ -594,6 +593,11 @@ mmgc_error mmgc_shutdown()
 void mmgc_con_color(uint8_t a_color)
 {
 	g_con_color = a_color;
+}
+
+void mmgc_con_color_default()
+{
+	g_con_color = g_con_default_color;
 }
 
 void mmgc_con_cls(uint8_t a_charout, uint8_t a_color)
@@ -722,8 +726,8 @@ void mmgc_puts(char *a_str)
 		con_register();
 		l_instr++;
 	}
-	mmgc_draw();
-	mmgc_redraw();
+//	mmgc_draw();
+//	mmgc_redraw();
 }
 
 void mmgc_putc(uint8_t a_char)
@@ -734,7 +738,28 @@ void mmgc_putc(uint8_t a_char)
 	mmgc_redraw();
 }
 
-uint8_t mmgc_vidmode(uint8_t a_mode)
+static void vmmgc_printf(const char *fmt, va_list va)
+{
+	char buff[256];
+	vsnprintf(buff, 256, fmt, va);
+	mmgc_puts(buff);
+}
+
+void mmgc_printf(const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	vmmgc_printf(fmt, args);
+	va_end(args);
+}
+
+void mmgc_flush()
+{
+	mmgc_draw();
+	mmgc_redraw();
+}
+
+void mmgc_vidmode(uint8_t a_mode)
 {
 	g_vidmode = a_mode;
 	if (g_vidmode >= 8)
