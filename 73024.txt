@@ -1,0 +1,31 @@
+
+Data registers
+
+R0
+R1
+R2
+R3
+R4
+R5
+R6
+R7
+
+Address Registers
+
+A0
+A1
+A2
+A3
+A4
+A5
+A6
+A7
+
+Addressing Modes
+
+Immediate_byte	load r0,#$ff
+Immediate_word	load r0,#$ffff
+Immediate_long	load r0,#$ffffff
+Immediate_bank	load r0,#$ff
+
+
