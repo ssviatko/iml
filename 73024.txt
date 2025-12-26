@@ -1,4 +1,55 @@
 
+Width Specifiers
+
+00 - byte
+01 - word
+10 - long (24 bits)
+11 - bank (upper 8 bits of long word)
+
+Format Specifiers
+
+000 - Implied                   000t tttt oooo oooo
+
+Implied Types
+
+00000 - 01111                                                           Generic Implied
+10000 - 11001                                                           Reserved
+11010                           11010 0scc cccc                         Return, optionally on condition
+11011                           11011 0scc cccc                         Execute next instruction conditionally
+11100                           11100 0scc cccc sfff ffff ffff ffff     Call, optionally on condition, offset
+11101                           11101 0scc cccc <abs24>                 Call, optionally on condition absolute
+11100                           11100 0scc cccc sfff ffff ffff ffff     Branch, optionally on condition, offset
+11101                           11101 0scc cccc <abs24>                 Branch, optionally on condition absolute
+11110                           11110 eeee eeee                         Extended Instruction of type eeeeeeee Follows
+11111                           11111 eeee eeee                         Extended Instruction of type eeeeeeee Follows
+
+Conventional Instructions
+
+001 - OPC.W Rx, (immediate)     001o oooo xxxo ooww
+010 - OPC.W Rx, Ry              010o oooo xxxy yyww
+011 - OPC.W Rx                  011o oooo xxx0 00ww
+100 - OPC.W (Ax +/- OFFSET), Rx 100o oooo aaa0 00ww sfff ffff ffff ffff
+101 - OPC.W Rx, (AX +/- OFFSET) 101o oooo aaa0 00ww sfff ffff ffff ffff
+110 - OPC.W -(Ax), Rx           110o oooo aaar rrww
+111 - OPC.W Rx, (Ax)+           111o oooo aaar rrww
+
+Condition Specifiers
+
+sccc cccc
+
+s = 0: condition reset
+s = 1: condition set
+
+cccccc = 0000000: unconditional
+cccccc = 0000001: carry
+cccccc = 0000010: zero
+cccccc = 0000011: negative
+
+Example usage:
+
+1C41 000F          SCOND(C) BREL +15     ;on condition carry set, branch relative +15
+1B02 4046          CCOND(Z) MOV R2, R1   ;on not zero move R1 into R2
+
 Data registers
 
 R0
@@ -22,6 +73,10 @@ A6
 A7
 
 Addressing Modes
+
+Immediates
+
+Format: OPC.W (data)
 
 Immediate_byte	load r0,#$ff
 Immediate_word	load r0,#$ffff
