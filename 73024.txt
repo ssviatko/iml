@@ -1,86 +1,232 @@
 
+Registers (24 bit address/counter/offset registers, shadowed Z80 style, except stack pointer)
+
+A0 = Source Index (SI)
+A1 = Destination Index (DI)
+A2 = misc
+A3 = misc
+A4 = Offset (OFF)
+A5 = Counter (CNT)
+A6 = Base Pointer (BP)
+A7 = Stack Pointer (SP)
+
+Data Registers (16 bit, shadowed Z80 style, except Z register)
+
+R0 = Always contains zero (Z)
+R1 = Accumulator (A)
+R2 = Argument (G)
+R3 = Remainder (RM)
+R4
+R5 = Result (RZ)
+R6 = Doubleword Result High (DH)
+R7 = Doubleword Result Low (DL)
+
+16 bit PSR register, shadowed
+
+F = Negative
+E = Overflow
+D = Atomic (set to claim bus in multiprocessor setup)
+C
+B
+A
+9
+8
+7
+6
+5
+4
+3
+2
+1 = Zero
+0 = Carry
+
 Width Specifiers
 
-00 - byte
-01 - word
-10 - long (24 bits)
-11 - bank (upper 8 bits of long word)
+B = Byte (8 bits)
+W = Word (16 bits)
 
-Format Specifiers
+Register Spec byte (RS)
 
-000 - Implied                   000t tttt oooo oooo
+7 = reserved (always 1)
+6 = Width specifier (1=word 0=byte, address operations this is always 1)
+5 = Ry/Ax bit 2
+4 = Ry/Ax bit 1
+3 = Ry/Ax bit 0
+2 = Rx/Ay bit 2
+1 = Rx/Ay bit 1
+0 = Rx/Ay bit 0
 
-Implied Types
+Bit Position Constant (BC)
 
-00000 - 01111                                                           Generic Implied
-10000 - 11001                                                           Reserved
-11010                           11010 0scc cccc                         Return, optionally on condition
-11011                           11011 0scc cccc                         Execute next instruction conditionally
-11100                           11100 0scc cccc sfff ffff ffff ffff     Call, optionally on condition, offset
-11101                           11101 0scc cccc <abs24>                 Call, optionally on condition absolute
-11100                           11100 0scc cccc sfff ffff ffff ffff     Branch, optionally on condition, offset
-11101                           11101 0scc cccc <abs24>                 Branch, optionally on condition absolute
-11110                           11110 eeee eeee                         Extended Instruction of type eeeeeeee Follows
-11111                           11111 eeee eeee                         Extended Instruction of type eeeeeeee Follows
+7 = 0
+6 = 0
+5 = 0
+4 = 0
+3 = word: bit 3 of constant byte: 0
+2 = bit 2 of constant
+1 = bit 1 of constant
+0 = bit 0 of constant
 
-Conventional Instructions
+Trap Specifier (TS)
 
-001 - OPC.W Rx, (immediate)     001o oooo xxxo ooww
-010 - OPC.W Rx, Ry              010o oooo xxxy yyww
-011 - OPC.W Rx                  011o oooo xxx0 00ww
-100 - OPC.W (Ax +/- OFFSET), Rx 100o oooo aaa0 00ww sfff ffff ffff ffff
-101 - OPC.W Rx, (AX +/- OFFSET) 101o oooo aaa0 00ww sfff ffff ffff ffff
-110 - OPC.W -(Ax), Rx           110o oooo aaar rrww
-111 - OPC.W Rx, (Ax)+           111o oooo aaar rrww
+0000-7FFF = User defined traps, user defined interrupt vectors at trap vector table
+8000-FFFF = External traps
 
-Condition Specifiers
+Utility Instructions (00-1F)
 
-sccc cccc
+02 TS       TRAP ts                         ;Call trap / external trap (coprocessor latch)
+03          TRAP A                          ;Call trap specified by A register (R1)
+04          TRAP SP                         ;Pull 16 bit trap spec off stack and call trap
 
-s = 0: condition reset
-s = 1: condition set
+06          CLA                             ;Clear atomic flag
+07          SEA                             ;Set atomic flag
 
-cccccc = 0000000: unconditional
-cccccc = 0000001: carry
-cccccc = 0000010: zero
-cccccc = 0000011: negative
+08          XCR                             ;Exchange Register File with shadow registers R1-R7
+09          XCA                             ;Exchange Address File with shadow registers A0-A5
+0A          XCP                             ;Exchange PSR wih shadowed copy
+0B          PUSHR                           ;Push all registers R1-R7 onto stack
+0C          PUSHA                           ;Push all address registers A0-A5 onto stack
+0D          POPR                            ;Pop all regsters R1-R7 from stack
+0E          POPA                            ;Pop all address registers (except base pointer and stack pointer) from stack
 
-Example usage:
+10          PEA $absolute24                 ;Push effective address
+11          PER $rel16                      ;Push effective relative address
+12          PIB #immediate8                 ;Push immediate byte
+13          PIW #immediate16                ;Push immediate word
 
-1C41 000F          SCOND(C) BREL +15     ;on condition carry set, branch relative +15
-1B02 4046          CCOND(Z) MOV R2, R1   ;on not zero move R1 into R2
+18          CLC                             ;Clear carry
+19          SEC                             ;Set carry
+1A          CCF                             ;Complement Carry Flag
+1B          CLV                             ;Clear Overflow
 
-Data registers
+1D          RST                             ;Restart (call reset vector)
+1E          HALT                            ;Halt the processor
+1F          NOP                             ;No operation
 
-R0
-R1
-R2
-R3
-R4
-R5
-R6
-R7
+Bitwise (60-7F)
 
-Address Registers
+60 RS       ROL.X Rx                        ;Rotate left
+61 RS       ROR.X Rx                        ;Rotate right
+62 RS       RCL.X Rx                        ;Rotate left through carry
+63 RS       RCR.X Rx                        ;Rotate right through carry
+64 RS       SHL.X Rx                        ;Shift left (0 enters bit 0)
+65 RS       SHR.X Rx                        ;Shift right (0 enters high bit)
+66 RS       SCL.X Rx                        ;Shift left (bit 7 enters carry, 0 enters bit 0)
+67 RS       SCR.X Rx                        ;Shift right (bit 0 enters carry, 0 enters high bit)
+68 RS BC    BIT.X Rx, pos                   ;Bit test: byte or word of Rx, bit position. Inverse of the bit enters zero flag
+69 RS BC    SET.X Rx, pos                   ;Set bit at pos
+6A RS BC    RES.X Rx, pos                   ;Reset bit at pos
 
-A0
-A1
-A2
-A3
-A4
-A5
-A6
-A7
+Branch/Condition testing (80-9F)
 
-Addressing Modes
+8E          RTT                             ;Return from trap
+8F          RTS                             ;Return from subroutine
 
-Immediates
+90          LOOP $rel16
+91          LOOP $absolute24                ;Decrement CX, loop if CNT > 0
 
-Format: OPC.W (data)
+92          JMP $absolute24
+93          JMP $rel16
+94          JMP [Ax]
 
-Immediate_byte	load r0,#$ff
-Immediate_word	load r0,#$ffff
-Immediate_long	load r0,#$ffffff
-Immediate_bank	load r0,#$ff
+95          JSR $absolute24
+96          JSR $rel16
+97          JSR [Ax]                        ;Push return address and jump
 
+98          SKC
+99          SKNC                            ;Skip next instruction (carry flag)
+9A          SKZ
+9B          SKNZ                            ;Skip next instruction (zero flag)
+9C          SKM
+9D          SKP                             ;Skip next instruction on minus/plus (negative flag)
+9E          SKO
+9F          SKNO                            ;Skip next instruction on overflow/no overflow (overflow flag)
 
+Core Instructions (A0-BF)
+
+A0 RS       LD.X Rx, #$immediate
+A1 RS       LD.X Rx, [Ax]
+A2 RS       LD.X Rx, [Ax]+OFF               ;Address pointed to by Ax, plus OFF
+A3 RS       LD.X Rx, [Ax]+rel16
+A4 RS       LD.X Rx, [Ax++]                 ;Pop stack to Rx (stack postincremented by 1 or 2)
+
+A5 RS       ST.X Rx, [Ax]                   ;Address indirect
+A6 RS       ST.X Rx, [Ax]+OFF               ;Address pointed to by Ax, plus OFF
+A7 RS       ST.X Rx, [Ax]+rel16             ;Address pointed to by Ax, plus/minus signed 16 bit constant
+A8 RS       ST.X Rx, [--Ax]                 ;Push onto stack (stack predecremented by 1 or 2)
+
+A9 RS       TF.X Rx, Ry                     ;Copy (transfer) Ry to Rx
+AA RS       XC.X Rx, Ry                     ;Exchange Rx with Ry
+AB RS       XHL Rx                          ;Exchange high/low bytes in Rx
+AC RS       SEP Rx                          ;OR the PSR with Rx
+AD RS       REP Rx                          ;AND the PSR with ~Rx
+AE          PHP                             ;Push PSR onto stack
+AF          PLP                             ;Pop PSR from stack
+
+B0          MOVE.B                          ;Move byte from [SI] to [DI], increment SI and DI by 1
+B1          MOVEN.B                         ;Move byte negative from [SI] to [DI], decrement SI and DI by 1
+B2          MOVE.W                          ;Move word from [SI] to [DI], increment SI and DI by 2
+B3          MOVEN.W                         ;Move word negative from [SI] to [DI], decrement SI and DI by 2
+
+Comparison/Logic/Math (C0-DF)
+
+C0 RS       CMP.X Rx, #$immediate           ;Compare Rx with immediate byte/word
+C1 RS       CMP.X Rx, Ry                    ;Compare Rx to Ry
+C2 RS       AND.X Rx, #$immediate
+C3 RS       AND.X Rx, Ry                    ;And
+C4 RS       OR.X Rx, #$immediate
+C5 RS       OR.X Rx, Ry                     ;Or
+C6 RS       XOR.X Rx, #$immediate
+C7 RS       XOR.X Rx, Ry                    ;Exclusive Or
+C8 RS       NOT.X Rx                        ;Logical NOT
+C9 RS       NEG.X Rx                        ;Two's complement negation
+CA RS       ADD.X Rx, Ry                    ;Add Ry to Rx, carry out
+CB RS       ADC.X Rx, Ry                    ;Add Ry to Rx with carry in/out
+CC RS       SUB.X Rx, Ry                    ;Subtract Ry from Rx, carry out. Works 6502-style, not 8086-style.
+CD RS       SBC.X Rx, Ry                    ;Subtract Ry from Rx, carry in/out
+CE RS       INC.X Rx                        ;Increment Rx
+CF RS       DEC.X Rx                        ;Decrement Rx
+D0 RS       INC2.X Rx                       ;Increment Rx by 2
+D1 RS       DEC2.X Rx                       ;Decrement Rx by 2
+D2          MULB                            ;Multiply A.B by G.B, 16 bit result in RZ.W
+D3          MULW                            ;Multiply A.W by G.W, 32 bit result in DL.W with high word in DH.W
+D4          IMULB                           ;Integer multiply bytes
+D5          IMULW                           ;Integer multiply words
+D6          DIVB                            ;A.W / G.B, result in RZ.B, remainder in RM.B
+D7          DIVW                            ;DH/DL 32 bit value / G.W, result in RZ.W, remainder in RM.W
+D8          IDIVB                           ;Integer divide word by byte
+D9          IDIVW                           ;Integer divide doubleword by word
+DA          CBW                             ;Converts byte to word - sign extend A.B into RZ.W
+DB          CWD                             ;Converts word to doubleword - sign extend A.W into DH/DL
+DC RS       CHK.X Rx, Ry                    ;Checks if A.X is >= Rx.X (lower bound) and A <= Ry.X (upper bound), sets carry if out of bounds
+
+Address handling/computation (E0-FF)
+
+E0 RS       ALD Ax, #$immediate24           ;load address register with immediate 24 bit value/address (load effective address)
+E1 RS       ALD Ax, Ay                      ;load Ax with Ay
+E2 RS       ALD Ax, $absolute24             ;load address register from absolute address location
+E3 RS       ALD Ax, $rel16                  ;load address register from relative address location
+E4 RS       ALDL Ax, Rx                     ;Load lower 16 bits of address register from Rx.W
+E5 RS       ALDH Ax, Rx                     ;Load high 8 bits of address register from Rx.B
+E6 RS       ALD Ax, [Ay]                    ;Load address register from address pointed to by [Ay]
+E7 RS       ALD Ax, [Ay]+OFF                ;Load address registe from address pointed to by [Ay] plus OFF
+E8 RS       ALD Ax, [Ay]+rel16              ;" plus relative constant
+E9 RS       ALD Ax, [Ay++]                  ;pop stack to Ax (Ay incremented by 3 for 24 bit address)
+
+EA RS       AST Ax, $absolute24             ;store address register in absolute address location
+EB RS       AST Ax, $rel16                  ;store address register in relative address location
+EC RS       ASTL Ax, Rx                     ;store lower 16 bits of address register Ax into Rx.W
+ED RS       ASTH Ax, Rx                     ;store high 8 bits of address register Ax into Rx.B
+EE RS       AST Ax, [Ay]                    ;store address register into address pointed to by [Ay]
+EF RS       AST Ax, [Ay]+OFF                ;store address register into address pointed to by [Ay] plus OFF
+F0 RS       AST Ax, [Ay]+rel16              ;" plus relative constant
+F1 RS       AST Ax, [--Ay]                  ;push Ax onto stack (Ay decremented by 3 for 24 bit address)
+
+F2 RS       AADD Ax, Ay                     ;Add (no carry) contents of Ay to Ax
+F3 RS       ASUB Ax, Ay                     ;Subtract (no borrow) contents of Ay from Ax
+F4 RS       AXC Ax, Ay                      ;Exchange Ax and Ay
+F5 RS       AINC Ax                         ;Increment Ax
+F6 RS       ADEC Ax                         ;Decrement Ax
+
+F7 RS       ACMP Ax, #$immediate24          ;Compares address Ax with immediate address
+F8 RS       ACMP Ax, Ay                     ;Compares address Ax with Ay
