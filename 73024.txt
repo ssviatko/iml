@@ -76,13 +76,15 @@ Available instructions
 
 00
 01
-15-17
+49
+4A
 59-5F
-81-8D
+81-83
+8C
+8D
 B4-B7
 DE
-DF
-F6-FA
+F8-FA
 
 Utility Instructions
 
@@ -102,6 +104,7 @@ Utility Instructions
 0C          PUSHA                           ;Push all address registers A0-A6 onto stack
 0D          POPR                            ;Pop all regsters R1-R7 from stack
 0E          POPA                            ;Pop all address registers (except stack pointer) from stack
+0F          CLAB                            ;Clone and adjust base pointer (equivalent to: AST BP, [--SP]; ALD BP, SP; AADD BP, #6; at beginning of high level function)
 
 10          PEA $absolute24                 ;Push effective address
 11          PER $rel16                      ;Push effective relative address
@@ -109,6 +112,10 @@ Utility Instructions
 13          PIW #immediate16                ;Push immediate word
 
 14          EXT2                            ;Extended instructions - Bank 2
+
+15          REP                             ;Repeat next instruction CNT number of times (only works with MOVE instructions)
+16          REPZ                            ;Repeat until zero flag set (works with CMPSB/W, SCASB/W)
+17          REPNZ                           ;Repeat until zero flag clear
 
 18          CLC                             ;Clear carry
 19          SEC                             ;Set carry
@@ -119,6 +126,7 @@ Utility Instructions
 1E          HALT                            ;Halt the processor
 1F          NOP                             ;No operation
 
+DF          FP                              ;Future floating point extensions
 FB          EXT3                            ;Extended instructions - Bank 3
 
 Bitwise
@@ -180,9 +188,9 @@ Branch/Condition testing
 93          JMP $rel16
 94          JMP [Ax]
 
-95          JSR $absolute24
-96          JSR $rel16
-97          JSR [Ax]                        ;Push return address and jump
+95          CALL $absolute24
+96          CALL $rel16
+97          CALL [Ax]                        ;Push return address and jump
 
 98          SKC
 99          SKNC                            ;Skip next instruction (carry flag)
@@ -197,6 +205,7 @@ Core Instructions
 
 A0 RS       LD.X Rx, #$immediate
 B8 RS       LD.X Rx, $absolute24
+4C RS       LD.X Rx, [$absolute24]
 B9 RS       LD.X Rx, $absolute24+OFF
 BE RS       LD.X Rx, $rel16
 A1 RS       LD.X Rx, [Ax]
@@ -206,6 +215,7 @@ A4 RS       LD.X Rx, [Ax++]                 ;Pop stack to Rx (stack postincremen
 BC RS       LD.X Rx, [Ax--]
 
 BA RS       ST.X Rx, $absolute24
+4D RS       ST.X Rx, [$absolute24]
 BB RS       ST.X Rx, $absolute24+OFF
 BF RS       ST.X Rx, $rel16
 A5 RS       ST.X Rx, [Ax]                   ;Address indirect
@@ -222,10 +232,20 @@ AD RS       REP Rx                          ;AND the PSR with ~Rx
 AE          PHP                             ;Push PSR onto stack
 AF          PLP                             ;Pop PSR from stack
 
-B0          MOVE.B                          ;Move byte from [SI] to [DI], postincrement SI and DI by 1
-B1          MOVEN.B                         ;Move byte negative from [SI] to [DI], postdecrement SI and DI by 1
-B2          MOVE.W                          ;Move word from [SI] to [DI], postincrement SI and DI by 2
-B3          MOVEN.W                         ;Move word negative from [SI] to [DI], postdecrement SI and DI by 2
+B0          MOVEB                           ;Move byte from [SI] to [DI], postincrement SI and DI by 1
+B1          MOVENB                          ;Move byte negative from [SI] to [DI], postdecrement SI and DI by 1
+B2          MOVEW                           ;Move word from [SI] to [DI], postincrement SI and DI by 2
+B3          MOVENW                          ;Move word negative from [SI] to [DI], postdecrement SI and DI by 2
+
+88          LODSB                           ;Load byte from [SI] into A.B, postincrement SI by 1
+89          LODSW                           ;Load word from [SI] into A.W, postincrement SI by 2
+8A          STOSB                           ;Store byte in A.B at [DI], postincrement DI by 1
+8B          STOSW                           ;Store word in A.W at [DI], postincrement DI by 2
+
+84          SCASB                           ;Compare A.B with byte at [DI], postincrement DI by 1
+85          SCASW                           ;Compare A.W with byte at [DI], postincrement DI by 2
+86          CMPB                            ;Compare byte at [SI] with byte at [DI], postincrement SI and DI by 1
+87          CMPW                            ;Compare word at [SI] with word at [DI], postincrement SI and DI by 2
 
 Comparison/Logic/Math
 
@@ -285,14 +305,6 @@ CF RS       DEC.X Rx                        ;Decrement Rx
 45 RS       DEC.X $absolute24
 46 RS       DEC.X [Ax]
 47 RS       DEC.X [Ax]+con16
-D0 RS       INC2.X Rx                       ;Increment Rx by 2
-48 RS       INC2.X $absolute24
-49 RS       INC2.X [Ax]
-4A RS       INC2.X [Ax]+con16
-D1 RS       DEC2.X Rx                       ;Decrement Rx by 2
-4B RS       DEC2.X $absolute24
-4C RS       DEC2.X [Ax]
-4D RS       DEC2.X [Ax]+con16
 D2          MULB                            ;Multiply A.B by G.B, 16 bit result in RZ.W
 D3          MULW                            ;Multiply A.W by G.W, 32 bit result in DL.W with high word in DH.W
 D4          IMULB                           ;Integer multiply bytes
@@ -328,12 +340,18 @@ F0 RS       AST Ax, [Ay]+con16              ;" plus relative constant
 F1 RS       AST Ax, [--Ay]                  ;push Ax onto stack (Ay decremented by 3 for 24 bit address)
 
 F2 RS       AADD Ax, Ay                     ;Add (no carry) contents of Ay to Ax
+F6 RS       AADD Ax, #immediate16
 F3 RS       ASUB Ax, Ay                     ;Subtract (no borrow) contents of Ay from Ax
+F7 RS       ASUB Ax, #immediate16
 F4 RS       AXC Ax, Ay                      ;Exchange Ax and Ay
 F5 RS       AINC Ax                         ;Increment Ax
 FC          AINC $absolute24                ;Increment 3 byte address in memory location
+D0 RS       AINC2 Ax                        ;Increment Ax by 2
+48          AINC2 $absolute24
 F6 RS       ADEC Ax                         ;Decrement Ax
 FC          ADEC $absolute24
+D1 RS       ADEC2.X Ax                      ;Decrement Ax by 2
+4B          ADEC2 $absolute24
 
 FE RS       ACMP Ax, #$immediate24          ;Compares address Ax with immediate address
 FF RS       ACMP Ax, Ay                     ;Compares address Ax with Ay
