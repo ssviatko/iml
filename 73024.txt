@@ -78,11 +78,10 @@ Available instructions
 01
 49
 4A
-59-5F
+5A-5F
 81-83
-8C
 8D
-B4-B7
+B5-B7
 DE
 F8-FA
 
@@ -122,12 +121,19 @@ Utility Instructions
 1A          CCF                             ;Complement Carry Flag
 1B          CLV                             ;Clear Overflow
 
+1C          EXT3
+
 1D          RST                             ;Restart (call reset vector)
 1E          HALT                            ;Halt the processor
 1F          NOP                             ;No operation
 
+59          EXT4
+8C          EXT5
+B4          EXT6
+
 DF          FP                              ;Future floating point extensions
-FB          EXT3                            ;Extended instructions - Bank 3
+
+FB          EXT7                            ;Extended instructions - Bank 3
 
 Bitwise
 
@@ -350,7 +356,7 @@ D0 RS       AINC2 Ax                        ;Increment Ax by 2
 48          AINC2 $absolute24
 F6 RS       ADEC Ax                         ;Decrement Ax
 FC          ADEC $absolute24
-D1 RS       ADEC2.X Ax                      ;Decrement Ax by 2
+D1 RS       ADEC2 Ax                        ;Decrement Ax by 2
 4B          ADEC2 $absolute24
 
 FE RS       ACMP Ax, #$immediate24          ;Compares address Ax with immediate address
