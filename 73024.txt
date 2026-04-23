@@ -25,7 +25,7 @@ R7 = Doubleword Result Low (DL)
 
 F = Negative
 E = Overflow
-D = Atomic (set to claim bus in multiprocessor setup)
+D
 C
 B
 A
@@ -47,7 +47,7 @@ W = Word (16 bits)
 
 Register Spec byte (RS)
 
-7 = reserved (always 1)
+7 = reserved (always 1, future 32/64 flag)
 6 = Width specifier (1=word 0=byte, address operations this is always 1)
 5 = Ry/Ax bit 2
 4 = Ry/Ax bit 1
@@ -76,6 +76,7 @@ Available instructions
 
 00
 01
+06-07
 49
 4A
 5A-5F
@@ -92,9 +93,6 @@ Utility Instructions
 04          TRAP SP                         ;Pull 16 bit trap spec off stack and call trap
 
 05          EXT1                            ;Extended instructions - bank 1
-
-06          CLA                             ;Clear atomic flag
-07          SEA                             ;Set atomic flag
 
 08          XCR                             ;Exchange Register File with shadow registers R1-R7
 09          XCA                             ;Exchange Address File with shadow registers A0-A6
@@ -138,47 +136,47 @@ FB          EXT7                            ;Extended instructions - Bank 3
 Bitwise
 
 60 RS       ROL.X Rx                        ;Rotate left
-6B          ROL.X $absolute24
+6B RS       ROL.X $absolute24
 6C RS       ROL.X [Ax]
 4E RS       ROL.X [Ax]+con16
 61 RS       ROR.X Rx                        ;Rotate right
-6D          ROR.X $absolute24
+6D RS       ROR.X $absolute24
 6E RS       ROR.X [Ax]
 4F RS       ROR.X [Ax]+con16
 62 RS       RCL.X Rx                        ;Rotate left through carry
-6F          RCL.X $absolute24
+6F RS       RCL.X $absolute24
 70 RS       RCL.X [Ax]
 50 RS       RCL.X [Ax]+con16
 63 RS       RCR.X Rx                        ;Rotate right through carry
-71          RCR.X $absolute24
+71 RS       RCR.X $absolute24
 72 RS       RCR.X [Ax]
 51 RS       RCR.X [Ax]+con16
 64 RS       SHL.X Rx                        ;Shift left (0 enters bit 0)
-73          SHL.X $absolute24
+73 RS       SHL.X $absolute24
 74 RS       SHL.X [Ax]
 52 RS       SHL.X [Ax]+con16
 65 RS       SHR.X Rx                        ;Shift right (0 enters high bit)
-75          SHR.X $absolute24
+75 RS       SHR.X $absolute24
 76 RS       SHR.X [Ax]
 53 RS       SHR.X [Ax]+con16
 66 RS       SCL.X Rx                        ;Shift left (bit 7 enters carry, 0 enters bit 0)
-77          SCL.X $absolute24
+77 RS       SCL.X $absolute24
 79 RS       SCL.X [Ax]
 54 RS       SCL.X [Ax]+con16
 67 RS       SCR.X Rx                        ;Shift right (bit 0 enters carry, 0 enters high bit)
-79          SCR.X $absolute24
+79 RS       SCR.X $absolute24
 7A RS       SCR.X [Ax]
 55 RS       SCR.X [Ax]+con16
 68 RS BC    BIT.X Rx, pos                   ;Bit test: byte or word of Rx, bit position. Inverse of the bit enters zero flag
-7B BC       BIT.X $absolute24, pos
+7B RS BC    BIT.X $absolute24, pos
 7C RS BC    BIT.X [Ax], pos
 56 RS BC    BIT.X [Ax]+con16, pos
 69 RS BC    SET.X Rx, pos                   ;Set bit at pos
-7D BC       SET.X $absolute, pos
+7D RS BC    SET.X $absolute, pos
 7E RS BC    SET.X [Ax], pos
 57 RS BC    SET.X [Ax]+con16, pos
 6A RS BC    RES.X Rx, pos                   ;Reset bit at pos
-7F BC       RES.X $absolute, pos
+7F RS BC    RES.X $absolute, pos
 80 RS BC    RES.X [Ax], pos
 58 RS BC    RES.X [Ax]+con16, pos
 
@@ -188,7 +186,7 @@ Branch/Condition testing
 8F          RTS                             ;Return from subroutine
 
 90          LOOP $rel16
-91          LOOP $absolute24                ;Decrement CX, loop if CNT > 0
+91          LOOP $absolute24                ;Decrement CNT, loop if CNT > 0
 
 92          JMP $absolute24
 93          JMP $rel16
@@ -196,7 +194,7 @@ Branch/Condition testing
 
 95          CALL $absolute24
 96          CALL $rel16
-97          CALL [Ax]                        ;Push return address and jump
+97          CALL [Ax]                       ;Push return address and jump
 
 98          SKC
 99          SKNC                            ;Skip next instruction (carry flag)
@@ -233,10 +231,10 @@ BD RS       ST.X Rx, [++Ax]
 A9 RS       TF.X Rx, Ry                     ;Copy (transfer) Ry to Rx
 AA RS       XC.X Rx, Ry                     ;Exchange Rx with Ry
 AB RS       XHL Rx                          ;Exchange high/low bytes in Rx
-AC RS       SEP Rx                          ;OR the PSR with Rx
-AD RS       REP Rx                          ;AND the PSR with ~Rx
-AE          PHP                             ;Push PSR onto stack
-AF          PLP                             ;Pop PSR from stack
+AC RS       SPSR Rx                         ;OR the PSR with Rx
+AD RS       RPSR Rx                         ;AND the PSR with ~Rx
+AE          PHPSR                           ;Push PSR onto stack
+AF          PLPSR                           ;Pop PSR from stack
 
 B0          MOVEB                           ;Move byte from [SI] to [DI], postincrement SI and DI by 1
 B1          MOVENB                          ;Move byte negative from [SI] to [DI], postdecrement SI and DI by 1
@@ -346,9 +344,9 @@ F0 RS       AST Ax, [Ay]+con16              ;" plus relative constant
 F1 RS       AST Ax, [--Ay]                  ;push Ax onto stack (Ay decremented by 3 for 24 bit address)
 
 F2 RS       AADD Ax, Ay                     ;Add (no carry) contents of Ay to Ax
-F6 RS       AADD Ax, #immediate16
+F6 RS       AADD Ax, #immediate24
 F3 RS       ASUB Ax, Ay                     ;Subtract (no borrow) contents of Ay from Ax
-F7 RS       ASUB Ax, #immediate16
+F7 RS       ASUB Ax, #immediate24
 F4 RS       AXC Ax, Ay                      ;Exchange Ax and Ay
 F5 RS       AINC Ax                         ;Increment Ax
 FC          AINC $absolute24                ;Increment 3 byte address in memory location
@@ -361,3 +359,54 @@ D1 RS       ADEC2 Ax                        ;Decrement Ax by 2
 
 FE RS       ACMP Ax, #$immediate24          ;Compares address Ax with immediate address
 FF RS       ACMP Ax, Ay                     ;Compares address Ax with Ay
+
+Assembler Conventions
+
+Address label or 24 bit constant:
+
+Mylabel     EQU $1bfc00
+            LD.B A, #@Mylabel               ;All labels and equates are preceeded by a @ sign.
+
+Relative addresses:
+
+            ALD CNT, #$00bbff
+DoIt:       ...
+            LOOP !@DoIt                     ;generates 16 bit relative address
+            RET                             ;Return after CNT repetitions
+
+Relative constants:
+
+MyConst     EQU $3FA
+            LD.W A, [BP]+8                  ;BP + 8. No prefix character, assumes positive decimal number
+            LD.W A, [BP]-6                  ;BP - 6, No prefix character, assumes negative decimal number
+            LD.W A, [BP]+$100               ;BP + 256, $ prefix, assume hexadecimal number, + makes it positive 16 bit constant.
+            LD.W A, [BP]-@MyConst           ;BP - $3FA @ prefix, assume equate or label. - negates it and makes a negative 16 bit constant.
+
+NOTE that ! prefix creates a positive or negative 16 bit constant based on current address position relative to argument.
+The + and - prefixes create a positive or negative 16 bit constant based on 0 relative to argument.
+All labels/equates are 24 bits in size and will be truncated to the appropriate size (8/16/24 bits) depending on the instruction format.
+
+Byte slices:
+
+Addr1       EQU $995522
+            LD.B A, #@Addr1                  ;Loads $22 into A through automatic truncation
+            LD.B A, #$ffeedd                 ;Loads $dd into A through automatic truncation
+            LD.B A, #<@Addr1                 ;Loads $55 into A
+            LD.B A, #^@Addr1                 ;Loads $99 into A
+            LD.W A, #@Addr1                  ;Loads $5522 into A through automatic truncation
+
+Originator: change origin address
+
+            ORG $120000
+            ...                              ;Subsequent assembly will begin at $120000....
+            ORG $FC9800
+            ...                              ;Subsequent assembly will continue at $FC9800
+            DFS 64                           ;Data area 64 bytes in size
+            DFB $FC                          ;Define byte $FC
+            DFW $9DBF                        ;Define word $9DBF (little endian)
+            DFA $1CBF80                      ;Define address $1CBF80 (little endian)
+
+            DFF
+            DFD
+            DFE                              ;Define float, double extended (future)
+
