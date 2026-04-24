@@ -76,6 +76,7 @@ Available instructions
 
 00
 01
+04
 06-07
 49
 4A
@@ -90,7 +91,6 @@ Utility Instructions
 
 02 TS       TRAP ts                         ;Call trap / external trap (coprocessor latch)
 03          TRAP A                          ;Call trap specified by A register (R1)
-04          TRAP SP                         ;Pull 16 bit trap spec off stack and call trap
 
 05          EXT1                            ;Extended instructions - bank 1
 
@@ -116,7 +116,7 @@ Utility Instructions
 
 18          CLC                             ;Clear carry
 19          SEC                             ;Set carry
-1A          CCF                             ;Complement Carry Flag
+1A          CMC                             ;Complement Carry Flag
 1B          CLV                             ;Clear Overflow
 
 1C          EXT3
