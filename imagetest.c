@@ -5,12 +5,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
 int main(int argc, char **argv)
 {
+    srand(time(NULL));
+
     Display *dpy;
     XVisualInfo vinfo;
     int depth;
@@ -55,14 +58,14 @@ int main(int argc, char **argv)
     attrs.background_pixel = 0;
     attrs.border_pixel = 0;
 
-    width = 1000;
-    height = 700;
+    width = 960 * 3;
+    height = 544 * 3;
 
     framebuf = (int *) malloc((width*height)*4);
 
     for (i = 0; i < (width*height); i++)
     {
-        framebuf[i] = 0xFF00FFFF;
+        framebuf[i] = 0xff7f00ff;
     }
 
     win = XCreateWindow(dpy, parent, 100, 100, width, height, 0, depth, InputOutput,
@@ -94,14 +97,32 @@ int main(int argc, char **argv)
 
     XMapWindow(dpy, win);
 
-    while(!XNextEvent(dpy, &event))
-    {
-        switch(event.type)
+    int runflag = 1;
+    while (runflag == 1) {
+
+        struct timespec l_frame_ts;
+        l_frame_ts.tv_nsec = 40000000;
+        l_frame_ts.tv_sec = 0;
+        nanosleep(&l_frame_ts, NULL);
+
+        // randomize the screen
+        for (i = 0; i < (width*height); i++)
         {
-        case Expose:
-            printf("I have been exposed!\n");
-            XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, width, height);
-            break;
+            framebuf[i] = rand();
+            framebuf[i] |= 0xff000000;
+        }
+
+        XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, width, height);
+
+        while (XPending(dpy)) {
+            XNextEvent(dpy, &event);
+            switch(event.type)
+            {
+            case Expose:
+                printf("I have been exposed!\n");
+                XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, width, height);
+                break;
+            }
         }
     }
 
