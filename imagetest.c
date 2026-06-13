@@ -37,8 +37,6 @@ int main(int argc, char **argv)
     visual_template.screen = DefaultScreen(dpy);
     visual_list = XGetVisualInfo (dpy, VisualScreenMask, &visual_template, &nxvisuals);
 
-    //Change to this line
-    //if (!XMatchVisualInfo(dpy, XDefaultScreen(dpy), 32, TrueColor, &vinfo))
     if (!XMatchVisualInfo(dpy, XDefaultScreen(dpy), 24, TrueColor, &vinfo))
     {
         fprintf(stderr, "no such visual\n");
@@ -58,8 +56,8 @@ int main(int argc, char **argv)
     attrs.background_pixel = 0;
     attrs.border_pixel = 0;
 
-    width = 960 * 3;
-    height = 544 * 3;
+    width = 960;
+    height = 544;
 
     framebuf = (int *) malloc((width*height)*4);
 
@@ -71,8 +69,6 @@ int main(int argc, char **argv)
     win = XCreateWindow(dpy, parent, 100, 100, width, height, 0, depth, InputOutput,
                         visual, CWBackPixel | CWColormap | CWBorderPixel, &attrs);
 
-    //Change to this line
-    //ximage = XCreateImage(dpy, vinfo.visual, 32, XYPixmap, 0, (char *)framebuf, width, height, 8, width*4);
     ximage = XCreateImage(dpy, vinfo.visual, depth, ZPixmap, 0, (char *)framebuf, width, height, 8, width*4);
 
     if (ximage == 0)
@@ -88,9 +84,6 @@ int main(int argc, char **argv)
     unsigned long gcm;
     GC NormalGC;
 
-    //gcm = GCForeground | GCBackground | GCGraphicsExposures;
-    //gcv.foreground = BlackPixel(dpy, parent);
-    //gcv.background = WhitePixel(dpy, parent);
     gcm = GCGraphicsExposures;
     gcv.graphics_exposures = 0;
     NormalGC = XCreateGC(dpy, parent, gcm, &gcv);
@@ -101,7 +94,7 @@ int main(int argc, char **argv)
     while (runflag == 1) {
 
         struct timespec l_frame_ts;
-        l_frame_ts.tv_nsec = 40000000;
+        l_frame_ts.tv_nsec = 33000000;
         l_frame_ts.tv_sec = 0;
         nanosleep(&l_frame_ts, NULL);
 
