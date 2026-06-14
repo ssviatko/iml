@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <sys/time.h>
 #include <stdint.h>
 #include <getopt.h>
 
@@ -21,6 +22,7 @@ struct option g_options[] = {
 unsigned int g_width = DEFAULTX;
 unsigned int g_height = DEFAULTY;
 unsigned int g_scale = 1;
+uint64_t g_frames = 0;
 
 const uint32_t g_standard_colors[16] = {
     0xff000000, // Black
@@ -145,12 +147,18 @@ int main(int argc, char **argv)
 
     XMapWindow(dpy, win);
 
+    // keep track of our FPS in case we're on a slow machine
+    struct timeval start_time;
+    struct timeval end_time;
+    gettimeofday(&start_time, NULL);
+
     XEvent event;
     int runFlag = 1;
     while (runFlag == 1) {
 
         struct timespec l_frame_ts;
-        l_frame_ts.tv_nsec = 33000000;
+        // cap at 120 frames per second to prevent 100% cpu usage
+        l_frame_ts.tv_nsec = 8000000;
         l_frame_ts.tv_sec = 0;
         nanosleep(&l_frame_ts, NULL);
 
@@ -162,6 +170,7 @@ int main(int argc, char **argv)
         }
 
         XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, g_width, g_height);
+        g_frames++;
 
         while (XPending(dpy)) {
             XNextEvent(dpy, &event);
@@ -169,6 +178,7 @@ int main(int argc, char **argv)
             case Expose:
 //                printf("I have been exposed!\n");
                 XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, g_width, g_height);
+                g_frames++;
                 break;
             case ClientMessage:
                 char *str = XGetAtomName(dpy, event.xclient.message_type);
@@ -181,6 +191,12 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    gettimeofday(&end_time, NULL);
+    long elapsed_secs = end_time.tv_sec - start_time.tv_sec - ((end_time.tv_usec - start_time.tv_usec < 0) ? 1 : 0); // subtract 1 if there was a usec rollover
+    long elapsed_usecs = end_time.tv_usec - start_time.tv_usec + ((end_time.tv_usec - start_time.tv_usec < 0) ? 1000000 : 0); // bump usecs by 1 million usec for rollover
+    printf("fconsole: %ld frames displayed in %ld seconds %ld usecs.\n", g_frames, elapsed_secs, elapsed_usecs);
+    printf("fconsole: estimated console FPS: %f\n", (double)g_frames / ((double)elapsed_secs + (double)(elapsed_usecs / 1000000.0)));
 
     printf("fconsole: exiting...\n");
 
