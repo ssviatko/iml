@@ -1,14 +1,15 @@
-// Source - https://stackoverflow.com/a/64758878
-// Posted by AtomClock
-// Retrieved 2026-06-13, License - CC BY-SA 4.0
-
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+
+int g_width = 960;
+int g_height = 544;
+int g_scale = 2;
 
 int main(int argc, char **argv)
 {
@@ -25,7 +26,6 @@ int main(int argc, char **argv)
     Window parent;
     Visual *visual;
 
-    int width, height;
     Window win;
     int *framebuf;
     XImage *ximage;
@@ -56,20 +56,26 @@ int main(int argc, char **argv)
     attrs.background_pixel = 0;
     attrs.border_pixel = 0;
 
-    width = 960;
-    height = 544;
+    framebuf = (int *) malloc((g_width * g_height) * 4);
 
-    framebuf = (int *) malloc((width*height)*4);
-
-    for (i = 0; i < (width*height); i++)
+    for (i = 0; i < (g_width * g_height); i++)
     {
         framebuf[i] = 0xff7f00ff;
     }
 
-    win = XCreateWindow(dpy, parent, 100, 100, width, height, 0, depth, InputOutput,
+    win = XCreateWindow(dpy, parent, 100, 100, g_width, g_height, 0, depth, InputOutput,
                         visual, CWBackPixel | CWColormap | CWBorderPixel, &attrs);
 
-    ximage = XCreateImage(dpy, vinfo.visual, depth, ZPixmap, 0, (char *)framebuf, width, height, 8, width*4);
+    // constrict window to set size
+    XSizeHints sizehints;
+    sizehints.flags = PSize | PMinSize | PMaxSize;
+    sizehints.min_width = g_width;
+    sizehints.max_width = g_width;
+    sizehints.min_height = g_height;
+    sizehints.max_height = g_height;
+    XSetWMNormalHints(dpy, win, &sizehints);
+
+    ximage = XCreateImage(dpy, vinfo.visual, depth, ZPixmap, 0, (char *)framebuf, g_width, g_height, 8, g_width * 4);
 
     if (ximage == 0)
     {
@@ -79,6 +85,12 @@ int main(int argc, char **argv)
     XSync(dpy, True);
 
     XSelectInput(dpy, win, ExposureMask | KeyPressMask);
+
+    Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", 1);
+    XSetWMProtocols(dpy, win, &wm_delete, 1);
+
+    // set the window's title
+    XStoreName(dpy, win, "Random Noise Console");
 
     XGCValues gcv;
     unsigned long gcm;
@@ -90,8 +102,8 @@ int main(int argc, char **argv)
 
     XMapWindow(dpy, win);
 
-    int runflag = 1;
-    while (runflag == 1) {
+    int runFlag = 1;
+    while (runFlag == 1) {
 
         struct timespec l_frame_ts;
         l_frame_ts.tv_nsec = 33000000;
@@ -99,27 +111,34 @@ int main(int argc, char **argv)
         nanosleep(&l_frame_ts, NULL);
 
         // randomize the screen
-        for (i = 0; i < (width*height); i++)
+        for (i = 0; i < (g_width * g_height); i++)
         {
             framebuf[i] = rand();
             framebuf[i] |= 0xff000000;
         }
 
-        XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, width, height);
+        XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, g_width, g_height);
 
         while (XPending(dpy)) {
             XNextEvent(dpy, &event);
-            switch(event.type)
-            {
+            switch(event.type) {
             case Expose:
                 printf("I have been exposed!\n");
-                XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, width, height);
+                XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, g_width, g_height);
+                break;
+            case ClientMessage:
+                char *str = XGetAtomName(dpy, event.xclient.message_type);
+                printf("ClientMessage: %s\n",str);
+                if (!strcmp(str,"WM_PROTOCOLS")) {
+                    runFlag = 0;
+                    XFree(str);
+                }
                 break;
             }
         }
     }
 
-    printf("No error\n");
+    printf("Exiting...\n");
 
     return 0;
 }
