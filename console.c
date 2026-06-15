@@ -382,7 +382,7 @@ int main(int argc, char **argv)
 	
 	// sanity check the scale
 	if ((g_scale < 1) || (g_scale > 8)) {
-		fprintf(stderr, "scale value must be between 1-8.\n");
+		fprintf(stderr, "console: scale value must be between 1-8.\n");
 		exit(-1);
 	}
 	

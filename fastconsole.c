@@ -10,6 +10,9 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+#include "memio_driver.h"
+#include "char_rom.h"
+
 #define DEFAULTX 480
 #define DEFAULTY 272
 
@@ -43,6 +46,23 @@ const uint32_t g_standard_colors[16] = {
     0xffffffff  // White
 };
 
+void load_server(char *path)
+{
+    int pid = fork();
+    if (pid == 0) {
+        char *execargs[1] = { NULL };
+        int success = execvp(path, execargs);
+        if (success < 0) {
+            fprintf(stderr, "fconsole: exec of server binary failed. errno=%d (%s)\n", errno, strerror(errno));
+            exit(-1);
+        }
+        // don't clutter the screen
+        close(0);
+        close(1);
+        close(2);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int i;
@@ -54,7 +74,7 @@ int main(int argc, char **argv)
                 g_scale = atoi(optarg);
                 break;
             case 'e':
-//                load_server(optarg);
+                load_server(optarg);
                 break;
         }
     }
@@ -69,6 +89,11 @@ int main(int argc, char **argv)
     g_width = DEFAULTX * g_scale;
     g_height = DEFAULTY * g_scale;
     printf("fconsole: selecting %dx%d window (scale %d)\n", g_width, g_height, g_scale);
+
+    printf("fconsole: starting up memory and io driver..\n");
+    mem_driver_startup();
+    io_driver_startup();
+    printf("fconsole: started up memory driver, shmid = %d buffer = %016llX\n", mem_driver_shmid(), (long long)mem_driver_buffer());
 
     Display *dpy;
     XSetWindowAttributes attrs;
@@ -129,13 +154,30 @@ int main(int argc, char **argv)
 
     XSync(dpy, True);
 
-    XSelectInput(dpy, win, ExposureMask | KeyPressMask);
+    // we want to get MapNotify events
+    XSelectInput(dpy, win, StructureNotifyMask | ExposureMask | ButtonPressMask | PointerMotionMask | KeyPressMask | KeyReleaseMask | ButtonReleaseMask);
 
     Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", 1);
     XSetWMProtocols(dpy, win, &wm_delete, 1);
 
     // set the window's title
     XStoreName(dpy, win, "Random Noise Console");
+
+    struct timespec ts;
+    io_message_t msg;
+    // wait indefinitely for SERVERALIVE. Nothing to do if the server isn't there
+    printf("fconsole: waiting for server to appear...\n");
+    while (io_driver_wait_forward(&msg) == -1) {
+        ts.tv_sec = 0;
+        ts.tv_nsec = 20000000; // 20ms
+        nanosleep(&ts, NULL);
+    }
+    if (msg.address != IO_CMD_SERVERALIVE) {
+        fprintf(stderr, "fconsole: expected IO_CMD_SERVERALIVE from server!\n");
+        exit(-1);
+    }
+    // send CLIENTALIVE
+    io_driver_post_backchannel(IO_CMD_CLIENTALIVE, 0);
 
     XGCValues gcv;
     unsigned long gcm;
@@ -191,6 +233,16 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    printf("fconsole: Shutting down X Windows...\n");
+    XFreeGC(dpy, NormalGC);
+    XCloseDisplay(dpy);
+    io_driver_post_backchannel(IO_CMD_CLIENTDEAD, 0);
+    printf("fconsole: shutting down memory driver...\n");
+    mem_driver_shutdown();
+    ts.tv_sec = 0;
+    ts.tv_nsec = 500000000; // 500ms
+    nanosleep(&ts, NULL); // wait for server to receive CLIENTDEAD
 
     gettimeofday(&end_time, NULL);
     long elapsed_secs = end_time.tv_sec - start_time.tv_sec - ((end_time.tv_usec - start_time.tv_usec < 0) ? 1 : 0); // subtract 1 if there was a usec rollover
