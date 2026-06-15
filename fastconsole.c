@@ -24,7 +24,8 @@ struct option g_options[] = {
 
 unsigned int g_width = DEFAULTX;
 unsigned int g_height = DEFAULTY;
-unsigned int g_scale = 1;
+unsigned int g_scale = 2;
+int *framebuf;
 uint64_t g_frames = 0;
 
 const uint32_t g_standard_colors[16] = {
@@ -63,6 +64,63 @@ void load_server(char *path)
     }
 }
 
+void draw_text(unsigned int a_cols, unsigned int a_rows, unsigned int a_scale)
+{
+    unsigned char *mem = mem_driver_buffer();
+    uint32_t l_baseaddr = VIDSTART;
+    for (unsigned int cur_row = 0; cur_row < a_rows; ++cur_row) {
+        for (unsigned int cur_col = 0; cur_col < a_cols; ++cur_col) {
+            uint32_t l_framebase = (cur_col * a_scale * 6) + (cur_row * a_scale * 8 * g_width);
+            uint8_t l_char = mem[l_baseaddr];
+            uint8_t l_color = mem[l_baseaddr + 1] & 0x0f;
+            uint8_t l_backcolor = (mem[l_baseaddr + 1] >> 4) & 0x0f;
+            l_baseaddr += 2;
+            if ((mem[IOSTART + IO_CON_CURSOR] >= 0x80) && ((mem[IOSTART + IO_CON_CURSORH] == cur_col) && (mem[IOSTART + IO_CON_CURSORV] == cur_row))) {
+                // invert this block if it's the cursor'
+                uint8_t l_temp = l_color;
+                l_color = l_backcolor;
+                l_backcolor = l_temp;
+            }
+//            printf("cur_row=%d cur_col=%d a_scale=%d l_framebase %d l_char=%02X\n", cur_row, cur_col, a_scale, l_framebase, l_char);
+            for (unsigned int iy = 0; iy <= 7; ++iy) {
+                for (unsigned int ix = 0; ix <= 5; ++ix) {
+                    if (((g_char_rom[l_char][iy] << (ix + 2)) & 0x80) == 0x80) {
+                        // color in character body
+                        for (unsigned int scalecounth = 0; scalecounth < a_scale; ++scalecounth) {
+                            for (unsigned int scalecountv = 0; scalecountv < a_scale; ++scalecountv) {
+                                framebuf[(l_framebase + (ix * a_scale) + (iy * a_scale * g_width)) + (scalecountv * g_width) + scalecounth] = g_standard_colors[l_color];
+                            }
+                        }
+                    } else {
+                        // color in background color
+                        for (unsigned int scalecounth = 0; scalecounth < a_scale; ++scalecounth) {
+                            for (unsigned int scalecountv = 0; scalecountv < a_scale; ++scalecountv) {
+                                framebuf[(l_framebase + (ix * a_scale) + (iy * a_scale * g_width)) + (scalecountv * g_width) + scalecounth] = g_standard_colors[l_backcolor];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void draw()
+{
+    unsigned char *mem = mem_driver_buffer();
+    int l_video_mode = mem[IOSTART + IO_VIDMODE];
+    switch(l_video_mode) {
+        case 8:
+            draw_text(40, 17, g_scale * 2);
+            break;
+        case 9:
+            draw_text(80, 34, g_scale * 1);
+            break;
+        default:
+            break;
+    }
+}
+
 int main(int argc, char **argv)
 {
     int i;
@@ -80,7 +138,7 @@ int main(int argc, char **argv)
     }
 
     // sanity check the scale
-    if ((g_scale < 1) || (g_scale > 8)) {
+    if ((g_scale <2) || (g_scale > 8)) {
         fprintf(stderr, "fconsole: scale value must be between 1-8.\n");
         exit(-1);
     }
@@ -125,12 +183,12 @@ int main(int argc, char **argv)
     attrs.background_pixel = 0;
     attrs.border_pixel = 0;
 
-    int *framebuf;
     framebuf = (int *) malloc((g_width * g_height) * 4);
 
+    // clear frame buffer to black
     for (i = 0; i < (g_width * g_height); i++)
     {
-        framebuf[i] = 0xff7f00ff;
+        framebuf[i] = 0xff000000;
     }
 
     win = XCreateWindow(dpy, parent, 100, 100, g_width, g_height, 0, depth, InputOutput,
@@ -161,7 +219,7 @@ int main(int argc, char **argv)
     XSetWMProtocols(dpy, win, &wm_delete, 1);
 
     // set the window's title
-    XStoreName(dpy, win, "Random Noise Console");
+    XStoreName(dpy, win, "IML Fast Console");
 
     struct timespec ts;
     io_message_t msg;
@@ -195,6 +253,7 @@ int main(int argc, char **argv)
     gettimeofday(&start_time, NULL);
 
     XEvent event;
+    int ShiftState = 0, ControlState = 0, AltState = 0;
     int runFlag = 1;
     while (runFlag == 1) {
 
@@ -204,23 +263,74 @@ int main(int argc, char **argv)
         l_frame_ts.tv_sec = 0;
         nanosleep(&l_frame_ts, NULL);
 
-        // randomize the screen
-        for (i = 0; i < (g_width * g_height); i++)
-        {
-            framebuf[i] = rand();
-            framebuf[i] |= 0xff000000;
-        }
-
+        draw();
         XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, g_width, g_height);
         g_frames++;
 
         while (XPending(dpy)) {
             XNextEvent(dpy, &event);
+            KeySym key_symbol;
+            char xlat[10];
+            if ((event.type == KeyPress) || (event.type == KeyRelease))
+                XLookupString(&event.xkey, xlat, 10, &key_symbol, NULL);
+
             switch(event.type) {
             case Expose:
 //                printf("I have been exposed!\n");
                 XPutImage(dpy, win, NormalGC, ximage, 0, 0, 0, 0, g_width, g_height);
                 g_frames++;
+                break;
+            case KeyPress:
+                switch(key_symbol) {
+                    case XK_Shift_L:
+                    case XK_Shift_R:
+                        ShiftState = 1;
+                        break;
+                    case XK_Control_L:
+                    case XK_Control_R:
+                        ControlState = 1;
+                        break;
+                    case XK_Alt_L:
+                    case XK_Alt_R:
+                        AltState = 1;
+                        break;
+                    default:
+                        //							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
+                        if ((ShiftState == 0) && (ControlState == 1) && (AltState == 1) && (key_symbol == 0xff57)) {
+                            // control-alt-end to reset
+                            io_driver_post_backchannel(IO_CMD_WARMRESET, 0);
+                            break;
+                        }
+                        if (key_symbol == 0xff51)
+                            xlat[0] = 0x8;
+                        if (key_symbol == 0xff52)
+                            xlat[0] = 0x9;
+                        if (key_symbol == 0xff53)
+                            xlat[0] = 0xb;
+                        if (key_symbol == 0xff54)
+                            xlat[0] = 0xa;
+                        io_driver_post_backchannel(IO_CMD_KEYPRESS, xlat[0]);
+                        break;
+                }
+                break;
+            case KeyRelease:
+                switch(key_symbol) {
+                    case XK_Shift_L:
+                    case XK_Shift_R:
+                        ShiftState = 0;
+                        break;
+                    case XK_Control_L:
+                    case XK_Control_R:
+                        ControlState = 0;
+                        break;
+                    case XK_Alt_L:
+                    case XK_Alt_R:
+                        AltState = 0;
+                        break;
+                }
+                break;
+            case ButtonPress:
+                printf("console: Button %d at: X%d, Y%d\n",event.xbutton.button,event.xbutton.x,event.xbutton.y);
                 break;
             case ClientMessage:
                 char *str = XGetAtomName(dpy, event.xclient.message_type);
