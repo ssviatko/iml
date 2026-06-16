@@ -105,11 +105,58 @@ void draw_text(unsigned int a_cols, unsigned int a_rows, unsigned int a_scale)
     }
 }
 
+void draw_gr(unsigned int a_cols, unsigned int a_rows, unsigned int a_scale, int a_4096)
+{
+    unsigned char *mem = mem_driver_buffer();
+    uint32_t l_framebase;
+    uint32_t l_color;
+    uint8_t l_pixel_l, l_pixel_h;
+    for (unsigned int cur_row = 0; cur_row < a_rows; ++cur_row) {
+        for (unsigned int cur_col = 0; cur_col < a_cols; ++cur_col) {
+            if (a_4096) {
+                l_pixel_l = mem[VIDSTART + (cur_col * 2) + (cur_row * a_cols * 2)];
+                l_pixel_h = mem[VIDSTART + (cur_col * 2) + (cur_row * a_cols * 2) + 1];
+                l_color = 0xff000000 | ((l_pixel_h & 0b00001111) << 20) | ((l_pixel_h & 0b00001111) << 16);
+                l_color |= ((l_pixel_l & 0b11110000) << 8) | ((l_pixel_l & 0b11110000) << 4);
+                l_color |= ((l_pixel_l & 0b00001111) << 4) | (l_pixel_l & 0b00001111);
+            } else {
+                l_pixel_l = mem[VIDSTART + (cur_col >> 1) + (cur_row * (a_cols >> 1))];
+                (cur_col % 2) ? (l_pixel_l &= 0x0f) : (l_pixel_l >>= 4);
+                l_color = g_standard_colors[l_pixel_l];
+            }
+            l_framebase = (cur_col * a_scale) + (cur_row * a_scale * g_width);
+            for (unsigned int scalecounth = 0; scalecounth < a_scale; ++scalecounth) {
+                for (unsigned int scalecountv = 0; scalecountv < a_scale; ++scalecountv) {
+                    framebuf[l_framebase + (scalecountv * g_width) + scalecounth] = l_color;
+                }
+            }
+        }
+    }
+}
+
 void draw()
 {
     unsigned char *mem = mem_driver_buffer();
     int l_video_mode = mem[IOSTART + IO_VIDMODE];
     switch(l_video_mode) {
+        case 0:
+            draw_gr(120, 68, g_scale * 4, 0);
+            break;
+        case 1:
+            draw_gr(240, 136, g_scale * 2, 0);
+            break;
+        case 2:
+            draw_gr(480, 272, g_scale, 0);
+            break;
+        case 4:
+            draw_gr(120, 68, g_scale * 4, 1);
+            break;
+        case 5:
+            draw_gr(240, 136, g_scale * 2, 1);
+            break;
+        case 6:
+            draw_gr(480, 272, g_scale, 1);
+            break;
         case 8:
             draw_text(40, 17, g_scale * 2);
             break;
