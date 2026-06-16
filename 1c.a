@@ -26,6 +26,7 @@ IO_FP_DIVIDE = $1bfc43
 IO_FP_ADD = $1bfc44
 IO_FP_SUBTRACT = $1bfc45
 IO_FP_LN = $1bfc46
+IO_FP_EXP = $1bfc49
 IO_FP_ILOAD = $1bfc47
 IO_FP_ISAVE = $1bfc48
 
@@ -276,7 +277,13 @@ fpcmd
 	jmp fpsubtract
 .fpcmd3
 	cmp #'N'
-	beq fpln
+	bne .fpcmdln
+	jmp fpln
+.fpcmdln
+	cmp #'E'
+	bne .fpcmdexp
+	jmp fpexp
+.fpcmdexp
 	cmp #'I'
 	beq fpiload
 	cmp #'V'
@@ -368,7 +375,21 @@ fpln
 	ora fpregspec
 	sta IO_FP_LN
 	jmp moncmd
-	
+
+fpexp
+	jsr fpgetmask
+	bcc .fpexp1
+	jmp monerror
+	.fpexp1
+	jsr fpgetregspec
+	bcc .fpexp2
+	jmp monerror
+	.fpexp2
+	lda fpmask
+	ora fpregspec
+	sta IO_FP_EXP
+	jmp moncmd
+
 fpmultiply
 	jsr fpgetmask
 	bcc .fpmultiply1
@@ -2255,6 +2276,8 @@ fphelpmsg
 	!tx "Binary Ops: *, /, +, -"
 	!tx $0d
 	!tx "FN<sz><reg> Natural Log of <reg>"
+	!tx $0d
+	!tx "FE<sz><reg> Exponential of <reg>"
 	!tx $0d
 	!byte $00
 	

@@ -198,6 +198,8 @@ void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 		fp_subtract(a_byte);
 	} else if (a_address == IOSTART + IO_FP_LN) {
 		fp_ln(a_byte);
+	} else if (a_address == IOSTART + IO_FP_EXP) {
+		fp_exp(a_byte);
 	} else if (a_address == IOSTART + IO_FP_ILOAD) {
 		fp_iload(a_byte);
 	} else if (a_address == IOSTART + IO_FP_ISAVE) {
@@ -823,6 +825,19 @@ void fp_ln(uint8_t a_byte)
 	fp_parse_command(a_byte);
 	op = fp_read_specified(fp_width, fp_extended, fp_reg);
 	op = logl(op);
+	fp_writeback(op);
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_exp(uint8_t a_byte)
+{
+	// preforms ln(FACC/FARG)
+	// chooses register based on bit 6 of command
+	// writes back to itself
+	long double op;
+	fp_parse_command(a_byte);
+	op = fp_read_specified(fp_width, fp_extended, fp_reg);
+	op = expl(op);
 	fp_writeback(op);
 	g_shm_ptr[FPCOND] = 0;
 }
