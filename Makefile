@@ -12,6 +12,8 @@ Z80_OBJS = z80.o z80_engine.o memio_driver.o
 Z80_TARGET = z80
 RV_OBJS = randvideo.o memio_driver.o
 RV_TARGET = randvideo
+NC_OBJS = nearcolor.o memio_driver.o
+NC_TARGET = nearcolor
 KE_OBJS = kbdecho.o memio_driver.o
 KE_TARGET = kbdecho
 CONS_OBJS = console.o memio_driver.o
@@ -21,7 +23,7 @@ FASTCONS_TARGET = fconsole
 MMGC_OBJS = mmgc.o mmgc_test.o
 MMGC_TARGET = mmgc_test
 
-all: $(65816_TARGET) $(Z80_TARGET) $(RV_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET)
+all: $(65816_TARGET) $(Z80_TARGET) $(RV_TARGET) $(NC_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET)
 
 $(FASTCONS_TARGET): $(FASTCONS_OBJS)
 
@@ -42,6 +44,10 @@ $(RV_TARGET): $(RV_OBJS)
 
 	$(LD) $(RV_OBJS) -o $(RV_TARGET) $(LDFLAGS)
 
+$(NC_TARGET): $(NC_OBJS)
+
+	$(LD) $(NC_OBJS) -o $(NC_TARGET) $(LDFLAGS)
+
 $(KE_TARGET): $(KE_OBJS)
 
 	$(LD) $(KE_OBJS) -o $(KE_TARGET) $(LDFLAGS)
@@ -61,6 +67,7 @@ clean:
 	rm -f *.o
 	rm -f *~
 	rm -f $(RV_TARGET)
+	rm -f $(NC_TARGET)
 	rm -f $(KE_TARGET)
 	rm -f $(Z80_TARGET)
 	rm -f $(CONS_TARGET)
