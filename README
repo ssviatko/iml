@@ -7,7 +7,12 @@ Programs contained herein:
 
 --- Client program: the console ---
 
-console - This is the IML console. It contains the video (and eventually audio)
+NOTE: "console" has been superceded by "fconsole", which uses a client side
+frame buffer to render the screen instead of drawing directly on the server
+side drawables. This cuts down on XWindows overhead IMMENSELY and pushes
+framerates into the 60-120/sec range.
+
+console (fconsole) - This is the IML console. It contains the video (and eventually audio)
 frontend and memory/IO structure for any fictitious microprocessor that would
 like to use it.
 
@@ -40,7 +45,7 @@ IO layer.
 Memory map:
 
 00/0000-00/00FF - Zero page. Not used on processors other than 65 series.
-00/0100-00/01FF - Emulation mode stack
+00/0100-00/01FF - Emulation mode stack. Not used on processors other than 65 series.
 00/0200-00/E3FF - Bank 0 program area, native mode stack starts at E3FF and works down.
 00/E400-00/FFFF - 7k Bank 0 ROM image, reset vectors
 01/0000-16/FFFF - Roughly 1.5MB of user RAM area
