@@ -45,7 +45,7 @@ prloop:
 	jr prloop
 
 done:
-	halt			; stop the processor
+	jp done			; stop the processor
 
 message:
 	defm "Hello from Z80"
