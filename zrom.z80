@@ -4,9 +4,49 @@
 
 zpempty:
 	ds $100-zpempty,$ff
-	
+
+; soft switches. The soft switch bank at $1bfc00-$1bffff is shadowed
+; into $e000-$e3ff, so the Z80 can reach every switch with a plain
+; memory access.
+IO_CON_CLS: equ $e010
+IO_CON_COLOR: equ $e011
+IO_CON_CHAROUT: equ $e012
+IO_CON_REGISTER: equ $e013
+IO_CON_CURSORH: equ $e014
+IO_CON_CURSORV: equ $e015
+IO_CON_CURSOR: equ $e016
+IO_VIDMODE: equ $e020
+
 	org $100
-	
+
 romstart:
-	halt
-	
+	ld sp,$5fff		; stack in plain RAM, below the memory windows
+	ld a,8
+	ld (IO_VIDMODE),a	; 40 column text mode
+	xor a
+	ld (IO_CON_CURSORH),a	; cursor to the top left corner
+	ld (IO_CON_CURSORV),a
+	ld a,$80
+	ld (IO_CON_CURSOR),a
+	ld a,7
+	ld (IO_CON_COLOR),a	; light grey on black
+	ld a,$20
+	ld (IO_CON_CHAROUT),a	; the clear screen fills with this character
+	ld (IO_CON_CLS),a	; any write clears the screen
+
+	ld hl,message
+prloop:
+	ld a,(hl)
+	or a			; zero terminates the string
+	jr z,done
+	ld (IO_CON_CHAROUT),a
+	ld (IO_CON_REGISTER),a	; place the character at the cursor
+	inc hl
+	jr prloop
+
+done:
+	halt			; stop the processor
+
+message:
+	defm "Hello from Z80"
+	defb 0

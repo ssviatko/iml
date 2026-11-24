@@ -85,10 +85,13 @@ static int engine_65816_halt; // halts execution when = 1; STP instruction sets 
 
 static unsigned char rmem(unsigned char bank, unsigned short address)
 {
-	// Read straight from the shared memory buffer (the same array mem_driver_read() reads).
-	// Reads have no side effects in the memory driver; if that ever changes (I/O read
-	// hooks), route addresses >= IOSTART through mem_driver_read() here.
-	return mem[(((unsigned int)bank << 16) | address) & MEMTOP];
+	unsigned int a = ((unsigned int)bank << 16) | address;
+
+	// Read straight from the shared memory buffer, except for the shadowed range of low memory
+	// (memory windows and the soft switch shadow), which the memory driver has to translate.
+	if ((a - SHADOWSTART) <= (SHADOWEND - SHADOWSTART))
+		return mem_driver_read(a);
+	return mem[a & MEMTOP];
 }
 
 static void wmem(unsigned char bank, unsigned short address, unsigned char value)

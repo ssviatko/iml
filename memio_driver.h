@@ -80,11 +80,18 @@ const static uint32_t IO_CON_CR = 0x17;
 const static uint32_t IO_VIDMODE = 0x20;
 const static uint32_t IO_RANDBYTE = 0x21;
 
-// Z80 mode memory shadowing
+// Memory window shadowing (applies to every CPU). Writing a byte N to one of these soft switches
+// shadows the 8192 byte section N of the 2MB address space (physical N*0x2000) into the
+// corresponding window in low memory: reads and writes of the window go to the upper memory.
+//   IO_Z80_WINDOW_6 -> 0x6000-0x7fff   (power-on value 0x03)
+//   IO_Z80_WINDOW_8 -> 0x8000-0x9fff   (power-on value 0x04)
+//   IO_Z80_WINDOW_A -> 0xa000-0xbfff   (power-on value 0x05)
+//   IO_Z80_WINDOW_C -> 0xc000-0xdfff   (power-on value 0x06)
+// The power-on values map each window onto itself, i.e. the windows start out unmapped.
 const static uint32_t IO_Z80_WINDOW_8 = 0x30;
 const static uint32_t IO_Z80_WINDOW_A = 0x31;
 const static uint32_t IO_Z80_WINDOW_C = 0x32;
-const static uint32_t IO_Z80_WINDOW_E = 0x33;
+const static uint32_t IO_Z80_WINDOW_6 = 0x33;
 
 // command format for floating point operations:
 // bit 7: 0=float 1=double
@@ -115,6 +122,12 @@ const static uint16_t IO_CMD_WARMRESET = 0xF902;
 // Z80 constants
 const static uint16_t Z80_ROM_END = 0x1fff;
 
+// Low memory that is subject to shadowing: 0x6000-0xdfff are the four 8K windows above, and
+// 0xe000-0xe3ff always shadows the soft switch bank at 0x1bfc00-0x1bffff.
+const static uint32_t SHADOWSTART = 0x006000;
+const static uint32_t SHADOWEND = 0x00e3ff;
+const static uint32_t IOSHADOWSTART = 0x00e000;
+
 // memory driver
 void mem_driver_startup();
 void mem_driver_shutdown();
@@ -123,6 +136,7 @@ int mem_driver_shmid();
 unsigned char *mem_driver_buffer();
 uint8_t mem_driver_read(uint32_t a_address);
 void mem_driver_write(uint32_t a_address, uint8_t a_byte);
+uint32_t mem_driver_effadr(uint32_t a_address); // translate an address through the shadow windows
 
 // io driver
 void io_driver_startup();
@@ -143,7 +157,6 @@ void con_register();
 void con_cr();
 
 // z80/8080/8085 support (16 bit address w/ 256 byte special I/O)
-uint32_t z80_effadr(uint32_t a_address);
 void z80_driver_startup();
 void z80_driver_shutdown();
 uint8_t z80_mem_read(uint16_t a_address);
