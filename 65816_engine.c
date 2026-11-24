@@ -5,13 +5,6 @@ static void inval_op(int amod);
 static void opc_asl(int amod);
 static void opc_rol(int amod);
 static void opc_ror(int amod);
-static void opc_clc(int amod);
-static void opc_clv(int amod);
-static void opc_cld(int amod);
-static void opc_sec(int amod);
-static void opc_sed(int amod);
-static void opc_sei(int amod);
-static void opc_cli(int amod);
 static void opc_lsr(int amod);
 static void opc_sta(int amod);
 static void opc_stxy(int amod);
@@ -37,6 +30,7 @@ static void opc_adcsbccmp(int amod);
 static void opc_bit(int amod);
 static void opc_trbtsb(int amod);
 static void opc_wdm(int amod);
+static void opc_flagop(int amod);
 static void opc_wai(int amod);
 static void opc_brlper(int amod);
 
@@ -54,14 +48,14 @@ union reg {
 	};
 };
 
-union reg a,x,y,s,d,pc; // A, X, Y, Stack, Direct
-unsigned char p,b,k; // PSR, Data Bank, Program Bank
-unsigned char e; // emulation mode "hidden bit"
-union reg work; // internal work register
-unsigned char wb_b; // writeback bank (fetch/writeback)
-union reg wb_a; // writeback address (fetch/writeback)
-unsigned char im_b; // intermediate bank
-union reg im_a; // intermediate address
+static union reg a,x,y,s,d,pc; // A, X, Y, Stack, Direct
+static unsigned char p,b,k; // PSR, Data Bank, Program Bank
+static unsigned char e; // emulation mode "hidden bit"
+static union reg work; // internal work register
+static unsigned char wb_b; // writeback bank (fetch/writeback)
+static union reg wb_a; // writeback address (fetch/writeback)
+static unsigned char im_b; // intermediate bank
+static union reg im_a; // intermediate address
 
 // long address calculation
 union longaddr {
@@ -80,7 +74,6 @@ union longaddr {
 
 static union longaddr la,savela; // for long address calculation
 static int boundcross; // flag for page boundary crossings
-static int halfcarry; // half carry for BCD functions
 
 // utility
 static unsigned char traceflag = 0; // trace mode
@@ -90,17 +83,33 @@ static long engine_65816_cycles; // clock cycle counter
 static int engine_65816_halt; // halts execution when = 1; STP instruction sets this
 
 
-unsigned char rmem(unsigned char bank, unsigned short address)
+static unsigned char rmem(unsigned char bank, unsigned short address)
 {
 	return mem_driver_read((bank * 65536) + address);
 }
 
-void wmem(unsigned char bank, unsigned short address, unsigned char value)
+static void wmem(unsigned char bank, unsigned short address, unsigned char value)
 {
 	if (traceflag)
 		printf("W%02X/%04X=%02X ",bank,address,value);
 
 	mem_driver_write((bank * 65536) + address, value);
+}
+
+static int noread = 0; // set while fetching for instructions that only write/jump (no data read)
+
+static unsigned char drmem(unsigned char bank, unsigned short address)
+{
+	// data read for operand fetch; skipped for stores/jumps to avoid I/O read side effects
+	if (noread)
+		return 0;
+	return rmem(bank,address);
+}
+
+// e=1 and DL=0: direct page addressing wraps within the page
+static int dpwrap(void)
+{
+	return (e==1) && (d.l==0);
 }
 
 static void inc_pc(int howmuch)
@@ -187,7 +196,7 @@ static void fetch(int amod,int size)
 				else
 					boundcross = 0;
 			}
-			work.l = rmem(wb_b,wb_a.x);
+			work.l = drmem(wb_b,wb_a.x);
 			if (size==16)
 			{
 				im_b = wb_b; // don't destroy the writeback address
@@ -195,7 +204,7 @@ static void fetch(int amod,int size)
 				im_a.x++;
 				if (im_a.x == 0)
 					im_b++; // wrap around to next bank if wb_a is $FFFF
-				work.h = rmem(im_b,im_a.x);
+				work.h = drmem(im_b,im_a.x);
 			}
 			else
 				work.h = 0;
@@ -204,59 +213,59 @@ static void fetch(int amod,int size)
 		case DIRECTINDEXEDX: // dp,X
 		case DIRECTINDEXEDY: // dp,Y
 			wb_b = 0; // direct page is always in bank 0
-			wb_a.h = 0; // assume e=1 for now
+			wb_a.h = 0;
 			wb_a.l = rmem(k,pc.x);
 			inc_pc(1);
-			if (e==0)
-				wb_a.x += d.x;
+			wb_a.x += d.x; // D applies in emulation mode too
 			if ((amod == DIRECTINDEXEDX) || (amod == DIRECTINDEXEDY))
 			{
 				if (amod == DIRECTINDEXEDX)
 					im_a.x = x.x; // DIRECTINDEXEDX
 				else
 					im_a.x = y.x; // DIRECTINDEXEDY
-				if (e==1)
-				{
-					// in emulation mode, use 8-bit offset and wrap to beginning of page
-					wb_a.l += im_a.l;
-				}
+				if (dpwrap())
+					wb_a.l += im_a.l; // e=1 and DL=0: 8-bit offset wraps within the page
+				else if ((e==1) || ((p & 0x10) == 0x10))
+					wb_a.x += im_a.l; // 8-bit index, spans pages
 				else
-				{
-					if ((p & 0x10) == 0x10) // if e==0 and 8-bit indexes, then..
-						wb_a.x += im_a.l; // add x.l or y.l to the whole thing and span pages
-					else
-						wb_a.x += im_a.x; // if e==0 and 16 bit indexes, add and wrap to beginning of bank 0
-				}
+					wb_a.x += im_a.x; // 16 bit index, wraps within bank 0
 			}
-			work.l = rmem(0,wb_a.x);
+			work.l = drmem(0,wb_a.x);
 			if (size==16)
-				work.h = rmem(0,wb_a.x + 1); //will wrap to 00/0000 because wb_a.x is a short
+				work.h = drmem(0,wb_a.x + 1); // will wrap to 00/0000 because the argument is a short
 			else
 				work.h = 0;
 			break;
 		case DIRECTINDEXEDINDIRECTX: // (dp,X)
 			// get location of address on direct page
 			im_b = 0; // direct page is always in bank 0
-			im_a.h = 0; // assume e=1 for now
+			im_a.h = 0;
 			im_a.l = rmem(k,pc.x);
 			inc_pc(1);
-			if (e == 0)
-			{
-				im_a.x += d.x;
-				im_a.x += x.x; // add X to get location of address
-			}
-			else // emulation mode
-				im_a.l += x.l; // add low byte of X to get location of address
-			wb_a.l = rmem(0,im_a.x); // get low byte of address
-			if (e == 0)
-				im_a.x++; // in native mode, do 16-bit increment
+			im_a.x += d.x;
+			if (dpwrap())
+				im_a.l += x.l; // e=1 and DL=0: wrap within the page
+			else if (e==1)
+				im_a.x += x.l;
 			else
-				im_a.l++; // else, just increment the low byte, wrapping to beginning of page
+				im_a.x += x.x; // add X to get location of address
+			wb_a.l = rmem(0,im_a.x); // get low byte of address
+			if (dpwrap())
+				im_a.l++; // wrap to beginning of page
+			else
+				im_a.x++;
 			wb_a.h = rmem(0,im_a.x); // get high byte of address
 			wb_b = b; // assume DBR
-			work.l = rmem(wb_b,wb_a.x); // get byte at address
+			work.l = drmem(wb_b,wb_a.x); // get byte at address
 			if (size == 16)
-				work.h = rmem(wb_b,wb_a.x + 1); // don't wrap banks
+			{
+				im_b = wb_b; // don't destroy the writeback address
+				im_a.x = wb_a.x;
+				im_a.x++;
+				if (im_a.x == 0)
+					im_b++; // wrap around to next bank if wb_a is $FFFF
+				work.h = drmem(im_b,im_a.x);
+			}
 			else
 				work.h = 0;
 			break;
@@ -266,16 +275,15 @@ static void fetch(int amod,int size)
 		case DIRECTINDIRECTLONGINDEXEDY: // [dp],Y
 			// get location of address on direct page
 			im_b = 0; // direct page is always in bank 0
-			im_a.h = 0; // assume e=1 for now
+			im_a.h = 0;
 			im_a.l = rmem(k,pc.x);
 			inc_pc(1);
-			if (e == 0)
-				im_a.x += d.x;
+			im_a.x += d.x;
 			wb_a.l = rmem(0,im_a.x); // get low byte of address
-			if (e == 0)
-				im_a.x++; // in native mode, do 16-bit increment
+			if (dpwrap())
+				im_a.l++; // e=1 and DL=0: wrap to beginning of page
 			else
-				im_a.l++; // else, just increment the low byte, wrapping to beginning of page
+				im_a.x++;
 			wb_a.h = rmem(0,im_a.x); // get high byte of address
 			if ((amod == DIRECTINDIRECT) || (amod == DIRECTINDIRECTINDEXEDY))
 			{
@@ -283,10 +291,10 @@ static void fetch(int amod,int size)
 			}
 			else
 			{
-				if (e == 0)
-					im_a.x++;
-				else
+				if (dpwrap())
 					im_a.l++;
+				else
+					im_a.x++;
 				wb_b = rmem(0,im_a.x); // get third byte of address for DIRECTINDIRECTLONG and DIRECTINDIRECTLONGINDEXEDY
 			}
 			if ((amod == DIRECTINDIRECTINDEXEDY) || (amod == DIRECTINDIRECTLONGINDEXEDY))
@@ -307,7 +315,7 @@ static void fetch(int amod,int size)
 				else
 					boundcross = 0;
 			}
-			work.l = rmem(wb_b,wb_a.x);
+			work.l = drmem(wb_b,wb_a.x);
 			if (size == 16)
 			{
 				im_b = wb_b; // don't destroy the writeback address
@@ -315,7 +323,7 @@ static void fetch(int amod,int size)
 				im_a.x++;
 				if (im_a.x == 0)
 					im_b++; // wrap around to next bank if wb_a is $FFFF
-				work.h = rmem(im_b,im_a.x);
+				work.h = drmem(im_b,im_a.x);
 			}
 			else
 				work.h = 0;
@@ -332,9 +340,9 @@ static void fetch(int amod,int size)
 			{
 				wb_b = 0;
 				wb_a.x = im_a.x; // set our writeback to the low byte on stack
-				work.l = rmem(wb_b,wb_a.x); // get the byte off the stack
+				work.l = drmem(wb_b,wb_a.x); // get the byte off the stack
 				if (size == 16)
-					work.h = rmem(wb_b,wb_a.x + 1); // don't wrap banks
+					work.h = drmem(wb_b,wb_a.x + 1); // don't wrap banks
 				else
 					work.h = 0;
 			}
@@ -358,7 +366,7 @@ static void fetch(int amod,int size)
 					boundcross = 1; // if the bank/page doesn't match, a page boundary was crossed
 				else
 					boundcross = 0;
-				work.l = rmem(wb_b,wb_a.x);
+				work.l = drmem(wb_b,wb_a.x);
 				if (size == 16)
 				{
 					im_b = wb_b; // don't destroy the writeback address
@@ -366,7 +374,7 @@ static void fetch(int amod,int size)
 					im_a.x++;
 					if (im_a.x == 0)
 						im_b++; // wrap around to next bank if wb_a is $FFFF
-					work.h = rmem(im_b,im_a.x);
+					work.h = drmem(im_b,im_a.x);
 				}
 				else
 					work.h = 0;
@@ -399,9 +407,9 @@ static void fetch(int amod,int size)
 			inc_pc(1);
 			im_a.h = rmem(k,pc.x);
 			inc_pc(1);
-			wb_a.l = rmem(k,im_a.x);
-			wb_a.h = rmem(k,im_a.x + 1);
-			wb_b = rmem(k,im_a.x + 2);
+			wb_a.l = rmem(0,im_a.x); // the pointer lives in bank 0
+			wb_a.h = rmem(0,im_a.x + 1);
+			wb_b = rmem(0,im_a.x + 2);
 			break;
 		default:
 			printf("fatal: undefined addressing mode %d in fetch.\n",amod);
@@ -447,7 +455,7 @@ static void initops(void)
 	opc[0x15] = &opc_logic;		opcamod[0x15] = DIRECTINDEXEDX;			// ORA dp,X
 	opc[0x16] = &opc_asl;		opcamod[0x16] = DIRECTINDEXEDX;			// ASL dp,X
 	opc[0x17] = &opc_logic;		opcamod[0x17] = DIRECTINDIRECTLONGINDEXEDY;	// ORA [dp],Y
-	opc[0x18] = &opc_clc;		opcamod[0x18] = IMPLIED;			// CLC
+	opc[0x18] = &opc_flagop;		opcamod[0x18] = IMPLIED;			// CLC
 	opc[0x19] = &opc_logic;		opcamod[0x19] = ABSOLUTEINDEXEDY;		// ORA $abs,Y
 	opc[0x1a] = &opc_incdec;	opcamod[0x1a] = ACCUMULATOR;			// INC
 	opc[0x1b] = &opc_xfer;		opcamod[0x1b] = IMPLIED;			// TCS
@@ -479,7 +487,7 @@ static void initops(void)
 	opc[0x35] = &opc_logic;		opcamod[0x35] = DIRECTINDEXEDX;			// AND dp,X
 	opc[0x36] = &opc_rol;		opcamod[0x36] = DIRECTINDEXEDX;			// ROL dp,X
 	opc[0x37] = &opc_logic;		opcamod[0x37] = DIRECTINDIRECTLONGINDEXEDY;	// AND [dp],Y
-	opc[0x38] = &opc_sec;		opcamod[0x38] = IMPLIED;			// SEC
+	opc[0x38] = &opc_flagop;		opcamod[0x38] = IMPLIED;			// SEC
 	opc[0x39] = &opc_logic;		opcamod[0x39] = ABSOLUTEINDEXEDY;		// AND $abs,Y
 	opc[0x3a] = &opc_incdec;	opcamod[0x3a] = ACCUMULATOR;			// DEC
 	opc[0x3b] = &opc_xfer;		opcamod[0x3b] = IMPLIED;			// TSC
@@ -508,7 +516,7 @@ static void initops(void)
 	opc[0x55] = &opc_logic;		opcamod[0x55] = DIRECTINDEXEDX;			// EOR dp,X
 	opc[0x56] = &opc_lsr;		opcamod[0x56] = DIRECTINDEXEDX;			// LSR dp,X
 	opc[0x57] = &opc_logic;		opcamod[0x57] = DIRECTINDIRECTLONGINDEXEDY;	// EOR [dp],Y
-	opc[0x58] = &opc_cli;		opcamod[0x58] = IMPLIED;			// CLI
+	opc[0x58] = &opc_flagop;		opcamod[0x58] = IMPLIED;			// CLI
 	opc[0x59] = &opc_logic;		opcamod[0x59] = ABSOLUTEINDEXEDY;		// EOR $abs,Y
 	opc[0x5a] = &opc_push;		opcamod[0x5a] = IMPLIED;			// PHY
 	opc[0x5b] = &opc_xfer;		opcamod[0x5b] = IMPLIED;			// TCD
@@ -540,7 +548,7 @@ static void initops(void)
 	opc[0x75] = &opc_adcsbccmp;	opcamod[0x75] = DIRECTINDEXEDX;			// ADC dp,X
 	opc[0x76] = &opc_ror;		opcamod[0x76] = DIRECTINDEXEDX;			// ROR dp,X
 	opc[0x77] = &opc_adcsbccmp;	opcamod[0x77] = DIRECTINDIRECTLONGINDEXEDY;	// ADC [dp],Y
-	opc[0x78] = &opc_sei;		opcamod[0x78] = IMPLIED;			// SEI
+	opc[0x78] = &opc_flagop;		opcamod[0x78] = IMPLIED;			// SEI
 	opc[0x79] = &opc_adcsbccmp;	opcamod[0x79] = ABSOLUTEINDEXEDY;		// ADC $abs,Y
 	opc[0x7a] = &opc_pop;		opcamod[0x7a] = IMPLIED;			// PLY
 	opc[0x7b] = &opc_xfer;		opcamod[0x7b] = IMPLIED;			// TDC
@@ -604,7 +612,7 @@ static void initops(void)
 	opc[0xb5] = &opc_lda;		opcamod[0xb5] = DIRECTINDEXEDX;			// LDA dp,X
 	opc[0xb6] = &opc_ldxy;		opcamod[0xb6] = DIRECTINDEXEDY;			// LDX dp,Y
 	opc[0xb7] = &opc_lda;		opcamod[0xb7] = DIRECTINDIRECTLONGINDEXEDY;	// LDA [dp],Y
-	opc[0xb8] = &opc_clv;		opcamod[0xb8] = IMPLIED;			// CLV
+	opc[0xb8] = &opc_flagop;		opcamod[0xb8] = IMPLIED;			// CLV
 	opc[0xb9] = &opc_lda;		opcamod[0xb9] = ABSOLUTEINDEXEDY;		// LDA $abs,Y
 	opc[0xba] = &opc_xfer;		opcamod[0xba] = IMPLIED;			// TSX
 	opc[0xbb] = &opc_xfer;		opcamod[0xbb] = IMPLIED;			// TYX
@@ -636,7 +644,7 @@ static void initops(void)
 	opc[0xd5] = &opc_adcsbccmp;	opcamod[0xd5] = DIRECTINDEXEDX;			// CMP dp,X
 	opc[0xd6] = &opc_incdec;	opcamod[0xd6] = DIRECTINDEXEDX;			// DEC dp,X
 	opc[0xd7] = &opc_adcsbccmp;	opcamod[0xd7] = DIRECTINDIRECTLONGINDEXEDY;	// CMP [dp],Y
-	opc[0xd8] = &opc_cld;		opcamod[0xd8] = IMPLIED;			// CLD
+	opc[0xd8] = &opc_flagop;		opcamod[0xd8] = IMPLIED;			// CLD
 	opc[0xd9] = &opc_adcsbccmp;	opcamod[0xd9] = ABSOLUTEINDEXEDY;		// CMP $abs,Y
 	opc[0xda] = &opc_push;		opcamod[0xda] = IMPLIED;			// PHX
 	opc[0xdb] = &opc_stp;		opcamod[0xdb] = IMPLIED;			// STP
@@ -668,7 +676,7 @@ static void initops(void)
 	opc[0xf5] = &opc_adcsbccmp;	opcamod[0xf5] = DIRECTINDEXEDX;			// SBC dp,X
 	opc[0xf6] = &opc_incdec;	opcamod[0xf6] = DIRECTINDEXEDX;			// INC dp,X
 	opc[0xf7] = &opc_adcsbccmp;	opcamod[0xf7] = DIRECTINDIRECTLONGINDEXEDY;	// SBC [dp],Y
-	opc[0xf8] = &opc_sed;		opcamod[0xf8] = IMPLIED;			// SED
+	opc[0xf8] = &opc_flagop;		opcamod[0xf8] = IMPLIED;			// SED
 	opc[0xf9] = &opc_adcsbccmp;	opcamod[0xf9] = ABSOLUTEINDEXEDY;		// SBC $abs,Y
 	opc[0xfa] = &opc_pop;		opcamod[0xfa] = IMPLIED;			// PLX
 	opc[0xfb] = &opc_xce;		opcamod[0xfb] = IMPLIED;			// XCE
@@ -715,15 +723,24 @@ static unsigned short pop16(void)
 	return temp.x;
 }
 
-void reset(void)
+static void cpu_reset(void)
 {
 	s.x=0x1ff; // stack to default
+	a.x=0; // registers cleared for determinism (index high bytes must be 0 in emulation mode)
+	x.x=0;
+	y.x=0;
 	d.x=0; // direct reg to zero page
-	p=0x30; // PSR clear, unimplemented bit set, break bit set
+	p=0x34; // PSR clear except IRQ disable, unimplemented bit and break bit set
 	e=1; // hidden bit 1
 	pc.x=(mem[0xfffd]*256)+mem[0xfffc]; // set PC to reset address
 	b=0; // data bank to 0
 	k=0; // program bank to 0
+}
+
+// side-effect free memory read for the trace/disassembler
+static unsigned char peek(unsigned char bank, unsigned short address)
+{
+	return mem[((bank * 65536) + address) & MEMTOP];
 }
 
 static void show_trace(void)
@@ -733,12 +750,12 @@ static void show_trace(void)
 
 static void disass(void)
 {
-	printf("%02X/%04X: %02X %02X%02X%02X ",k,pc.x,rmem(k,pc.x),rmem(k,pc.x+1),rmem(k,pc.x+2),rmem(k,pc.x+3));
+	printf("%02X/%04X: %02X %02X%02X%02X ",k,pc.x,peek(k,pc.x),peek(k,pc.x+1),peek(k,pc.x+2),peek(k,pc.x+3));
 }
 
 void engine_65816_reset()
 {
-	reset();
+	cpu_reset();
 }
 
 int engine_65816_init(unsigned char *a_memory, int a_traceflag)
@@ -758,6 +775,8 @@ int engine_65816_init(unsigned char *a_memory, int a_traceflag)
 
 void engine_65816_step()
 {
+	if (engine_65816_halt)
+		return; // STP/BRK halted the processor
 	if (traceflag) disass();
 	opcload = rmem(k,pc.x);
 	opc[opcload](opcamod[opcload]);
@@ -780,15 +799,509 @@ Handler routines for opcodes
 These are loaded up and called by pointer via the opcode table.
 */
 
-static void inval_op(int amod)
+// processor status flag bits
+#define FLAG_C 0x01
+#define FLAG_Z 0x02
+#define FLAG_I 0x04
+#define FLAG_D 0x08
+#define FLAG_X 0x10 // index registers 8-bit (native mode)
+#define FLAG_M 0x20 // accumulator/memory 8-bit (native mode)
+#define FLAG_V 0x40
+#define FLAG_N 0x80
+
+// width tests: emulation mode is always 8-bit
+static int acc8(void)
 {
-	inc_pc(1);
-	engine_65816_cycles += 2;
+	return (e==1) || ((p & FLAG_M) != 0);
+}
+
+static int idx8(void)
+{
+	return (e==1) || ((p & FLAG_X) != 0);
+}
+
+// flag helpers
+static void set_flag(unsigned char mask, int cond)
+{
+	if (cond)
+		p |= mask;
+	else
+		p &= (unsigned char)~mask;
+}
+
+static void set_nz8(unsigned char v)
+{
+	set_flag(FLAG_Z, v == 0);
+	set_flag(FLAG_N, (v & 0x80) != 0);
+}
+
+static void set_nz16(unsigned short v)
+{
+	set_flag(FLAG_Z, v == 0);
+	set_flag(FLAG_N, (v & 0x8000) != 0);
+}
+
+static void set_nz(unsigned short v, int is8)
+{
+	if (is8)
+		set_nz8((unsigned char)v);
+	else
+		set_nz16(v);
+}
+
+// cycle counting for the common addressing modes
+enum { CYC_READ, CYC_WRITE, CYC_RMW };
+
+static void addr_cycles(int amod, int kind, int is8)
+{
+	int c = 0;
+	int dp = 0; // direct page mode: +1 cycle if DL != 0
+
+	if (kind == CYC_RMW)
+	{
+		switch (amod)
+		{
+			case ACCUMULATOR: c = 2; break;
+			case ABSOLUTE: c = 6; break;
+			case DIRECT: c = 5; dp = 1; break;
+			case DIRECTINDEXEDX: c = 6; dp = 1; break;
+			case ABSOLUTEINDEXEDX: c = 7; break;
+		}
+		if ((amod != ACCUMULATOR) && !is8)
+			c += 2; // 16-bit read-modify-write does an extra read and write
+	}
+	else
+	{
+		switch (amod)
+		{
+			case IMMEDIATE: c = 2; break;
+			case ABSOLUTE: c = 4; break;
+			case ABSOLUTELONG: c = 5; break;
+			case DIRECT: c = 3; dp = 1; break;
+			case DIRECTINDEXEDX:
+			case DIRECTINDEXEDY: c = 4; dp = 1; break;
+			case ABSOLUTEINDEXEDX:
+			case ABSOLUTEINDEXEDY:
+				if (kind == CYC_WRITE)
+					c = 5;
+				else
+					c = 4 + (boundcross == 1);
+				break;
+			case ABSOLUTELONGINDEXEDX: c = 5; break;
+			case DIRECTINDIRECT: c = 5; dp = 1; break;
+			case DIRECTINDIRECTLONG: c = 6; dp = 1; break;
+			case DIRECTINDEXEDINDIRECTX: c = 6; dp = 1; break;
+			case DIRECTINDIRECTINDEXEDY:
+				if (kind == CYC_WRITE)
+					c = 6;
+				else
+					c = 5 + (boundcross == 1);
+				dp = 1;
+				break;
+			case DIRECTINDIRECTLONGINDEXEDY: c = 6; dp = 1; break;
+			case STACKRELATIVE: c = 4; break;
+			case STACKINDIRECTINDEXEDY: c = 7; break;
+		}
+		if (!is8)
+			c++; // 16-bit data takes an extra cycle
+	}
+	if (dp && (d.l != 0))
+		c++;
+	engine_65816_cycles += c;
+}
+
+// store 8 or 16 bits of work through the writeback address
+static void store_work(int amod, unsigned short v, int is8)
+{
+	work.x = v;
+	writeback(amod, is8 ? 8 : 16);
 }
 
 static void opc_wdm(int amod)
 {
-	// WDM is currently unimplemented and acts like a NOP.
+	// WDM is currently unimplemented and acts like a 2-byte NOP (opcode + signature byte).
+	inc_pc(2);
+	engine_65816_cycles += 2;
+}
+
+static void opc_stp(int amod)
+{
+	// BRK is also mapped here, so it halts the processor too
+	engine_65816_halt = 1;
+	inc_pc(1);
+	engine_65816_cycles += 3;
+}
+
+static void opc_flagop(int amod)
+{
+	switch (opcload)
+	{
+		case 0x18: p &= (unsigned char)~FLAG_C; break; // CLC
+		case 0x38: p |= FLAG_C; break; // SEC
+		case 0x58: p &= (unsigned char)~FLAG_I; break; // CLI
+		case 0x78: p |= FLAG_I; break; // SEI
+		case 0xb8: p &= (unsigned char)~FLAG_V; break; // CLV
+		case 0xd8: p &= (unsigned char)~FLAG_D; break; // CLD
+		case 0xf8: p |= FLAG_D; break; // SED
+	}
+	inc_pc(1);
+	engine_65816_cycles += 2;
+}
+
+static void push_reg(const union reg *r, int is8)
+{
+	if (is8)
+	{
+		push(r->l);
+		engine_65816_cycles += 3;
+	}
+	else
+	{
+		push16(r->x);
+		engine_65816_cycles += 4;
+	}
+}
+
+static void opc_push(int amod)
+{
+	union reg tmp;
+
+	inc_pc(1);
+	switch (opcload)
+	{
+		case 0x48: push_reg(&a, acc8()); break; // PHA
+		case 0xda: push_reg(&x, idx8()); break; // PHX
+		case 0x5a: push_reg(&y, idx8()); break; // PHY
+		case 0x08: tmp.l = p; push_reg(&tmp, 1); break; // PHP
+		case 0x8b: tmp.l = b; push_reg(&tmp, 1); break; // PHB
+		case 0x4b: tmp.l = k; push_reg(&tmp, 1); break; // PHK
+		case 0x0b: push_reg(&d, 0); break; // PHD
+	}
+}
+
+static void pop_reg(union reg *r, int is8)
+{
+	if (is8)
+	{
+		r->l = pop();
+		set_nz8(r->l);
+		engine_65816_cycles += 4;
+	}
+	else
+	{
+		r->x = pop16();
+		set_nz16(r->x);
+		engine_65816_cycles += 5;
+	}
+}
+
+static void opc_pop(int amod)
+{
+	union reg tmp;
+
+	inc_pc(1);
+	switch (opcload)
+	{
+		case 0x68: pop_reg(&a, acc8()); break; // PLA
+		case 0xfa: pop_reg(&x, idx8()); break; // PLX
+		case 0x7a: pop_reg(&y, idx8()); break; // PLY
+		case 0x2b: pop_reg(&d, 0); break; // PLD
+		case 0xab: // PLB
+			pop_reg(&tmp, 1);
+			b = tmp.l;
+			break;
+		case 0x28: // PLP
+			p = pop(); // conditions all flags, obviously
+			if (e==1)
+				p |= 0x30; // M and X bits are forced to 1 in emulation mode
+			else if ((p & FLAG_X) != 0)
+			{
+				x.h = 0; // 8-bit index registers lose their high bytes
+				y.h = 0;
+			}
+			engine_65816_cycles += 4;
+			break;
+	}
+}
+
+// transfer into an index register (width set by X)
+static void xfer_to_index(union reg *dst, const union reg *src)
+{
+	if (idx8())
+	{
+		dst->l = src->l;
+		set_nz8(dst->l);
+	}
+	else
+	{
+		dst->x = src->x;
+		set_nz16(dst->x);
+	}
+}
+
+// transfer into the accumulator (width set by M)
+static void xfer_to_acc(const union reg *src)
+{
+	if (acc8())
+	{
+		a.l = src->l;
+		set_nz8(a.l);
+	}
+	else
+	{
+		a.x = src->x;
+		set_nz16(a.x);
+	}
+}
+
+static void opc_xfer(int amod)
+{
+	unsigned char t;
+
+	inc_pc(1);
+
+	switch(opcload)
+	{
+		case 0xaa: xfer_to_index(&x, &a); break; // TAX
+		case 0xa8: xfer_to_index(&y, &a); break; // TAY
+		case 0xba: xfer_to_index(&x, &s); break; // TSX
+		case 0x9b: xfer_to_index(&y, &x); break; // TXY
+		case 0xbb: xfer_to_index(&x, &y); break; // TYX
+		case 0x8a: xfer_to_acc(&x); break; // TXA
+		case 0x98: xfer_to_acc(&y); break; // TYA
+		case 0x9a: // TXS - affects no flags
+			if (e==1)
+				s.l = x.l; // stack high byte stays at $01
+			else
+				s.x = x.x;
+			break;
+		case 0x1b: // TCS - affects no flags
+			if (e==1)
+				s.l = a.l; // stack high byte stays at $01
+			else
+				s.x = a.x;
+			break;
+		case 0x5b: // TCD
+			d.x = a.x;
+			set_nz16(d.x);
+			break;
+		case 0x7b: // TDC
+			a.x = d.x;
+			set_nz16(a.x);
+			break;
+		case 0x3b: // TSC
+			a.x = s.x;
+			set_nz16(a.x);
+			break;
+		case 0xeb: // XBA
+			t = a.h;
+			a.h = a.l;
+			a.l = t;
+			set_nz8(a.l);
+			engine_65816_cycles++; // XBA takes 3
+			break;
+	}
+
+	engine_65816_cycles+=2; // for all instructions
+}
+
+static void opc_logic(int amod)
+{
+	int is8 = acc8();
+	unsigned short v, m;
+
+	inc_pc(1);
+	fetch(amod, is8 ? 8 : 16);
+	v = is8 ? a.l : a.x;
+	m = is8 ? work.l : work.x;
+	switch (opcload >> 5) // bits 7-5 pick the operation within the standard ALU opcode group
+	{
+		case 0: v |= m; break; // ORA
+		case 1: v &= m; break; // AND
+		case 2: v ^= m; break; // EOR
+	}
+	if (is8)
+		a.l = (unsigned char)v;
+	else
+		a.x = v;
+	set_nz(v, is8);
+	addr_cycles(amod, CYC_READ, is8);
+}
+
+static void opc_lda(int amod)
+{
+	int is8 = acc8();
+
+	inc_pc(1);
+	fetch(amod, is8 ? 8 : 16);
+	if (is8)
+	{
+		a.l = work.l;
+		set_nz8(a.l);
+	}
+	else
+	{
+		a.x = work.x;
+		set_nz16(a.x);
+	}
+	addr_cycles(amod, CYC_READ, is8);
+}
+
+static void opc_ldxy(int amod)
+{
+	int is8 = idx8();
+	union reg *r = (opcload & 0x02) ? &x : &y; // LDX opcodes (a2,a6,ae,b6,be) have bit 1 set, LDY don't
+
+	inc_pc(1);
+	fetch(amod, is8 ? 8 : 16);
+	if (is8)
+	{
+		r->l = work.l;
+		set_nz8(r->l);
+	}
+	else
+	{
+		r->x = work.x;
+		set_nz16(r->x);
+	}
+	addr_cycles(amod, CYC_READ, is8);
+}
+
+static void opc_sta(int amod)
+{
+	int is8 = acc8();
+	int stz = (opcload == 0x64) || (opcload == 0x74) || (opcload == 0x9c) || (opcload == 0x9e);
+
+	inc_pc(1);
+	noread = 1; // stores never read the target
+	fetch(amod, is8 ? 8 : 16); // set up writeback address
+	noread = 0;
+	store_work(amod, stz ? 0 : (is8 ? a.l : a.x), is8);
+	addr_cycles(amod, CYC_WRITE, is8);
+}
+
+static void opc_stxy(int amod)
+{
+	int is8 = idx8();
+	union reg *r = (opcload & 0x02) ? &x : &y; // STX opcodes (86,8e,96) have bit 1 set, STY don't
+
+	inc_pc(1);
+	noread = 1;
+	fetch(amod, is8 ? 8 : 16); // set up writeback address
+	noread = 0;
+	store_work(amod, is8 ? r->l : r->x, is8);
+	addr_cycles(amod, CYC_WRITE, is8);
+}
+
+// ASL, ROL, LSR and ROR share this routine
+enum { SH_ASL, SH_ROL, SH_LSR, SH_ROR };
+
+static void do_shift(int amod, int kind)
+{
+	int is8 = acc8();
+	unsigned msb = is8 ? 0x80 : 0x8000;
+	unsigned mask = is8 ? 0xff : 0xffff;
+	unsigned cin = (p & FLAG_C) ? 1 : 0;
+	unsigned v, r = 0;
+
+	inc_pc(1);
+	if (amod == ACCUMULATOR)
+		v = is8 ? a.l : a.x;
+	else
+	{
+		fetch(amod, is8 ? 8 : 16);
+		v = is8 ? work.l : work.x;
+	}
+	switch (kind)
+	{
+		case SH_ASL:
+			set_flag(FLAG_C, (v & msb) != 0);
+			r = (v << 1) & mask;
+			break;
+		case SH_ROL:
+			set_flag(FLAG_C, (v & msb) != 0);
+			r = ((v << 1) | cin) & mask;
+			break;
+		case SH_LSR:
+			set_flag(FLAG_C, (v & 1) != 0);
+			r = v >> 1;
+			break;
+		case SH_ROR:
+			set_flag(FLAG_C, (v & 1) != 0);
+			r = (v >> 1) | (cin ? msb : 0);
+			break;
+	}
+	set_nz(r, is8); // LSR always clears N since bit 7/15 is shifted out
+	if (amod == ACCUMULATOR)
+	{
+		if (is8)
+			a.l = (unsigned char)r;
+		else
+			a.x = (unsigned short)r;
+	}
+	else
+		store_work(amod, (unsigned short)r, is8);
+	addr_cycles(amod, CYC_RMW, is8);
+}
+
+static void opc_asl(int amod) { do_shift(amod, SH_ASL); }
+static void opc_rol(int amod) { do_shift(amod, SH_ROL); }
+static void opc_lsr(int amod) { do_shift(amod, SH_LSR); }
+static void opc_ror(int amod) { do_shift(amod, SH_ROR); }
+
+static void opc_inxydexy(int amod)
+{
+	union reg *r = ((opcload == 0xe8) || (opcload == 0xca)) ? &x : &y; // INX/DEX : INY/DEY
+	int delta = ((opcload == 0xe8) || (opcload == 0xc8)) ? 1 : -1; // INX/INY : DEX/DEY
+
+	inc_pc(1);
+	if (idx8())
+	{
+		r->l += delta;
+		set_nz8(r->l);
+	}
+	else
+	{
+		r->x += delta;
+		set_nz16(r->x);
+	}
+	engine_65816_cycles+=2; // for all 4 instructions
+}
+
+static void opc_incdec(int amod)
+{
+	int is8 = acc8();
+	int delta = (opcload == 0x3a) || ((opcload & 0xe0) == 0xc0) ? -1 : 1; // DEC: 3a,c6,ce,d6,de  INC: the rest
+	unsigned v;
+
+	inc_pc(1);
+	if (amod == ACCUMULATOR)
+		v = is8 ? a.l : a.x;
+	else
+	{
+		fetch(amod, is8 ? 8 : 16);
+		v = is8 ? work.l : work.x;
+	}
+	v += delta;
+	if (is8)
+		v &= 0xff;
+	else
+		v &= 0xffff;
+	set_nz(v, is8);
+	if (amod == ACCUMULATOR)
+	{
+		if (is8)
+			a.l = (unsigned char)v;
+		else
+			a.x = (unsigned short)v;
+	}
+	else
+		store_work(amod, (unsigned short)v, is8);
+	addr_cycles(amod, CYC_RMW, is8);
+}
+
+static void inval_op(int amod)
+{
 	inc_pc(1);
 	engine_65816_cycles += 2;
 }
@@ -803,7 +1316,9 @@ static void opc_wai(int amod)
 static void opc_jmpjsr(int amod)
 {
 	inc_pc(1);
+	noread = 1; // we only want the target address, not the data there
 	fetch(amod,16);
+	noread = 0;
 	switch(opcload)
 	{
 		case 0x20: // JSR $abs
@@ -872,479 +1387,11 @@ static void opc_pei(int amod)
 static void opc_pea(int amod)
 {
 	inc_pc(1);
+	noread = 1;
 	fetch(amod,16);
+	noread = 0;
 	push16(wb_a.x);
 	engine_65816_cycles += 5;
-}
-
-static void opc_push(int amod)
-{
-	inc_pc(1);
-	switch(opcload)
-	{
-		case 0x48: // PHA
-			if ((e==1) || ((e==0) && ((p & 0x20)==0x20)))
-			{
-				push(a.l);
-				engine_65816_cycles += 3;
-			}
-			else
-			{
-				push16(a.x);
-				engine_65816_cycles += 4;
-			}
-			break;
-		case 0xda: // PHX
-			if ((e==1) || ((e==0) && ((p & 0x10)==0x10)))
-			{
-				push(x.l);
-				engine_65816_cycles += 3;
-			}
-			else
-			{
-				push16(x.x);
-				engine_65816_cycles += 4;
-			}
-			break;
-		case 0x5a: // PHY
-			if ((e==1) || ((e==0) && ((p & 0x10)==0x10)))
-			{
-				push(y.l);
-				engine_65816_cycles += 3;
-			}
-			else
-			{
-				push16(y.x);
-				engine_65816_cycles += 4;
-			}
-			break;
-		case 0x08: // PHP
-			push(p);
-			engine_65816_cycles += 3;
-			break;
-		case 0x8b: // PHB
-			push(b);
-			engine_65816_cycles += 3;
-			break;
-		case 0x0b: // PHD
-			push16(d.x);
-			engine_65816_cycles += 4;
-			break;
-		case 0x4b: // PHK
-			push(k);
-			engine_65816_cycles += 3;
-			break;
-	}
-}
-
-static void opc_pop(int amod)
-{
-	inc_pc(1);
-	switch(opcload)
-	{
-		case 0x68: // PLA
-			if ((e==1) || ((e==0) && ((p & 0x20)==0x20)))
-			{
-				a.l=pop();
-				engine_65816_cycles += 4;
-				if (a.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (a.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				a.x=pop16();
-				engine_65816_cycles += 5;
-				if (a.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (a.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0xfa: // PLX
-			if ((e==1) || ((e==0) && ((p & 0x10)==0x10)))
-			{
-				x.l=pop();
-				engine_65816_cycles += 4;
-				if (x.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				x.x=pop16();
-				engine_65816_cycles += 5;
-				if (x.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0x7a: // PLY
-			if ((e==1) || ((e==0) && ((p & 0x10)==0x10)))
-			{
-				y.l=pop();
-				engine_65816_cycles += 4;
-				if (y.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (y.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				y.x=pop16();
-				engine_65816_cycles += 5;
-				if (y.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (y.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0x28: // PLP
-			p=pop(); // conditions all flags, obviously
-			engine_65816_cycles += 4;
-			break;
-		case 0xab: // PLB
-			b=pop();
-			engine_65816_cycles += 4;
-			if (b==0)
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			if (b > 127)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			break;
-		case 0x2b: // PLD
-			d.x=pop16();
-			engine_65816_cycles += 5;
-			if (d.x==0)
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			if (d.x > 32767)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			break;
-	}
-}
-
-static void opc_xfer(int amod)
-{
-	inc_pc(1);
-
-	switch(opcload)
-	{
-		case 0xaa: // TAX
-			if ((e==1) || (((p & 0x10) == 0x10) && (e==0))) // 8-bit index regs?
-			{
-				x.l = a.l; // just transfer low byte
-				if (x.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				x.x = a.x;
-				if (x.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0xa8: // TAY
-			if ((e==1) || (((p & 0x10) == 0x10) && (e==0))) // 8-bit index regs?
-			{
-				y.l = a.l; // just transfer low byte
-				if (y.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (y.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				y.x = a.x;
-				if (y.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (y.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0x8a: // TXA
-			if ((e==1) || (((p & 0x20) == 0x20) && (e==0))) // emulation mode, or native w/ m=1?
-			{
-				a.l = x.l; // just transfer low byte
-				if (a.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (a.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else // native mode, m=0, x=?
-			{
-				a.l = x.l;
-				if ((p & 0x10) == 0x10) // 8 bit index regs?
-					a.h = 0; // just apply a 0 to a.h (B) then
-				else // 16-16 transfer
-					a.h = x.h;
-				if (a.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (a.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0x98: // TYA
-			if ((e==1) || (((p & 0x20) == 0x20) && (e==0))) // emulation mode, or native w/ m=1?
-			{
-				a.l = y.l; // just transfer low byte
-				if (a.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (a.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else // native mode, m=0, x=?
-			{
-				a.l = y.l;
-				if ((p & 0x10) == 0x10) // 8 bit index regs?
-					a.h = 0; // just apply a 0 to a.h (B) then
-				else // 16-16 transfer
-					a.h = y.h;
-				if (a.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (a.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0xba: // TSX
-			if ((e==1) || (((p & 0x10) == 0x10) && (e==0))) // 8-bit index regs?
-			{
-				x.l = s.l; // just transfer low byte
-				if (x.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				x.x = s.x;
-				if (x.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0x9a: // TXS
-			if ((e==1) || (((p & 0x20) == 0x20) && (e==0))) // emulation mode, or native w/ m=1?
-			{
-				s.l = x.l; // just transfer low byte
-				if (s.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (s.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else // native mode, m=0, x=?
-			{
-				s.l = x.l;
-				if ((p & 0x10) == 0x10) // 8 bit index regs?
-					s.h = 0; // just apply a 0 to stack hi-byte then
-				else // 16-16 transfer
-					s.h = x.h;
-				if (s.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (s.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0x9b: // TXY
-			if ((e==1) || (((p & 0x10) == 0x10) && (e==0))) // 8-bit index regs?
-			{
-				y.l = x.l;
-				if (y.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (y.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				y.x = x.x;
-				if (y.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (y.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0xbb: // TYX
-			if ((e==1) || (((p & 0x10) == 0x10) && (e==0))) // 8-bit index regs?
-			{
-				x.l = y.l;
-				if (x.l == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.l > 127)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			else
-			{
-				x.x = y.x;
-				if (x.x == 0) // condition flags
-					p |= 0x02;
-				else
-					p &= 0xfd;
-				if (x.x > 32767)
-					p |= 0x80;
-				else
-					p &= 0x7f;
-			}
-			break;
-		case 0x5b: // TCD
-			d.x = a.x;
-			if (d.x == 0) // condition flags
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			if (d.x > 32767)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			break;
-		case 0x7b: // TDC
-			a.x = d.x;
-			if (a.x == 0) // condition flags
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			if (a.x > 32767)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			break;
-		case 0x1b: // TCS
-			s.l = a.l; // only xfer low byte in emulation mode
-			if (e==0)
-				s.h = a.h;
-			if (s.x == 0) // condition flags
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			if (s.x > 32767)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			break;
-		case 0x3b: // TSC
-			a.x = s.x;
-			if (a.x == 0) // condition flags
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			if (a.x > 32767)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			break;
-		case 0xeb: // XBA
-			work.l = a.h;
-			a.h = a.l;
-			a.l = work.l;
-			if (a.l == 0) // condition flags
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			if (a.l > 127)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			break;
-	}
-
-	engine_65816_cycles+=2; // for all instructions
 }
 
 static void opc_brlper(int amod)
@@ -1417,1029 +1464,22 @@ static void opc_bxx(int amod)
 			break;
 	}
 
-	// move program counter if we take the branch
-	if (taken)
-		pc.x += offset.x;
-
 	// compute clock engine_65816_cycles used
 	engine_65816_cycles += 2; // will always use at least 2
-	if (e==1)
-		engine_65816_cycles++; // add one for emulation mode
 	if (taken)
+	{
+		unsigned short oldpc = pc.x;
+		pc.x += offset.x; // move program counter if we take the branch
 		engine_65816_cycles++; // add one if branch taken
+		if ((e==1) && ((oldpc & 0xff00) != (pc.x & 0xff00)))
+			engine_65816_cycles++; // add one for a page crossing in emulation mode
+	}
 }
 
-static void opc_clc(int amod)
+static void opc_nop(int amod)
 {
-	p &= 0xfe;
 	inc_pc(1);
 	engine_65816_cycles += 2;
-}
-
-static void opc_clv(int amod)
-{
-	p &= 0xbf;
-	inc_pc(1);
-	engine_65816_cycles += 2;
-}
-
-static void opc_cld(int amod)
-{
-	p &= 0xf7;
-	inc_pc(1);
-	engine_65816_cycles += 2;
-}
-
-static void opc_cli(int amod)
-{
-	p &= 0xfb;
-	inc_pc(1);
-	engine_65816_cycles += 2;
-}
-
-static void opc_sec(int amod)
-{
-	p |= 0x01;
-	inc_pc(1);
-	engine_65816_cycles += 2;
-}
-
-static void opc_sed(int amod)
-{
-	p |= 0x08;
-	inc_pc(1);
-	engine_65816_cycles += 2;
-}
-
-static void opc_sei(int amod)
-{
-	p |= 0x04;
-	inc_pc(1);
-	engine_65816_cycles += 2;
-}
-
-static void opc_logic(int amod)
-{
-	inc_pc(1);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		fetch(amod,8);
-		switch (opcload)
-		{
-			case 0x49:
-			case 0x4d:
-			case 0x4f:
-			case 0x45:
-			case 0x52:
-			case 0x47:
-			case 0x5d:
-			case 0x5f:
-			case 0x59:
-			case 0x55:
-			case 0x41:
-			case 0x51:
-			case 0x57:
-			case 0x43:
-			case 0x53:
-				a.l ^= work.l; // EOR
-				break;
-			case 0x29:
-			case 0x2d:
-			case 0x2f:
-			case 0x25:
-			case 0x32:
-			case 0x27:
-			case 0x3d:
-			case 0x3f:
-			case 0x39:
-			case 0x35:
-			case 0x21:
-			case 0x31:
-			case 0x37:
-			case 0x23:
-			case 0x33:
-				a.l &= work.l; // AND
-				break;
-			case 0x09:
-			case 0x0d:
-			case 0x0f:
-			case 0x05:
-			case 0x12:
-			case 0x07:
-			case 0x1d:
-			case 0x1f:
-			case 0x19:
-			case 0x15:
-			case 0x01:
-			case 0x11:
-			case 0x17:
-			case 0x03:
-			case 0x13:
-				a.l |= work.l; // ORA
-				break;
-		}
-		if (a.l == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (a.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-	}
-	else
-	{
-		fetch(amod,16);
-		switch (opcload)
-		{
-			case 0x49:
-			case 0x4d:
-			case 0x4f:
-			case 0x45:
-			case 0x52:
-			case 0x47:
-			case 0x5d:
-			case 0x5f:
-			case 0x59:
-			case 0x55:
-			case 0x41:
-			case 0x51:
-			case 0x57:
-			case 0x43:
-			case 0x53:
-				a.x ^= work.x; // EOR
-				break;
-			case 0x29:
-			case 0x2d:
-			case 0x2f:
-			case 0x25:
-			case 0x32:
-			case 0x27:
-			case 0x3d:
-			case 0x3f:
-			case 0x39:
-			case 0x35:
-			case 0x21:
-			case 0x31:
-			case 0x37:
-			case 0x23:
-			case 0x33:
-				a.x &= work.x; // AND
-				break;
-			case 0x09:
-			case 0x0d:
-			case 0x0f:
-			case 0x05:
-			case 0x12:
-			case 0x07:
-			case 0x1d:
-			case 0x1f:
-			case 0x19:
-			case 0x15:
-			case 0x01:
-			case 0x11:
-			case 0x17:
-			case 0x03:
-			case 0x13:
-				a.x |= work.x; // ORA
-				break;
-		}
-		if (a.x == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (a.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-	}
-	// compute engine_65816_cycles
-	switch (amod) {
-		case IMMEDIATE:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 4;
-			break;
-		case ABSOLUTELONG:
-			engine_65816_cycles += 5;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 3;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-		case ABSOLUTEINDEXEDY:
-			engine_65816_cycles += 4;
-			if (boundcross == 1)
-				engine_65816_cycles++;
-			break;
-		case ABSOLUTELONGINDEXEDX:
-			engine_65816_cycles += 5;
-			break;
-		case DIRECTINDIRECT:
-		case DIRECTINDIRECTLONG:
-		case DIRECTINDIRECTINDEXEDY:
-		case DIRECTINDIRECTLONGINDEXEDY:
-		case DIRECTINDEXEDINDIRECTX:
-			engine_65816_cycles += 6;
-			if ((amod == DIRECTINDIRECT) || (amod == DIRECTINDIRECTINDEXEDY))
-				engine_65816_cycles--; // only 5 engine_65816_cycles for DIRECTINDIRECT and DIRECTINDIRECTINDEXEDY
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			if ((amod == DIRECTINDIRECTINDEXEDY) && (boundcross == 1))
-				engine_65816_cycles++;
-			break;
-		case STACKRELATIVE:
-			engine_65816_cycles += 4;
-			break;
-		case STACKINDIRECTINDEXEDY:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if ((e==0) && ((p & 0x20) == 0))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_sta(int amod)
-{
-	inc_pc(1);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		fetch(amod,8); // set up writeback address
-		switch(opcload)
-		{
-			case 0x64:
-			case 0x74:
-			case 0x9c:
-			case 0x9e:
-				work.l = 0; // STZ
-				break;
-			default:		
-				work.l = a.l; // STA
-				break;
-		}
-		writeback(amod,8);
-	}
-	else
-	{
-		fetch(amod,16);
-		switch(opcload)
-		{
-			case 0x64:
-			case 0x74:
-			case 0x9c:
-			case 0x9e:
-				work.x = 0; // STZ
-				break;
-			default:		
-				work.x = a.x; // STA
-				break;
-		}
-		writeback(amod,16);
-	}
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ABSOLUTE:
-			engine_65816_cycles += 4;
-			break;
-		case ABSOLUTELONG:
-			engine_65816_cycles += 5;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 3;
-			if (amod == DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case DIRECTINDIRECT:
-		case DIRECTINDIRECTLONG:
-		case DIRECTINDIRECTINDEXEDY:
-		case DIRECTINDIRECTLONGINDEXEDY:
-		case DIRECTINDEXEDINDIRECTX:
-			engine_65816_cycles += 6;
-			if (amod == DIRECTINDIRECT)
-				engine_65816_cycles--; // only 5 engine_65816_cycles for DIRECTINDIRECT
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-		case ABSOLUTEINDEXEDY:
-		case ABSOLUTELONGINDEXEDX:
-			engine_65816_cycles += 5;
-			break;
-		case STACKRELATIVE:
-			engine_65816_cycles += 4;
-			break;
-		case STACKINDIRECTINDEXEDY:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if ((e==0) && ((p & 0x20) == 0))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_stxy(int amod)
-{
-	inc_pc(1);
-	if ((e==1) || (((p & 0x10) == 0x10) && (e==0)))
-	{
-		fetch(amod,8); // set up writeback address
-		switch (opcload)
-		{
-			case 0x86:
-			case 0x8e:
-			case 0x96:
-				work.l = x.l; // STX
-				break;
-			case 0x84:
-			case 0x8c:
-			case 0x94:
-				work.l = y.l; // STY
-				break;
-		}
-		writeback(amod,8);
-	}
-	else
-	{
-		fetch(amod,16);
-		switch (opcload)
-		{
-			case 0x86:
-			case 0x8e:
-			case 0x96:
-				work.x = x.x; // STX
-				break;
-			case 0x84:
-			case 0x8c:
-			case 0x94:
-				work.x = y.x; // STY
-				break;
-		}
-		writeback(amod,16);
-	}
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ABSOLUTE:
-			engine_65816_cycles += 4;
-			break;
-		case DIRECT:
-			engine_65816_cycles += 3;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case DIRECTINDEXEDX:
-		case DIRECTINDEXEDY:
-			engine_65816_cycles += 4;
-			if (d.l != 0)
-				engine_65816_cycles++;
-			break;
-	}
-	if ((e==0) && ((p & 0x10) == 0))
-		engine_65816_cycles++; // add 1 for 16 bit X
-}
-
-static void opc_lsr(int amod)
-{
-	inc_pc(1);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,8);
-		else
-			work.l = a.l; // get data from A
-		if ((work.l & 0x01) == 0x01)
-			p |= 0x01; // set carry to last bit
-		else
-			p &= 0xfe;
-		work.l >>= 1; // and shift it right
-		if (work.l == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,8); // put data back in memory
-		else
-			a.l = work.l; // put A back
-	}
-	else
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,16);
-		else
-			work.x = a.x; // get data from A
-		if ((work.x & 0x0001) == 0x0001)
-			p |= 0x01; // set carry to last bit
-		else
-			p &= 0xfe;
-		work.x >>= 1; // and shift it right
-		if (work.x == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,16); // put data back in memory
-		else
-			a.x = work.x; // put A back
-	}
-	p &= 0x7f; // clear n flag no matter what
-
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ACCUMULATOR:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 6;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 5;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if (((e==0) && ((p & 0x20) == 0)) && (amod != ACCUMULATOR))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_asl(int amod)
-{
-	inc_pc(1);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,8);
-		else
-			work.l = a.l; // get data from A
-		if ((work.l & 0x80) == 0x80)
-			p |= 0x01; // set carry to bit 7
-		else
-			p &= 0xfe;
-		work.l <<= 1; // and shift it left
-		if (work.l == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,8); // put data back in memory
-		else
-			a.l = work.l; // put A back
-	}
-	else
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,16);
-		else
-			work.x = a.x; // get data from A
-		if ((work.x & 0x8000) == 0x8000)
-			p |= 0x01; // set carry to bit 15
-		else
-			p &= 0xfe;
-		work.x <<= 1; // and shift it left
-		if (work.x == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,16); // put data back in memory
-		else
-			a.x = work.x; // put A back
-	}
-
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ACCUMULATOR:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 6;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 5;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if (((e==0) && ((p & 0x20) == 0)) && (amod != ACCUMULATOR))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_ror(int amod)
-{
-	int savecarry;
-
-	inc_pc(1);
-	savecarry=(p & 0x01);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,8);
-		else
-			work.l = a.l; // get data from A
-		if ((work.l & 0x01) == 0x01)
-			p |= 0x01; // set carry to bit 0
-		else
-			p &= 0xfe;
-		work.l >>= 1; // and shift it right
-		if (savecarry)
-			work.l |= 0x80;
-		if (work.l == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,8); // put data back in memory
-		else
-			a.l = work.l; // put A back
-	}
-	else
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,16);
-		else
-			work.x = a.x; // get data from A
-		if ((work.x & 0x0001) == 0x0001)
-			p |= 0x01; // set carry to bit 0
-		else
-			p &= 0xfe;
-		work.x >>= 1; // and shift it right
-		if (savecarry)
-			work.x |= 0x8000;
-		if (work.x == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,16); // put data back in memory
-		else
-			a.x = work.x; // put A back
-	}
-
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ACCUMULATOR:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 6;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 5;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if (((e==0) && ((p & 0x20) == 0)) && (amod != ACCUMULATOR))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_rol(int amod)
-{
-	int savecarry;
-
-	inc_pc(1);
-	savecarry=(p & 0x01);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,8);
-		else
-			work.l = a.l; // get data from A
-		if ((work.l & 0x80) == 0x80)
-			p |= 0x01; // set carry to bit 7
-		else
-			p &= 0xfe;
-		work.l <<= 1; // and shift it left
-		if (savecarry)
-			work.l |= 0x01; // set bit 0 of low byte if carry was set
-		if (work.l == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,8); // put data back in memory
-		else
-			a.l = work.l; // put A back
-	}
-	else
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,16);
-		else
-			work.x = a.x; // get data from A
-		if ((work.x & 0x8000) == 0x8000)
-			p |= 0x01; // set carry to bit 15
-		else
-			p &= 0xfe;
-		work.x <<= 1; // and shift it left
-		if (savecarry)
-			work.x |= 0x0001; // set bit 0 of low byte if carry was set
-		if (work.x == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,16); // put data back in memory
-		else
-			a.x = work.x; // put A back
-	}
-
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ACCUMULATOR:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 6;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 5;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if (((e==0) && ((p & 0x20) == 0)) && (amod != ACCUMULATOR))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_lda(int amod)
-{
-	inc_pc(1);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		fetch(amod,8);
-		if (work.l == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		a.l = work.l;
-	}
-	else
-	{
-		fetch(amod,16);
-		if (work.x == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		a.x = work.x;
-	}
-	// compute engine_65816_cycles
-	switch (amod) {
-		case IMMEDIATE:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 4;
-			break;
-		case ABSOLUTELONG:
-			engine_65816_cycles += 5;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 3;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-		case ABSOLUTEINDEXEDY:
-			engine_65816_cycles += 4;
-			if (boundcross == 1)
-				engine_65816_cycles++;
-			break;
-		case ABSOLUTELONGINDEXEDX:
-			engine_65816_cycles += 5;
-			break;
-		case DIRECTINDIRECT:
-		case DIRECTINDIRECTLONG:
-		case DIRECTINDIRECTINDEXEDY:
-		case DIRECTINDIRECTLONGINDEXEDY:
-		case DIRECTINDEXEDINDIRECTX:
-			engine_65816_cycles += 6;
-			if ((amod == DIRECTINDIRECT) || (amod == DIRECTINDIRECTINDEXEDY))
-				engine_65816_cycles--; // only 5 engine_65816_cycles for DIRECTINDIRECT and DIRECTINDIRECTINDEXEDY
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			if ((amod == DIRECTINDIRECTINDEXEDY) && (boundcross == 1))
-				engine_65816_cycles++;
-			break;
-		case STACKRELATIVE:
-			engine_65816_cycles += 4;
-			break;
-		case STACKINDIRECTINDEXEDY:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if ((e==0) && ((p & 0x20) == 0))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_ldxy(int amod)
-{
-	inc_pc(1);
-	if ((e==1) || (((p & 0x10) == 0x10) && (e==0)))
-	{
-		fetch(amod,8);
-		if (work.l == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		switch (opcload)
-		{
-			case 0xa2:
-			case 0xa6:
-			case 0xae:
-			case 0xb6:
-			case 0xbe: // LDX
-				x.l = work.l;
-				break;
-			case 0xa0:
-			case 0xa4:
-			case 0xac:
-			case 0xb4:
-			case 0xbc: // LDY
-				y.l = work.l;
-				break;
-		}
-	}
-	else
-	{
-		fetch(amod,16);
-		if (work.x == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		switch (opcload)
-		{
-			case 0xa2:
-			case 0xa6:
-			case 0xae:
-			case 0xb6:
-			case 0xbe: // LDX
-				x.x = work.x;
-				break;
-			case 0xa0:
-			case 0xa4:
-			case 0xac:
-			case 0xb4:
-			case 0xbc: // LDY
-				y.x = work.x;
-				break;
-		}
-	}
-	// compute engine_65816_cycles
-	switch (amod) {
-		case IMMEDIATE:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 4;
-			break;
-		case DIRECT:
-			engine_65816_cycles += 3;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-		case ABSOLUTEINDEXEDY:
-			engine_65816_cycles += 4;
-			if (boundcross == 1)
-				engine_65816_cycles++;
-			break;
-		case DIRECTINDEXEDX:
-		case DIRECTINDEXEDY:
-			engine_65816_cycles += 4;
-			if (d.l != 0)
-				engine_65816_cycles++;
-			break;
-	}
-	if ((e==0) && ((p & 0x10) == 0))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
-
-static void opc_inxydexy(int amod)
-{
-	inc_pc(1);
-
-	if ((e==1) || (((p & 0x10) == 0x10) && (e==0)))
-	{
-		if ((opcload == 0xe8) || (opcload == 0xca)) // X
-		{
-			if (opcload == 0xe8) // INX
-				x.l++;
-			else // DEX
-				x.l--;
-			work.l = x.l;
-		}
-		else // Y
-		{
-			if (opcload == 0xc8) // INY
-				y.l++;
-			else // DEY
-				y.l--;
-			work.l = y.l;
-		}
-		if (work.l == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.l > 127) // condition negative flag
-			p |= 0x80;
-		else
-			p &= 0x7f;
-	}
-	else
-	{
-		if ((opcload == 0xe8) || (opcload == 0xca)) // X
-		{
-			if (opcload == 0xe8) // INX
-				x.x++;
-			else // DEX
-				x.x--;
-			work.x = x.x;
-		}
-		else // Y
-		{
-			if (opcload == 0xc8) // INY
-				y.x++;
-			else // DEY
-				y.x--;
-			work.x = y.x;
-		}
-		if (work.x == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.x > 32767) // condition negative flag
-			p |= 0x80;
-		else
-			p &= 0x7f;
-	}
-	engine_65816_cycles+=2; // for all 4 instructions
-}
-
-static void opc_incdec(int amod)
-{
-	inc_pc(1);
-
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,8);
-		else
-			work.l = a.l; // get data from A
-		if (((opcload & 0xf0) == 0x30) ||
-		    ((opcload & 0xf0) == 0xc0) ||
-		    ((opcload & 0xf0) == 0xd0))
-			work.l--; // DEC if opcode is 3a,c6,ce,d6 or de
-		else if (((opcload & 0xf0) == 0x10) ||
-			 ((opcload & 0xf0) == 0xe0) ||
-			 ((opcload & 0xf0) == 0xf0))
-			work.l++; // INC if opcode is 1a,e6,ee,f6 or fe
-		else
-		{
-			perror("fatal: inc/dec instruction: unexpected opcode.\n");
-			exit(1);
-		}
-		if (work.l == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,8); // put data back in memory
-		else
-			a.l = work.l; // put A back
-	}
-	else
-	{
-		if (amod!=ACCUMULATOR) // get data from memory if not LSR A		
-			fetch(amod,16);
-		else
-			work.x = a.x; // get data from A
-		if (((opcload & 0xf0) == 0x30) ||
-		    ((opcload & 0xf0) == 0xc0) ||
-		    ((opcload & 0xf0) == 0xd0))
-			work.x--; // DEC
-		else if (((opcload & 0xf0) == 0x10) ||
-			 ((opcload & 0xf0) == 0xe0) ||
-			 ((opcload & 0xf0) == 0xf0))
-			work.x++; // INC if opcode is 1a,e6,ee,f6 or fe
-		else
-		{
-			perror("fatal: inc/dec instruction: unexpected opcode.\n");
-			exit(1);
-		}
-		if (work.x == 0) // condition Z flag
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		if (work.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		if (amod!=ACCUMULATOR)
-			writeback(amod,16); // put data back in memory
-		else
-			a.x = work.x; // put A back
-	}
-
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ACCUMULATOR:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 6;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 3;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if (((e==0) && ((p & 0x20) == 0)) && (amod!=ACCUMULATOR))
-		engine_65816_cycles++; // add 1 for 16 bit A
 }
 
 static void opc_rep(int amod)
@@ -2448,6 +1488,8 @@ static void opc_rep(int amod)
 	fetch(amod,8);
 	work.l = ~work.l; // negate to make AND mask
 	p &= work.l;
+	if (e==1)
+		p |= 0x30; // M and X bits can't be cleared in emulation mode
 	engine_65816_cycles += 3;
 }
 
@@ -2456,19 +1498,12 @@ static void opc_sep(int amod)
 	inc_pc(1);
 	fetch(amod,8);
 	p |= work.l;
+	if ((e==0) && ((p & 0x10) == 0x10))
+	{
+		x.h = 0; // 8-bit index registers lose their high bytes
+		y.h = 0;
+	}
 	engine_65816_cycles += 3;
-}
-
-static void opc_stp(int amod)
-{
-	engine_65816_halt = 1;
-	inc_pc(1);
-}
-
-static void opc_nop(int amod)
-{
-	inc_pc(1);
-	engine_65816_cycles += 2;
 }
 
 static void opc_xce(int amod)
@@ -2485,559 +1520,149 @@ static void opc_xce(int amod)
 	{
 		p |= 0x30; // set unimplemented and break bits
 		s.h = 0x01; // high byte of stack ptr is 01
+		x.h = 0; // index registers become 8-bit
+		y.h = 0;
 	}
 	inc_pc(1);
 	engine_65816_cycles += 2;
 }
 
-static unsigned char bcdadd(int carry,unsigned char a1,unsigned char a2)
-{
-	// add nibbles:
-	// a1+a2+carry, if result is >=10, subtract 10 and pass on carry
-	unsigned char sum;
+// ADC, SBC and CMP/CPX/CPY share this routine
+enum { ALU_ADC, ALU_SBC, ALU_CMP };
 
-	sum = (a1 & 0x0f) + (a2 & 0x0f) + carry;
-	if (sum >= 10)
+static unsigned alu(int op, unsigned acc, unsigned m, int is8)
+{
+	unsigned mask = is8 ? 0xff : 0xffff;
+	unsigned sign = is8 ? 0x80 : 0x8000;
+	unsigned carry = (p & FLAG_C) ? 1 : 0;
+	int decimal = ((p & FLAG_D) != 0) && (op != ALU_CMP);
+	int nibbles = is8 ? 2 : 4;
+	int i;
+	unsigned opnd, sum, res, n, part;
+	int borrow;
+
+	// subtraction is addition of the inverted operand; a compare is a subtraction with carry set
+	opnd = (op == ALU_ADC) ? m : (~m & mask);
+	if (op == ALU_CMP)
+		carry = 1;
+	sum = acc + opnd + carry;
+	res = sum & mask;
+
+	if (op != ALU_CMP) // CMP, CPX, CPY don't condition the V flag
+		set_flag(FLAG_V, ((acc ^ res) & ~(acc ^ opnd) & sign) != 0);
+
+	if (!decimal)
+		set_flag(FLAG_C, sum > mask);
+	else if (op == ALU_ADC)
 	{
-		sum -= 10;
-		halfcarry = 1;
+		// BCD add, digit by digit
+		res = 0;
+		for (i = 0; i < nibbles; i++)
+		{
+			n = ((acc >> (4*i)) & 0x0f) + ((m >> (4*i)) & 0x0f) + carry;
+			if (i == nibbles - 1)
+			{
+				// V is conditioned from the result before the top digit's decimal adjust
+				part = res | ((n & 0x0f) << (4*i));
+				set_flag(FLAG_V, ((acc ^ part) & ~(acc ^ m) & sign) != 0);
+			}
+			if (n > 9)
+				n += 6;
+			carry = (n > 0x0f);
+			res |= (n & 0x0f) << (4*i);
+		}
+		set_flag(FLAG_C, carry);
 	}
 	else
-		halfcarry = 0;
-
-	return (sum & 0x0f);
-}
-
-static unsigned char bcdsubtract(int carry,unsigned char a1,unsigned char a2)
-{
-	// subtract nibbles:
-	// a1-a2-~carry, if result is < 0, roll over from 9 down.
-	// if result is < -10, roll over from F down.
-	char sum;
-
-	sum = (a1 & 0x0f) - (a2 & 0x0f) - ((carry & 0x01) ^ 0x01);
-	if (sum <= -10)
 	{
-		sum = 16 + (sum + 10); // roll back from F
-		halfcarry = 0;
+		// BCD subtract, digit by digit (V keeps its binary value)
+		res = 0;
+		borrow = !carry;
+		for (i = 0; i < nibbles; i++)
+		{
+			int dn = (int)((acc >> (4*i)) & 0x0f) - (int)((m >> (4*i)) & 0x0f) - borrow;
+			borrow = (dn < 0);
+			if (borrow)
+				dn -= 6;
+			res |= ((unsigned)dn & 0x0f) << (4*i);
+		}
+		set_flag(FLAG_C, !borrow);
 	}
-	else if ((sum < 0) && (sum > -10))
-	{
-		sum = 10 + sum; // roll back from 9
-		halfcarry = 0;
-	}
-	else
-		halfcarry = 1;
 
-	return (sum & 0x0f);
+	set_nz(res, is8);
+	return res;
 }
 
 static void opc_adcsbccmp(int amod)
 {
-	int subtracting = 0; // set to 1 if we are subtracting
-	int comparing = 0; // set to 1 if we are comparing
-	int cpx = 0, cpy = 0; // set to 1 if a CPX or CPY instruction is executing
+	int op;
+	union reg *r = &a;
+	int is8;
+	unsigned acc, m, res;
+
+	// decide which instruction this is
+	switch (opcload)
+	{
+		case 0xc0: case 0xc4: case 0xcc: r = &y; op = ALU_CMP; break; // CPY
+		case 0xe0: case 0xe4: case 0xec: r = &x; op = ALU_CMP; break; // CPX
+		default:
+			switch (opcload >> 5) // bits 7-5 pick the operation within the standard ALU opcode group
+			{
+				case 3: op = ALU_ADC; break;
+				case 7: op = ALU_SBC; break;
+				default: op = ALU_CMP; break; // 6
+			}
+			break;
+	}
+	is8 = (r == &a) ? acc8() : idx8();
+
 	inc_pc(1);
-	union longaddr lw;
-	union reg savea; // to save A during compare operations
-	unsigned char n0,n1,n2,n3; // nibbles for BCD calculations
-	
-	lw.xx = 0; // for arithmetic calculations
-
-	switch(opcload) // are we adding, subtracting or comparing?
+	fetch(amod, is8 ? 8 : 16);
+	acc = is8 ? r->l : r->x;
+	m = is8 ? work.l : work.x;
+	res = alu(op, acc, m, is8);
+	if (op != ALU_CMP)
 	{
-		case 0xe9:
-		case 0xed:
-		case 0xef:
-		case 0xe5:
-		case 0xf2:
-		case 0xe7:
-		case 0xfd:
-		case 0xff:
-		case 0xf9:
-		case 0xf5:
-		case 0xe1:
-		case 0xf1:
-		case 0xf7:
-		case 0xe3:
-		case 0xf3:
-			subtracting++; // all the SBC's
-			break;
-		case 0xc9:
-		case 0xcd:
-		case 0xcf:
-		case 0xc5:
-		case 0xd2:
-		case 0xc7:
-		case 0xdd:
-		case 0xdf:
-		case 0xd9:
-		case 0xd5:
-		case 0xc1:
-		case 0xd1:
-		case 0xd7:
-		case 0xc3:
-		case 0xd3:
-			comparing++; // all the CMP's
-			subtracting++; // compares are really subtractions
-			break;
-		case 0xe0:
-		case 0xec:
-		case 0xe4:
-			cpx++; // all the CPX's
-			comparing++;
-			subtracting++;
-			break;
-		case 0xc0:
-		case 0xcc:
-		case 0xc4:
-			cpy++; // all the CPY's
-			comparing++;
-			subtracting++;
-			break;
-	}
-
-	// save A if we are doing a compare operation
-	if (comparing)
-	{
-		savea.x = a.x;
-		if (cpx)
-			a.x = x.x; // load A temporarily with index register
-		if (cpy)
-			a.x = y.x;
-	}
-
-	if ((((e==1) || (((p & 0x20) == 0x20) && (e==0))) && !(cpx || cpy)) || (((e==1) || (((p & 0x10) == 0x10) && (e==0))) && (cpx || cpy)))
-	/* explanation of this logic:
-		if {
-			{
-				emulation mode OR
-				native mode AND 8-bit M
-			} AND {
-				NOT cpx OR cpy instruction executing
-		} OR {
-			{
-				emulation mode OR
-				native mode AND 8-bit X
-			} AND {
-				cpx OR cpy instruction executing
-			}
-		}
-	simple, no? */
-	{
-		fetch(amod,8);
-		if (((p & 0x08) == 0x08) && (!comparing))
-		{
-			// SED active? decimal mode
-			if (subtracting)
-			{
-				n0 = bcdsubtract((p & 0x01),(a.l & 0x0f),(work.l & 0x0f));
-				n1 = bcdsubtract(halfcarry,(a.l >> 4),(work.l >> 4));
-				a.l = n0;
-				a.l += (n1 * 16);
-			}
-			else
-			{
-				n0 = bcdadd((p & 0x01),(work.l & 0x0f),(a.l & 0x0f)); // add low nibble
-				n1 = bcdadd(halfcarry,(work.l >> 4),(a.l >> 4)); // add high nibble
-				a.l = n0;
-				a.l += (n1 * 16);
-			}
-			if (halfcarry) // condition carry
-				p |= 0x01;
-			else
-				p &= 0xfe;
-			// condition n
-			if (a.l > 127)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			// condition z
-			if (a.l == 0)
-				p |= 0x02;
-			else
-				p &= 0xfd;
-		}
+		if (is8)
+			a.l = (unsigned char)res;
 		else
-		{
-			// CLD - binary mode
-			lw.l = a.l;
-			if (subtracting)
-			{
-				if (comparing)
-					lw.xl += (unsigned char)(~work.l + 1); // take two's complement (invert and add 1)
-				else
-					lw.xl += (unsigned char)(~work.l + (p & 0x01)); // invert subtrahend and add carry
-			}
-			else
-				lw.xl += (unsigned char)(work.l + (p & 0x01)); // add work.l and carry to lower 16 bits
-			/*
-			Overflow conditioning truth table for addition- MSB settings of operands and results
-
-				Acc	Arg+C	Result	Overflow
-				0	1	<na>	0	Always clear if A and Arg+C are different signs
-				1	0	<na>	0	''
-				0	0	0	0	(0 to 127) + (0 to 127) = V clear if result is < 128
-				0	0	1	1	(0 to 127) + (0 to 127) = V set if result is >= 128
-				1	1	0	1	(-128 to -1) + (-128 to -1) = V set if result is < -128
-				1	1	1	0	(-128 to -1) + (-128 to -1) = V clear if result is >= -128
-
-			Overflow conditioning truth table for subtraction
-
-				Acc	Arg+~C	Result	Overflow
-				0	0	<na>	0	Always clear if A and Arg+C are the same sign
-				1	1	<na>	0	''
-				0	1	0	0	(0 to 127) - (-128 to -1) = V clear if result is < 128
-				0	1	1	1	(0 to 127) - (-128 to -1) = V set if result >= 128
-				1	0	0	1	(-128 to -1) - (0 to 127) = V set if result < -128
-				1	0	1	0	(-128 to -1) - (0 to 127) = V clear if result >= -128
-			*/
-			if (!comparing) // CMP, CPX, CPY don't condition the V flag
-			{
-				if (subtracting)
-				{
-					// subtraction
-					// MSB of a.l equals MSB of (work.l + ~carry)
-					if ((a.l & 0x80) == ((work.l + ((p & 0x01) ^ 0x01)) & 0x80)) 
-						p &= 0xbf;
-					else
-					{
-						if (((a.l & 0x80) ^ (lw.l & 0x80)) == 0x80)
-							p |= 0x40; // Acc EOR'ed with Result = V flag
-						else
-							p &= 0xbf;
-					}
-				}
-				else
-				{
-					// addition
-					// MSB of a.l EOR'ed with MSB of (work.l + carry)
-					if (((a.l & 0x80) ^ ((work.l + (p & 0x01)) & 0x80)) == 0x80) 
-						p &= 0xbf; // V clear always if two operands are different signs
-					else
-					{
-						if (((a.l & 0x80) ^ (lw.l & 0x80)) == 0x80)
-							p |= 0x40; // set V according truth table above: Acc EOR'ed with Result = V flag
-						else
-							p &= 0xbf;
-					}
-				}
-			}
-			// condition carry
-			if ((lw.xl & 0x0100) == 0x0100)
-				p |= 0x01;
-			else
-				p &= 0xfe;
-			a.l = lw.l;
-			if (a.l == 0)
-				p |= 0x02;
-			else
-				p &= 0xfd;
-			// condition n
-			if (a.l > 127)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			// condition z
-			if (a.l == 0)
-				p |= 0x02;
-			else
-				p &= 0xfd;
-		}
+			a.x = (unsigned short)res;
 	}
-	else
-	{
-		fetch(amod,16);
-		if (((p & 0x08) == 0x08) && (!comparing))
-		{
-			// SED active? decimal mode
-			if (subtracting)
-			{
-				n0 = bcdsubtract((p & 0x01),(a.x & 0x000f),(work.x & 0x000f));
-				n1 = bcdsubtract(halfcarry,((a.x & 0x00f0) >> 4),((work.x & 0x00f0) >> 4));
-				n2 = bcdsubtract(halfcarry,((a.x & 0x0f00) >> 8),((work.x & 0x0f00) >> 8));
-				n3 = bcdsubtract(halfcarry,((a.x & 0xf000) >> 12),((work.x & 0xf000) >> 12));
-				a.x = n0;
-				a.x += (n1 * 16) + (n2 * 256) + (n3 * 4096);
-			}
-			else
-			{
-				n0 = bcdadd((p & 0x01),(work.x & 0x000f),(a.x & 0x000f));
-				n1 = bcdadd(halfcarry,((work.x & 0x00f0) >> 4),((a.x & 0x00f0) >> 4));
-				n2 = bcdadd(halfcarry,((work.x & 0x0f00) >> 8),((a.x & 0x0f00) >> 8));
-				n3 = bcdadd(halfcarry,((work.x & 0xf000) >> 12),((a.x & 0xf000) >> 12));
-				a.x = n0;
-				a.x += (n1 * 16) + (n2 * 256) + (n3 * 4096);
-			}
-			if (halfcarry) // condition carry
-				p |= 0x01;
-			else
-				p &= 0xfe;
-			// condition n
-			if (a.x > 32768)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			// condition z
-			if (a.x == 0)
-				p |= 0x02;
-			else
-				p &= 0xfd;
-		}
-		else
-		{
-			// CLD active - binary mode
-			lw.xl = a.x;
-			if (subtracting)
-			{
-				if (comparing)
-					lw.xx += (unsigned short)(~work.x + 1); // take two's complement (invert and add 1)
-				else
-					lw.xx += (unsigned short)(~work.x + (p & 0x01));// invert subtrahend and add carry
-			}
-			else
-				lw.xx += (unsigned short)(work.x + (p & 0x01)); // add work.x and carry to 32 bit long register
-			// Condition overflow
-			if (!comparing) // CMP, CPX, CPY don't condition the V flag
-			{
-				if (subtracting)
-				{
-					// subtraction
-					if ((a.x & 0x8000) == ((work.x + ((p & 0x01) ^ 0x01)) & 0x8000))
-						p &= 0xbf;
-					else
-					{
-						if (((a.x & 0x8000) ^ (lw.xl & 0x8000)) == 0x8000)
-							p |= 0x40; // Acc EOR'ed with Result = V flag
-						else
-							p &= 0xbf;
-					}
-				}
-				else
-				{
-					// addition
-					// MSB of a.x EOR'ed with MSB of (work.x + carry)
-					if (((a.x & 0x8000) ^ ((work.x + (p & 0x01)) & 0x8000)) == 0x8000) 
-						p &= 0xbf; // V clear always if two operands are different signs
-					else
-					{
-						if (((a.x & 0x8000) ^ (lw.xl & 0x8000)) == 0x8000)
-							p |= 0x40; // set V according to truth table above: Acc EOR'ed with Result = V flag
-						else
-							p &= 0xbf;
-					}
-				}
-			}
-			// condition carry
-			if ((lw.xh & 0x0001) == 0x0001)
-				p |= 0x01;
-			else
-				p &= 0xfe;
-			a.x = lw.xl;
-			if (a.x == 0)
-			p |= 0x02;
-			else
-			p &= 0xfd;
-			// condition n
-			if (a.x > 32767)
-				p |= 0x80;
-			else
-				p &= 0x7f;
-			// condition z
-			if (a.x == 0)
-				p |= 0x02;
-			else
-				p &= 0xfd;
-		}
-	}
-	// restore A if we did a CMP, CPX or CPY
-	if (comparing)
-		a.x = savea.x;
-
-	// compute engine_65816_cycles
-	switch (amod) {
-		case IMMEDIATE:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 4;
-			break;
-		case ABSOLUTELONG:
-			engine_65816_cycles += 5;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 3;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-		case ABSOLUTEINDEXEDY:
-			engine_65816_cycles += 4;
-			if (boundcross == 1)
-				engine_65816_cycles++;
-			break;
-		case ABSOLUTELONGINDEXEDX:
-			engine_65816_cycles += 5;
-			break;
-		case DIRECTINDIRECT:
-		case DIRECTINDIRECTLONG:
-		case DIRECTINDIRECTINDEXEDY:
-		case DIRECTINDIRECTLONGINDEXEDY:
-		case DIRECTINDEXEDINDIRECTX:
-			engine_65816_cycles += 6;
-			if ((amod == DIRECTINDIRECT) || (amod == DIRECTINDIRECTINDEXEDY))
-				engine_65816_cycles--; // only 5 engine_65816_cycles for DIRECTINDIRECT and DIRECTINDIRECTINDEXEDY
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			if ((amod == DIRECTINDIRECTINDEXEDY) && (boundcross == 1))
-				engine_65816_cycles++;
-			break;
-		case STACKRELATIVE:
-			engine_65816_cycles += 4;
-			break;
-		case STACKINDIRECTINDEXEDY:
-			engine_65816_cycles += 7;
-			break;
-	}
-	if (cpx || cpy) 
-	{
-		if ((e==0) && ((p & 0x10) == 0))
-			engine_65816_cycles++; // add 1 for 16 bit XY
-	}
-	else
-	{
-		if ((e==0) && ((p & 0x20) == 0))
-			engine_65816_cycles++; // add 1 for 16 bit A
-	}
+	addr_cycles(amod, CYC_READ, is8);
 }
 
 static void opc_bit(int amod)
 {
+	int is8 = acc8();
+	unsigned m, acc;
+
 	inc_pc(1);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
+	fetch(amod, is8 ? 8 : 16);
+	m = is8 ? work.l : work.x;
+	acc = is8 ? a.l : a.x;
+	if (amod != IMMEDIATE) // BIT #imm only affects Z
 	{
-		fetch(amod,8);
-		// set overflow if bit 6 is set in memory
-		if ((work.l & 0x40) == 0x40)
-			p |= 0x40;
-		else
-			p &= 0xbf;
-		// set negative if bit 7 is set in memory
-		if (work.l > 127)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		// set zero if logical AND of memory and acc is zero
-		if ((work.l & a.l) == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
+		set_flag(FLAG_V, (m & (is8 ? 0x40 : 0x4000)) != 0); // V = bit 6/14 of memory
+		set_flag(FLAG_N, (m & (is8 ? 0x80 : 0x8000)) != 0); // N = bit 7/15 of memory
 	}
-	else
-	{
-		fetch(amod,16);
-		// set overflow if bit 14 is set in memory
-		if ((work.x & 0x4000) == 0x4000)
-			p |= 0x40;
-		else
-			p &= 0xbf;
-		// set negative if bit 15 is set in memory
-		if (work.x > 32767)
-			p |= 0x80;
-		else
-			p &= 0x7f;
-		// set zero if logical AND of memory and acc is zero
-		if ((work.x & a.x) == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-	}
-	// compute engine_65816_cycles
-	switch (amod) {
-		case IMMEDIATE:
-			engine_65816_cycles += 2;
-			break;
-		case ABSOLUTE:
-			engine_65816_cycles += 4;
-			break;
-		case DIRECT:
-		case DIRECTINDEXEDX:
-			engine_65816_cycles += 3;
-			if (amod==DIRECTINDEXEDX)
-				engine_65816_cycles++;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-		case ABSOLUTEINDEXEDX:
-			engine_65816_cycles += 4;
-			if (boundcross == 1)
-				engine_65816_cycles++;
-			break;
-	}
-	if ((e==0) && ((p & 0x20) == 0))
-		engine_65816_cycles++; // add 1 for 16 bit A
+	set_flag(FLAG_Z, (m & acc) == 0);
+	addr_cycles(amod, CYC_READ, is8);
 }
 
 static void opc_trbtsb(int amod)
 {
-	inc_pc(1);
-	if ((e==1) || (((p & 0x20) == 0x20) && (e==0)))
-	{
-		fetch(amod,8);
-		// set zero if logical AND of memory and acc is zero
-		if ((work.l & a.l) == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		switch (opcload)
-		{
-			case 0x1c:
-			case 0x14: // TRB
-				work.l &= ~a.l;
-				break;
-			case 0x0c:
-			case 0x04: // TSB
-				work.l |= a.l;
-				break;
-		}
-		writeback(amod,8);
-	}
-	else
-	{
-		fetch(amod,16);
-		// set zero if logical AND of memory and acc is zero
-		if ((work.x & a.x) == 0)
-			p |= 0x02;
-		else
-			p &= 0xfd;
-		switch (opcload)
-		{
-			case 0x1c:
-			case 0x14: // TRB
-				work.x &= ~a.x;
-				break;
-			case 0x0c:
-			case 0x04: // TSB
-				work.x |= a.x;
-				break;
-		}
-		writeback(amod,16);
-	}
-	// compute engine_65816_cycles
-	switch (amod) {
-		case ABSOLUTE:
-			engine_65816_cycles += 6;
-			break;
-		case DIRECT:
-			engine_65816_cycles += 5;
-			if (d.l != 0)
-				engine_65816_cycles++; // add cycle if low byte of D is != 0
-			break;
-	}
-	if ((e==0) && ((p & 0x20) == 0))
-		engine_65816_cycles++; // add 1 for 16 bit A
-}
+	int is8 = acc8();
+	unsigned m, acc;
 
+	inc_pc(1);
+	fetch(amod, is8 ? 8 : 16);
+	m = is8 ? work.l : work.x;
+	acc = is8 ? a.l : a.x;
+	set_flag(FLAG_Z, (m & acc) == 0);
+	if (opcload & 0x10)
+		m &= ~acc; // TRB: 14,1c
+	else
+		m |= acc; // TSB: 04,0c
+	store_work(amod, (unsigned short)m, is8);
+	addr_cycles(amod, CYC_RMW, is8);
+}
