@@ -85,7 +85,10 @@ static int engine_65816_halt; // halts execution when = 1; STP instruction sets 
 
 static unsigned char rmem(unsigned char bank, unsigned short address)
 {
-	return mem_driver_read((bank * 65536) + address);
+	// Read straight from the shared memory buffer (the same array mem_driver_read() reads).
+	// Reads have no side effects in the memory driver; if that ever changes (I/O read
+	// hooks), route addresses >= IOSTART through mem_driver_read() here.
+	return mem[(((unsigned int)bank << 16) | address) & MEMTOP];
 }
 
 static void wmem(unsigned char bank, unsigned short address, unsigned char value)
@@ -93,7 +96,7 @@ static void wmem(unsigned char bank, unsigned short address, unsigned char value
 	if (traceflag)
 		printf("W%02X/%04X=%02X ",bank,address,value);
 
-	mem_driver_write((bank * 65536) + address, value);
+	mem_driver_write(((unsigned int)bank << 16) | address, value);
 }
 
 static int noread = 0; // set while fetching for instructions that only write/jump (no data read)
@@ -740,7 +743,7 @@ static void cpu_reset(void)
 // side-effect free memory read for the trace/disassembler
 static unsigned char peek(unsigned char bank, unsigned short address)
 {
-	return mem[((bank * 65536) + address) & MEMTOP];
+	return mem[(((unsigned int)bank << 16) | address) & MEMTOP];
 }
 
 static void show_trace(void)

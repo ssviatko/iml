@@ -155,6 +155,14 @@ unsigned char *mem_driver_buffer()
 
 void mem_driver_write(uint32_t a_address, uint8_t a_byte)
 {
+	// fast path: everything below the I/O area is plain RAM (or ROM that can't be written)
+	if (a_address < IOSTART) {
+		if ((a_address >= 0xe400) && (a_address <= 0xffff))
+			return; // no write to ROM
+		g_shm_ptr[a_address] = a_byte;
+		return;
+	}
+
 	// dealbreakers, check these right off the bat
 	if (a_address > MEMTOP)
 		return; // no memory there
