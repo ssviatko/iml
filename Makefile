@@ -37,7 +37,7 @@ $(65816_TARGET): $(65816_OBJS)
 
 $(Z80_TARGET): $(Z80_OBJS)
 
-	z80asm zrom.z80 -o zrom.bin -l
+	z80asm zrom.z80 -o zrom.bin -l 2> zrom.lst
 	$(LD) $(Z80_OBJS) -o $(Z80_TARGET) $(LDFLAGS)
 	
 $(RV_TARGET): $(RV_OBJS)

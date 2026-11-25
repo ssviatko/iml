@@ -382,11 +382,11 @@
    380  01ed 206001             	jsr fpgetmask
    381  01f0 9003               	bcc .fpexp1
    382  01f2 4cb403             	jmp monerror
-   383                          	.fpexp1
+   383                          .fpexp1
    384  01f5 208501             	jsr fpgetregspec
    385  01f8 9003               	bcc .fpexp2
    386  01fa 4cb403             	jmp monerror
-   387                          	.fpexp2
+   387                          .fpexp2
    388  01fd a529               	lda fpmask
    389  01ff 0528               	ora fpregspec
    390  0201 8f49fc1b           	sta IO_FP_EXP
@@ -2285,5 +2285,3 @@
   2283                          	
   2284  1287 0000000000000000...!align $ffff, $ffff,$00	;fill up to top of memory
   2285                          
-
-; ******** done

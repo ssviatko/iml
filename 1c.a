@@ -380,11 +380,11 @@ fpexp
 	jsr fpgetmask
 	bcc .fpexp1
 	jmp monerror
-	.fpexp1
+.fpexp1
 	jsr fpgetregspec
 	bcc .fpexp2
 	jmp monerror
-	.fpexp2
+.fpexp2
 	lda fpmask
 	ora fpregspec
 	sta IO_FP_EXP
