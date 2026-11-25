@@ -8,7 +8,7 @@
 ;   M mode                set the video mode: 8 = 40 columns, 9 = 80 columns
 ;   C start end other     compare two ranges
 ;   S start end byte...   search for bytes
-;   U [start [end]]       unassemble (disassemble)
+;   U [start [end]]       unassemble (disassemble), a screenful if no end is given
 ;   G addr                call a routine (it can return to the monitor with RET)
 ;   I port                read an I/O port
 ;   O port byte           write an I/O port
@@ -1104,11 +1104,33 @@ wrval:				; store E at HL, and D too if A says 16 bit
 
 ; ---------------------------------------------------------------- disassembler
 
+; U [start [end]]: with an end address, disassemble up to it. otherwise disassemble
+; as many instructions as the screen is tall minus 2 (the command line and the next prompt).
 cmd_u:
-	ld bc,$2f
-	call getse
+	call gethex
+	jr c,u1
+	ld (v_cur),de
+u1:
+	call gethex
+	jr c,u2
+	ld (v_end),de
 	ld de,disasm
 	jp rngloop
+u2:
+	ld a,(IO_VIDMODE)
+	cp 9
+	ld b,15			; 40 columns: 17 rows
+	jr nz,u3
+	ld b,32			; 80 columns: 34 rows
+u3:
+	ld hl,(v_cur)
+u4:
+	push bc
+	call disasm
+	pop bc
+	djnz u4
+	ld (v_cur),hl
+	ret
 
 ; decode the instruction at HL into outbuf as text. returns HL = next instruction
 dtext:
