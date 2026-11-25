@@ -13,6 +13,7 @@
 ;   I port                read an I/O port
 ;   O port byte           write an I/O port
 ;   W [n sect]            show/set memory window n (6,8,A,C) to 8K section sect
+;   ! [addr]              mini-assembler (empty line to leave, addr: to move)
 ;   H                     halt the processor
 ;   ?                     help
 ;
@@ -49,6 +50,19 @@ v_buf: equ $200b	; nonzero: putc stores into the output buffer instead of the sc
 patbuf: equ $2020	; search pattern
 linebuf: equ $2040	; input line
 outbuf: equ $2080	; disassembly text
+cbuf: equ $20a0		; assembler: candidate instruction bytes
+a_grp: equ $20a4	; assembler: candidate group (see gtab)
+a_op: equ $20a5		; assembler: candidate opcode
+a_pos: equ $20a6	; assembler: position of the opcode in cbuf
+a_len: equ $20a7	; assembler: length of the candidate
+a_sgn: equ $20a8	; assembler: 1 = +, 2 = - before a displacement
+a_nv: equ $20a9		; assembler: number of numbers matched
+a_rel: equ $20aa	; assembler: candidate is a relative branch
+a_cls0: equ $20ab	; assembler: digits in the first number (2 = 8 bit, 4 = 16 bit)
+a_cls1: equ $20ac	; assembler: digits in the second number
+a_val0: equ $20ae	; assembler: first number
+a_val1: equ $20b0	; assembler: second number
+inbuf: equ $2100	; assembler: normalized input line
 
 	org $100
 
@@ -135,6 +149,8 @@ cmdtab:
 	defw cmd_o
 	defb 'W'
 	defw cmd_w
+	defb '!'
+	defw cmd_asm
 	defb 'H'
 	defw cmd_h
 	defb '?'
@@ -648,7 +664,442 @@ cmd_help:
 	defm "I p        in",13
 	defm "O p b      out",13
 	defm "W [n s]    window 6/8/A/C",13
+	defm "! [a]      assemble",13
 	defm "H          halt",13,0
+	ret
+
+
+; ---------------------------------------------------------------- mini-assembler
+;
+; Like the Apple II mini-assembler. Each line is assembled at the current address and
+; shown as a disassembly. "addr:" at the start of a line sets the address. An empty
+; line leaves the assembler. Numbers are hex with a leading $ (or starting with a digit).
+;
+; The assembler has no opcode tables of its own: it disassembles every possible
+; instruction (with zero operands) and picks the one whose text matches the line.
+
+cmd_asm:
+	call gethex
+	jr c,ca1
+	ld (v_cur),de
+ca1:
+	ld hl,(v_cur)
+	call phex16
+	ld a,'>'
+	call putc
+	ld a,' '
+	call putc
+	call getline
+	ld hl,linebuf
+	call skipsp
+	ld a,(hl)
+	or a
+	ret z			; empty line: back to the monitor
+	push hl
+	call gethex
+	jr c,ca2
+	ld a,(hl)
+	cp ':'
+	jr nz,ca2
+	inc hl			; "addr:" sets the address
+	ld (v_cur),de
+	pop af
+	call skipsp
+	ld a,(hl)
+	or a
+	jr z,ca1
+	jr ca3
+ca2:
+	pop hl
+ca3:
+	call norm
+	call asmins
+	jr nc,ca1
+	call err
+	jr ca1
+
+; copy the line at HL to inbuf: upper case, and no spaces except one after the mnemonic
+norm:
+	ld de,inbuf
+	ld bc,0			; B = space pending, C = mnemonic finished
+nm1:
+	ld a,(hl)
+	inc hl
+	or a
+	jr z,nm5
+	cp ' '
+	jr nz,nm2
+	ld a,c
+	or a
+	jr nz,nm1
+	ld a,e
+	or a
+	jr z,nm1		; leading space
+	ld b,1
+	jr nm1
+nm2:
+	push af
+	ld a,b
+	or a
+	jr z,nm3
+	ld a,' '
+	ld (de),a
+	inc de
+	ld b,0
+	ld c,1
+nm3:
+	pop af
+	cp 'a'
+	jr c,nm4
+	cp '{'
+	jr nc,nm4
+	and $df
+nm4:
+	ld (de),a
+	inc de
+	jr nm1
+nm5:
+	xor a
+	ld (de),a
+	ret
+
+; assemble the text in inbuf at v_cur. carry set if it can't be assembled.
+asmins:
+	xor a
+	ld (a_grp),a
+ai1:
+	ld a,(a_grp)
+	cp 7
+	jr nc,ai_fail
+	ld c,a
+	add a,a
+	add a,a
+	add a,c			; 5 bytes per group
+	ld e,a
+	ld d,0
+	ld hl,gtab
+	add hl,de
+	ld de,cbuf
+	ld bc,4
+	ldir
+	ld a,(hl)
+	ld (a_pos),a
+	xor a
+	ld (a_op),a
+ai2:
+	ld a,(a_pos)		; put the opcode into the candidate
+	ld e,a
+	ld d,0
+	ld hl,cbuf
+	add hl,de
+	ld a,(a_op)
+	ld (hl),a
+	ld hl,cbuf
+	call dtext		; disassemble it
+	ld de,cbuf
+	or a
+	sbc hl,de
+	ld a,l
+	ld (a_len),a
+	ld hl,inbuf
+	ld de,outbuf
+	call amatch
+	jr nz,ai3
+	call acheck
+	jp nc,aenc
+ai3:
+	ld hl,a_op
+	inc (hl)
+	jr nz,ai2
+	ld hl,a_grp
+	inc (hl)
+	jr ai1
+ai_fail:
+	scf
+	ret
+
+; candidate groups: 4 template bytes, then the position of the opcode in them
+gtab:
+	defb $00,$00,$00,$00,0	; plain opcode
+	defb $cb,$00,$00,$00,1	; CB
+	defb $ed,$00,$00,$00,1	; ED
+	defb $dd,$00,$00,$00,1	; DD (IX)
+	defb $fd,$00,$00,$00,1	; FD (IY)
+	defb $dd,$cb,$00,$00,3	; DD CB d op
+	defb $fd,$cb,$00,$00,3	; FD CB d op
+
+; compare the candidate text at DE with the input at HL. every number in the candidate
+; ($nn or $nnnn) matches any hex number in the input, which is saved in a_val0/a_val1.
+; zero flag set if they match.
+amatch:
+	xor a
+	ld (a_nv),a
+	ld (a_sgn),a
+am1:
+	ld a,(de)
+	or a
+	jr z,am_end
+	cp '$'
+	jr z,am_num
+	cp '+'
+	jr z,am_plus
+	cp (hl)
+	ret nz
+	inc de
+	inc hl
+	jr am1
+am_end:
+	ld a,(hl)
+	or a
+	ret
+am_plus:			; (IX+d): the input may have + or -
+	ld a,(hl)
+	cp '+'
+	ld a,1
+	jr z,am_p1
+	ld a,(hl)
+	cp '-'
+	ret nz
+	ld a,2
+am_p1:
+	ld (a_sgn),a
+	inc de
+	inc hl
+	jr am1
+am_num:
+	inc de
+	ld b,0			; count the digits in the candidate
+am_c:
+	ld a,(de)
+	call hexval
+	jr c,am_c2
+	inc de
+	inc b
+	jr am_c
+am_c2:
+	ld a,(hl)
+	cp '$'
+	jr nz,am_nd
+	inc hl
+	jr am_g
+am_nd:
+	cp '0'			; without a $ the number must start with a digit
+	jr c,am_fail
+	cp ':'
+	jr nc,am_fail
+am_g:
+	push de
+	call gethex
+	jr c,am_bad
+	ld a,(a_sgn)
+	or a
+	jr nz,am_disp
+	ld a,b
+	cp 3
+	jr nc,am_st		; 16 bit operand: any value
+	ld a,d
+	or a
+	jr nz,am_bad		; 8 bit operand: must fit
+	jr am_st
+am_disp:
+	ld a,d
+	or a
+	jr nz,am_bad
+	ld a,(a_sgn)
+	cp 2
+	ld a,e
+	jr z,am_neg
+	cp $80
+	jr nc,am_bad		; +0 to +127
+	jr am_dst
+am_neg:
+	cp $81
+	jr nc,am_bad		; -1 to -128
+	neg
+am_dst:
+	ld e,a
+	xor a
+	ld (a_sgn),a
+am_st:
+	ld a,(a_nv)
+	or a
+	jr nz,am_s2
+	ld (a_val0),de
+	ld a,b
+	ld (a_cls0),a
+	ld a,1
+	jr am_s3
+am_s2:
+	ld (a_val1),de
+	ld a,b
+	ld (a_cls1),a
+	ld a,2
+am_s3:
+	ld (a_nv),a
+	pop de
+	jp am1
+am_bad:
+	pop de
+am_fail:
+	or 1			; nonzero: no match
+	ret
+
+; check a matching candidate. carry set to reject it and go on looking.
+acheck:
+	xor a
+	ld (a_rel),a
+	ld a,(a_grp)
+	cp 5
+	jr c,ak1
+	ld a,(a_op)		; DD CB / FD CB: BIT n,(IX+d) is only encoded with z = 6
+	ld b,a
+	and $c0
+	cp $40
+	jr nz,ak_ok
+	ld a,b
+	and 7
+	cp 6
+	jr nz,ak_rej
+	jr ak_ok
+ak1:
+	or a
+	jr z,ak0
+	cp 3
+	jr c,ak_ok
+	ld a,(a_op)		; DD CB / FD CB is handled by its own group
+	cp $cb
+	jr z,ak_rej
+	jr ak_ok
+ak0:
+	ld a,(a_op)
+	and $c7
+	cp $c7
+	jr nz,ak2
+	ld a,(a_op)		; RST $nn: the number has to be the one in the opcode
+	and $38
+	ld b,a
+	ld a,(a_val0)
+	cp b
+	jr nz,ak_rej
+	ld a,(a_val0+1)
+	or a
+	jr nz,ak_rej
+	ld (a_nv),a		; and it isn't an operand byte
+	jr ak_ok
+ak2:
+	ld a,(a_op)		; relative branches: 10 18 20 28 30 38
+	cp $10
+	jr c,ak_ok
+	cp $40
+	jr nc,ak_ok
+	and 7
+	jr nz,ak_ok
+	ld a,1
+	ld (a_rel),a
+ak_ok:
+	or a
+	ret
+ak_rej:
+	scf
+	ret
+
+; the candidate matched: fill in its operands, store it and show it. carry set on error.
+aenc:
+	ld a,(a_nv)
+	or a
+	jr z,ae_copy
+	ld a,(a_grp)
+	cp 5
+	jr c,ax1
+	ld hl,cbuf+2		; DD CB d op: the displacement is the third byte
+	jr ae2
+ax1:
+	ld a,(a_cls0)		; the operands are the last bytes of the instruction
+	cp 3
+	ld c,1
+	jr c,ax1a
+	ld c,2
+ax1a:
+	ld a,(a_rel)
+	or a
+	jr z,ax1b
+	ld c,1
+ax1b:
+	ld a,(a_nv)
+	cp 2
+	jr nz,ax1c
+	ld a,(a_cls1)
+	cp 3
+	ld a,c
+	inc a
+	jr c,ax1d
+	inc a
+ax1d:
+	ld c,a
+ax1c:
+	ld a,(a_len)
+	sub c
+	ld e,a
+	ld d,0
+	ld hl,cbuf
+	add hl,de
+ae2:
+	ld de,(a_val0)
+	ld a,(a_cls0)
+	ld b,a
+	ld a,(a_rel)
+	or a
+	jr z,ae3
+	push hl			; relative branch: offset = target - (address + 2)
+	ld hl,(v_cur)
+	inc hl
+	inc hl
+	ex de,hl
+	or a
+	sbc hl,de
+	ld a,l
+	rla
+	sbc a,a
+	cp h
+	jr nz,ae_range
+	ld e,l
+	pop hl
+	ld b,2
+ae3:
+	ld a,b
+	call wrval
+	ld a,(a_nv)
+	cp 2
+	jr nz,ae_copy
+	ld de,(a_val1)
+	ld a,(a_cls1)
+	call wrval
+ae_copy:
+	ld hl,(v_cur)
+	push hl
+	ex de,hl
+	ld hl,cbuf
+	ld a,(a_len)
+	ld c,a
+	ld b,0
+	ldir			; store the instruction
+	pop hl
+	call disasm		; and show what was assembled
+	ld (v_cur),hl
+	or a
+	ret
+ae_range:
+	pop hl
+	scf
+	ret
+
+wrval:				; store E at HL, and D too if A says 16 bit
+	ld (hl),e
+	inc hl
+	cp 3
+	ret c
+	ld (hl),d
+	inc hl
 	ret
 
 ; ---------------------------------------------------------------- disassembler
@@ -659,8 +1110,8 @@ cmd_u:
 	ld de,disasm
 	jp rngloop
 
-; disassemble the instruction at HL and print it. returns HL = next instruction
-disasm:
+; decode the instruction at HL into outbuf as text. returns HL = next instruction
+dtext:
 	ld (v_start),hl
 	ld de,outbuf
 	ld (v_out),de
@@ -684,6 +1135,11 @@ dpf2:
 	xor a
 	call putc		; end the text
 	ld (v_buf),a		; back to the screen
+	ret
+
+; disassemble the instruction at HL and print it. returns HL = next instruction
+disasm:
+	call dtext
 	ex de,hl		; DE = next instruction
 	ld hl,(v_start)
 	call phex16
