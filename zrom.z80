@@ -4,7 +4,8 @@
 ;   D [start [end]]       dump memory with ASCII
 ;   E addr byte...        enter bytes
 ;   F start end byte      fill memory
-;   M start end dest      move memory
+;   T start end dest      transfer (move) memory
+;   M mode                set the video mode: 8 = 40 columns, 9 = 80 columns
 ;   C start end other     compare two ranges
 ;   S start end byte...   search for bytes
 ;   U [start [end]]       unassemble (disassemble)
@@ -55,18 +56,12 @@ romstart:
 	ld sp,$5fff		; stack in plain RAM, below the memory windows
 	xor a
 	ld (v_buf),a
-	ld a,8
-	ld (IO_VIDMODE),a	; 40 column text mode
-	xor a
-	ld (IO_CON_CURSORH),a	; cursor to the top left corner
-	ld (IO_CON_CURSORV),a
 	ld a,$80
 	ld (IO_CON_CURSOR),a
 	ld a,7
 	ld (IO_CON_COLOR),a	; light grey on black
-	ld a,$20
-	ld (IO_CON_CHAROUT),a	; the clear screen fills with this character
-	ld (IO_CON_CLS),a	; any write clears the screen
+	ld a,8
+	call setmode		; 40 column text mode
 	ld hl,$0000
 	ld (v_cur),hl
 	call pstr
@@ -122,8 +117,10 @@ cmdtab:
 	defw cmd_e
 	defb 'F'
 	defw cmd_f
-	defb 'M'
+	defb 'T'
 	defw cmd_m
+	defb 'M'
+	defw cmd_mode
 	defb 'C'
 	defw cmd_c
 	defb 'S'
@@ -446,6 +443,28 @@ f1:
 	inc hl
 	jr f1
 
+; M mode: set the video mode (8 or 9) and clear the screen
+cmd_mode:
+	call gethex
+	jp c,err
+	ld a,d
+	or a
+	jp nz,err
+	ld a,e
+	cp 8
+	jp c,err
+	cp 10
+	jp nc,err
+setmode:			; set video mode A, cursor to the top left, clear the screen
+	ld (IO_VIDMODE),a
+	xor a
+	ld (IO_CON_CURSORH),a
+	ld (IO_CON_CURSORV),a
+	ld a,$20
+	ld (IO_CON_CHAROUT),a	; the clear screen fills with this character
+	ld (IO_CON_CLS),a	; any write clears the screen
+	ret
+
 cmd_m:
 	ld bc,0
 	call getse
@@ -620,7 +639,8 @@ cmd_help:
 	defm "D [s [e]]  dump",13
 	defm "E a b..    enter",13
 	defm "F s e b    fill",13
-	defm "M s e d    move",13
+	defm "T s e d    move",13
+	defm "M 8|9      video mode",13
 	defm "C s e o    compare",13
 	defm "S s e b..  search",13
 	defm "U [s [e]]  unassemble",13
