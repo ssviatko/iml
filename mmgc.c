@@ -434,10 +434,10 @@ static void kbd_dequeue()
 	}
 }
 
-static void kbd_clear()
-{
-	g_kbd_qsize = 0;
-}
+//static void kbd_clear()
+//{
+//	g_kbd_qsize = 0;
+//}
 
 uint8_t mmgc_key_retrieve()
 {
@@ -472,7 +472,7 @@ uint8_t mmgc_getc()
 
 void *x_tf(void *arg) {
 	struct timespec l_frame_ts;
-	int ShiftState = 0, ControlState = 0, AltState = 0;
+//	int ShiftState = 0, ControlState = 0, AltState = 0;
 	
 	while (g_run == 1) {
 		// teeny weeny sleep to prevent 100% cpu usage
@@ -503,15 +503,15 @@ void *x_tf(void *arg) {
 					switch(key_symbol) {
 						case XK_Shift_L:
 						case XK_Shift_R:
-							ShiftState = 1;
+//							ShiftState = 1;
 							break;
 						case XK_Control_L:
 						case XK_Control_R:
-							ControlState = 1;
+//							ControlState = 1;
 							break;
 						case XK_Alt_L:
 						case XK_Alt_R:
-							AltState = 1;
+//							AltState = 1;
 							break;
 						default:
 //							printf("Key: %04X ShiftState: %d ControlState: %d AltState: %d XLookupString '%s' (0x%02X)\n", (unsigned int)key_symbol, ShiftState, ControlState, AltState, xlat, xlat[0]);
@@ -536,15 +536,15 @@ void *x_tf(void *arg) {
 					switch(key_symbol) {
 						case XK_Shift_L:
 						case XK_Shift_R:
-							ShiftState = 0;
+//							ShiftState = 0;
 							break;
 						case XK_Control_L:
 						case XK_Control_R:
-							ControlState = 0;
+//							ControlState = 0;
 							break;
 						case XK_Alt_L:
 						case XK_Alt_R:
-							AltState = 0;
+//							AltState = 0;
 							break;
 					}
 					break;
