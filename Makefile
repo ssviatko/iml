@@ -12,8 +12,9 @@ Z80_OBJS = z80.o z80_engine.o memio_driver.o
 Z80_TARGET = z80
 M68K_OBJS = m68k.o m68k_engine.o memio_driver.o
 M68K_TARGET = m68k
-# vasm (Motorola syntax, 68000 backend). The snap package installs it as vasm.vasmm68k-mot.
-VASM ?= vasm.vasmm68k-mot
+# vasm (Motorola syntax, 68000 backend): vasmm68k_mot when built from source, vasm.vasmm68k-mot
+# from the snap package. /snap/bin is only on PATH after logging in again, so fall back to it.
+VASM ?= $(firstword $(shell which vasmm68k_mot vasm.vasmm68k-mot 2>/dev/null) /snap/bin/vasm.vasmm68k-mot)
 RV_OBJS = randvideo.o memio_driver.o
 RV_TARGET = randvideo
 NC_OBJS = nearcolor.o memio_driver.o
