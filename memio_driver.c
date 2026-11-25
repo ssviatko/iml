@@ -477,6 +477,58 @@ void z80_io_write(uint8_t a_address, uint8_t a_byte)
 	mem_driver_write(IOSTART + a_address, a_byte);
 }
 
+/* m68k support */
+
+// The 68000 sees the 2MB space flat (no shadow windows), big endian, with the address
+// bus mirrored every 2MB. Everything below the video buffer is RAM (the 65816 ROM area at
+// 0xe400-0xffff is not protected here); the ROM at 0x1c0000-0x1fffff is. Accesses are broken into bytes so that word and long writes to
+// the soft switches trigger them in address order.
+
+void m68k_driver_startup()
+{
+	window_defaults();
+}
+
+uint8_t m68k_mem_read8(uint32_t a_address)
+{
+	return g_shm_ptr[a_address & MEMTOP];
+}
+
+uint16_t m68k_mem_read16(uint32_t a_address)
+{
+	a_address &= MEMTOP;
+	if (a_address < MEMTOP)
+		return ((uint16_t)(uint8_t)g_shm_ptr[a_address] << 8) | (uint8_t)g_shm_ptr[a_address + 1];
+	return ((uint16_t)(uint8_t)g_shm_ptr[a_address] << 8) | (uint8_t)g_shm_ptr[0];
+}
+
+uint32_t m68k_mem_read32(uint32_t a_address)
+{
+	return ((uint32_t)m68k_mem_read16(a_address) << 16) | m68k_mem_read16(a_address + 2);
+}
+
+void m68k_mem_write8(uint32_t a_address, uint8_t a_byte)
+{
+	a_address &= MEMTOP;
+	if (a_address < IOSTART) {
+		g_shm_ptr[a_address] = a_byte; // fast path for plain RAM
+		return;
+	}
+	mem_write_phys(a_address, a_byte); // soft switches; the ROM at 0x1c0000 is write protected
+}
+
+void m68k_mem_write16(uint32_t a_address, uint16_t a_word)
+{
+	m68k_mem_write8(a_address, a_word >> 8);
+	m68k_mem_write8(a_address + 1, a_word & 0xff);
+}
+
+void m68k_mem_write32(uint32_t a_address, uint32_t a_long)
+{
+	m68k_mem_write16(a_address, a_long >> 16);
+	m68k_mem_write16(a_address + 2, a_long & 0xffff);
+}
+
 // floating point support
 
 unsigned int fp_width;

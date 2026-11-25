@@ -164,6 +164,23 @@ void z80_mem_write(uint16_t a_address, uint8_t a_byte);
 uint8_t z80_io_read(uint8_t a_address);
 void z80_io_write(uint8_t a_address, uint8_t a_byte);
 
+// m68k support (flat 24 bit big endian address space, mirrored every 2MB).
+// The ROM image is loaded at 0x1c0000 (the write protected 1C ROM area) and begins with its
+// exception vector table. The 68000 fetches its reset vectors from address 0, so the first
+// M68K_VECTORS_SIZE bytes of the ROM are copied to 0x000000 at power on and warm reset.
+// Everything below the video buffer is RAM, including the vector table.
+const static uint32_t M68K_ROM_BASE = 0x1c0000;
+const static uint32_t M68K_ROM_SIZE = 0x40000;
+const static uint32_t M68K_VECTORS_SIZE = 0x400;
+
+void m68k_driver_startup();
+uint8_t m68k_mem_read8(uint32_t a_address);
+uint16_t m68k_mem_read16(uint32_t a_address);
+uint32_t m68k_mem_read32(uint32_t a_address);
+void m68k_mem_write8(uint32_t a_address, uint8_t a_byte);
+void m68k_mem_write16(uint32_t a_address, uint16_t a_word);
+void m68k_mem_write32(uint32_t a_address, uint32_t a_long);
+
 // floating point support
 void fp_init_constant(uint8_t a_byte);
 void fp_to_ascii(uint8_t a_byte);

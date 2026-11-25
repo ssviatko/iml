@@ -40,6 +40,36 @@ information up on the screen, cycling every second.
 kbdecho - Demonstrates keyboard echo using the built in CON feature of the
 IO layer.
 
+m68k - Motorola 68000 emulator. It loads a ROM file called "mrom.bin" at
+$1C0000 (the write protected 1C ROM area) and copies the ROM's first 1K, its
+exception vector table, down to $000000, where the 68000 fetches its reset
+vectors. The vector table is RAM, so programs can hook exceptions. Ctrl-Alt-End
+copies the vectors again and resets the CPU. The 68000 sees the 2MB space flat
+(no Z80 windows): the soft switches are at $1BFC00.
+
+The ROM (mrom.s) is a machine language monitor with a disassembler and an
+Apple II style mini-assembler; type ? for its commands. It is built with vasm
+(Motorola syntax): the Makefile runs "vasm.vasmm68k-mot" (the snap package's
+name), override with "make VASM=vasmm68k_mot" if yours is called differently.
+All numbers are hex, so a TRAP is "TRAP #$F" or "TRAP #0F".
+
+68000 memory map:
+
+00/0000-00/03FF - Exception vectors (RAM, copied from the ROM at reset)
+00/0400-00/0FFF - Monitor variables
+00/1000-00/FFFF - Supervisor stack (starts at 01/0000)
+01/0000-17/FFFF - User RAM
+18/0000-1B/FBFF - Video buffer
+1B/FC00-1B/FFFF - Soft switches
+1C/0000-1F/FFFF - ROM: vector table, then the monitor at 1C/0400
+
+Programs started with G run in supervisor mode and can return with RTS. Any
+exception prints its name and the registers (R shows them again) and returns
+to the monitor. TRAP #15 is a system call with the function number in D0.B:
+0 putc D1.B, 1 getc -> D1.B, 2 puts (A1), 3/4/5 print D1 as a hex byte/word/
+long, 6 newline, 7 getline -> A1, 8 key waiting -> D1.B (0 = none), 9 return
+to the monitor.
+
 --- Technical details about IML environment ---
 
 Memory map:

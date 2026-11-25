@@ -10,6 +10,10 @@ CONS_LDFLAGS = -flto -lX11 -lm
 65816_TARGET = 65816
 Z80_OBJS = z80.o z80_engine.o memio_driver.o
 Z80_TARGET = z80
+M68K_OBJS = m68k.o m68k_engine.o memio_driver.o
+M68K_TARGET = m68k
+# vasm (Motorola syntax, 68000 backend). The snap package installs it as vasm.vasmm68k-mot.
+VASM ?= vasm.vasmm68k-mot
 RV_OBJS = randvideo.o memio_driver.o
 RV_TARGET = randvideo
 NC_OBJS = nearcolor.o memio_driver.o
@@ -23,7 +27,7 @@ FASTCONS_TARGET = fconsole
 MMGC_OBJS = mmgc.o mmgc_test.o
 MMGC_TARGET = mmgc_test
 
-all: $(65816_TARGET) $(Z80_TARGET) $(RV_TARGET) $(NC_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET)
+all: $(65816_TARGET) $(Z80_TARGET) $(M68K_TARGET) $(RV_TARGET) $(NC_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET)
 
 $(FASTCONS_TARGET): $(FASTCONS_OBJS)
 
@@ -40,6 +44,11 @@ $(Z80_TARGET): $(Z80_OBJS)
 	z80asm zrom.z80 -o zrom.bin -l 2> zrom.lst
 	$(LD) $(Z80_OBJS) -o $(Z80_TARGET) $(LDFLAGS)
 	
+$(M68K_TARGET): $(M68K_OBJS) mrom.s
+
+	$(VASM) -quiet -Fbin -m68000 -L mrom.lst -o mrom.bin mrom.s
+	$(LD) $(M68K_OBJS) -o $(M68K_TARGET) $(LDFLAGS)
+
 $(RV_TARGET): $(RV_OBJS)
 
 	$(LD) $(RV_OBJS) -o $(RV_TARGET) $(LDFLAGS)
@@ -70,6 +79,7 @@ clean:
 	rm -f $(NC_TARGET)
 	rm -f $(KE_TARGET)
 	rm -f $(Z80_TARGET)
+	rm -f $(M68K_TARGET)
 	rm -f $(CONS_TARGET)
 	rm -f $(65816_TARGET)
 	rm -f $(MMGC_TARGET)
