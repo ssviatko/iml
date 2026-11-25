@@ -1,3 +1,22 @@
+; Z80 monitor
+;
+; Commands (all numbers are hex):
+;   D [start [end]]       dump memory with ASCII
+;   E addr byte...        enter bytes
+;   F start end byte      fill memory
+;   M start end dest      move memory
+;   C start end other     compare two ranges
+;   S start end byte...   search for bytes
+;   U [start [end]]       unassemble (disassemble)
+;   G addr                call a routine (it can return to the monitor with RET)
+;   I port                read an I/O port
+;   O port byte           write an I/O port
+;   W [n sect]            show/set memory window n (6,8,A,C) to 8K section sect
+;   H                     halt the processor
+;   ?                     help
+;
+; The soft switch bank at $1bfc00-$1bffff is shadowed into $e000-$e3ff.
+
 	org $0
 
 	jp romstart
@@ -5,9 +24,9 @@
 zpempty:
 	ds $100-zpempty,$ff
 
-; soft switches. The soft switch bank at $1bfc00-$1bffff is shadowed
-; into $e000-$e3ff, so the Z80 can reach every switch with a plain
-; memory access.
+IO_KEYQ_SIZE: equ $e000
+IO_KEYQ_WAITING: equ $e001
+IO_KEYQ_DEQUEUE: equ $e002
 IO_CON_CLS: equ $e010
 IO_CON_COLOR: equ $e011
 IO_CON_CHAROUT: equ $e012
@@ -17,10 +36,25 @@ IO_CON_CURSORV: equ $e015
 IO_CON_CURSOR: equ $e016
 IO_VIDMODE: equ $e020
 
+; RAM: the ROM image is $0000-$1fff (write protected), data starts at $2000
+v_cur: equ $2000	; current address (dump, unassemble, enter)
+v_end: equ $2002	; end of range
+v_out: equ $2004	; output buffer pointer (when v_buf is set)
+v_start: equ $2006	; address of instruction being disassembled
+v_pfx: equ $2008	; DD/FD prefix of instruction being disassembled
+v_mem: equ $2009	; set if a (HL)/(IX+d) operand is also in the instruction
+v_op: equ $200a		; opcode being disassembled
+v_buf: equ $200b	; nonzero: putc stores into the output buffer instead of the screen
+patbuf: equ $2020	; search pattern
+linebuf: equ $2040	; input line
+outbuf: equ $2080	; disassembly text
+
 	org $100
 
 romstart:
 	ld sp,$5fff		; stack in plain RAM, below the memory windows
+	xor a
+	ld (v_buf),a
 	ld a,8
 	ld (IO_VIDMODE),a	; 40 column text mode
 	xor a
@@ -33,20 +67,1354 @@ romstart:
 	ld a,$20
 	ld (IO_CON_CHAROUT),a	; the clear screen fills with this character
 	ld (IO_CON_CLS),a	; any write clears the screen
+	ld hl,$0000
+	ld (v_cur),hl
+	call pstr
+	defm "Z80 Monitor, ? for help",13,0
 
-	ld hl,message
-prloop:
+main:
+	ld a,'>'
+	call putc
+	call getline
+	ld hl,linebuf
+	call skipsp
 	ld a,(hl)
-	or a			; zero terminates the string
-	jr z,done
-	ld (IO_CON_CHAROUT),a
-	ld (IO_CON_REGISTER),a	; place the character at the cursor
+	or a
+	jr z,main
 	inc hl
-	jr prloop
+	cp 'a'			; fold the command letter to upper case
+	jr c,main1
+	and $df
+main1:
+	ld c,a
+	call dispatch
+	jr main
 
-done:
-	jp done			; stop the processor
+; jump to the command whose letter is in C, with HL pointing at its arguments.
+; the command returns to main with RET.
+dispatch:
+	ld de,cmdtab
+dsp1:
+	ld a,(de)
+	or a
+	jr z,err
+	cp c
+	jr z,dsp2
+	inc de
+	inc de
+	inc de
+	jr dsp1
+dsp2:
+	inc de
+	push hl
+	ex de,hl
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	pop hl
+	push de
+	ret
 
-message:
-	defm "Hello from Z80"
+cmdtab:
+	defb 'D'
+	defw cmd_d
+	defb 'E'
+	defw cmd_e
+	defb 'F'
+	defw cmd_f
+	defb 'M'
+	defw cmd_m
+	defb 'C'
+	defw cmd_c
+	defb 'S'
+	defw cmd_s
+	defb 'U'
+	defw cmd_u
+	defb 'G'
+	defw cmd_g
+	defb 'I'
+	defw cmd_i
+	defb 'O'
+	defw cmd_o
+	defb 'W'
+	defw cmd_w
+	defb 'H'
+	defw cmd_h
+	defb '?'
+	defw cmd_help
 	defb 0
+
+err:
+	ld a,'?'
+	call putc
+crlf:
+	ld a,13
+	jr putc
+
+; ---------------------------------------------------------------- console i/o
+
+; print A, on the screen or (when v_buf is set) into the output buffer
+putc:
+	push af
+	ld a,(v_buf)
+	or a
+	jr nz,putbuf
+	pop af
+	ld (IO_CON_CHAROUT),a
+	ld (IO_CON_REGISTER),a
+	ret
+putbuf:
+	pop af
+	push hl
+	ld hl,(v_out)
+	ld (hl),a
+	inc hl
+	ld (v_out),hl
+	pop hl
+	ret
+
+; print the zero terminated string that follows the call
+pstr:
+	ex (sp),hl
+pstr1:
+	ld a,(hl)
+	inc hl
+	or a
+	jr z,pstr2
+	call putc
+	jr pstr1
+pstr2:
+	ex (sp),hl
+	ret
+
+; print the zero terminated string at HL
+puts:
+	ld a,(hl)
+	inc hl
+	or a
+	ret z
+	call putc
+	jr puts
+
+phex16:				; print HL
+	ld a,h
+	call phex8
+	ld a,l
+phex8:				; print A
+	push af
+	rrca
+	rrca
+	rrca
+	rrca
+	call pnib
+	pop af
+pnib:
+	and $0f
+	add a,$90
+	daa
+	adc a,$40
+	daa
+	jr putc
+
+phexs8:				; print $ and A in hex
+	push af
+	ld a,'$'
+	call putc
+	pop af
+	jr phex8
+
+getc:				; wait for a key, return it in A
+	ld a,(IO_KEYQ_SIZE)
+	or a
+	jr z,getc
+	ld a,(IO_KEYQ_WAITING)
+	ld (IO_KEYQ_DEQUEUE),a
+	ret
+
+getline:			; read a line into linebuf (backspace edits)
+	ld hl,linebuf
+	ld b,0
+gl1:
+	call getc
+	cp 13
+	jr z,gl3
+	cp 8
+	jr z,gl2
+	cp $20
+	jr c,gl1
+	ld c,a
+	ld a,b
+	cp 60
+	jr nc,gl1
+	ld a,c
+	ld (hl),a
+	inc hl
+	inc b
+	call putc
+	jr gl1
+gl2:
+	ld a,b
+	or a
+	jr z,gl1
+	dec b
+	dec hl
+	call pstr
+	defb 8,' ',8,0
+	jr gl1
+gl3:
+	ld (hl),0
+	jp crlf
+
+; ---------------------------------------------------------------- parsing
+
+skipsp:				; skip spaces at HL
+	ld a,(hl)
+	cp ' '
+	ret nz
+	inc hl
+	jr skipsp
+
+; parse a hex number at HL into DE. carry set if there was none. keeps BC.
+gethex:
+	call skipsp
+	push bc
+	ld de,0
+	ld c,0
+gx1:
+	ld a,(hl)
+	call hexval
+	jr c,gx2
+	push hl
+	ex de,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	or l
+	ld l,a
+	ex de,hl
+	pop hl
+	inc hl
+	inc c
+	jr gx1
+gx2:
+	ld a,c
+	pop bc
+	cp 1			; carry if no digits
+	ret
+
+hexval:				; character in A to a nibble, carry set if not hex
+	cp 'a'
+	jr c,hv1
+	sub $20
+hv1:
+	sub '0'
+	ret c
+	cp 10
+	jr c,hv2
+	sub 7
+	cp 10
+	ret c
+	cp 16
+	ccf
+	ret
+hv2:
+	or a
+	ret
+
+; parse an optional start and end into v_cur and v_end.
+; the end defaults to start+BC.
+getse:
+	call gethex
+	jr c,gs1
+	ld (v_cur),de
+gs1:
+	call gethex
+	jr nc,gs2
+	push hl
+	ld hl,(v_cur)
+	add hl,bc
+	ex de,hl
+	pop hl
+gs2:
+	ld (v_end),de
+	ret
+
+atend:				; zero flag set if HL is the end of the range
+	push de
+	ld de,(v_end)
+	ld a,l
+	cp e
+	jr nz,ae1
+	ld a,h
+	cp d
+ae1:
+	pop de
+	ret
+
+; call DE for each address in the range v_cur to v_end. HL is the address.
+rngloop:
+	ld hl,(v_cur)
+rl1:
+	push de
+	call callde
+	pop de
+	ld a,h
+	or l
+	jr z,rl2
+	push de
+	ld de,(v_end)
+	ld a,e
+	sub l
+	ld a,d
+	sbc a,h
+	pop de
+	jr nc,rl1
+rl2:
+	ld (v_cur),hl
+	ret
+callde:
+	push de
+	ret
+
+; ---------------------------------------------------------------- commands
+
+cmd_d:
+	ld bc,$3f
+	call getse
+	ld de,dumpline
+	jr rngloop
+
+dumpline:			; dump 8 bytes at HL with ASCII
+	call phex16
+	ld a,':'
+	call putc
+	push hl
+	ld b,8
+dm1:
+	ld a,' '
+	call putc
+	ld a,(hl)
+	inc hl
+	call phex8
+	djnz dm1
+	ld a,' '
+	call putc
+	pop hl
+	ld b,8
+dm2:
+	ld a,(hl)
+	inc hl
+	cp $20
+	jr c,dm3
+	cp $7f
+	jr c,dm4
+dm3:
+	ld a,'.'
+dm4:
+	call putc
+	djnz dm2
+	jp crlf
+
+cmd_e:
+	call gethex
+	jr c,e1
+	ld (v_cur),de
+e1:
+	ld bc,(v_cur)
+e2:
+	call gethex
+	jr c,e3
+	ld a,e
+	ld (bc),a
+	inc bc
+	jr e2
+e3:
+	ld (v_cur),bc
+	ret
+
+cmd_f:
+	ld bc,0
+	call getse
+	call gethex
+	jp c,err
+	ld hl,(v_cur)
+f1:
+	ld (hl),e
+	call atend
+	ret z
+	inc hl
+	jr f1
+
+cmd_m:
+	ld bc,0
+	call getse
+	call gethex
+	jp c,err
+	push de			; destination
+	ld hl,(v_end)
+	ld de,(v_cur)
+	or a
+	sbc hl,de
+	inc hl
+	ld b,h
+	ld c,l			; count
+	ex de,hl		; source
+	pop de
+	push hl
+	or a
+	sbc hl,de
+	pop hl
+	jr c,m1			; source below destination: copy backwards
+	ldir
+	ret
+m1:
+	add hl,bc
+	dec hl
+	ex de,hl
+	add hl,bc
+	dec hl
+	ex de,hl
+	lddr
+	ret
+
+cmd_c:
+	ld bc,0
+	call getse
+	call gethex
+	jp c,err
+	ld hl,(v_cur)
+c1:
+	ld a,(de)
+	cp (hl)
+	jr z,c2
+	call phex16
+	ld a,' '
+	call putc
+	ld a,(hl)
+	call phex8
+	ld a,' '
+	call putc
+	ex de,hl
+	call phex16
+	ld a,' '
+	call putc
+	ld a,(hl)
+	call phex8
+	ex de,hl
+	call crlf
+c2:
+	call atend
+	ret z
+	inc hl
+	inc de
+	jr c1
+
+cmd_s:
+	ld bc,0
+	call getse
+	ld bc,patbuf
+s1:
+	call gethex
+	jr c,s2
+	ld a,e
+	ld (bc),a
+	inc bc
+	jr s1
+s2:
+	ld a,c
+	sub patbuf & $ff	; pattern length
+	jp z,err
+	ld b,a
+	ld hl,(v_cur)
+s3:
+	push hl
+	push bc
+	ld de,patbuf
+s4:
+	ld a,(de)
+	cp (hl)
+	jr nz,s5
+	inc hl
+	inc de
+	djnz s4
+	pop bc
+	pop hl
+	call phex16
+	call crlf
+	jr s6
+s5:
+	pop bc
+	pop hl
+s6:
+	call atend
+	ret z
+	inc hl
+	jr s3
+
+cmd_g:
+	call gethex
+	jp c,err
+	push de
+	ret
+
+cmd_i:
+	call gethex
+	jp c,err
+	ld c,e
+	in a,(c)
+	call phex8
+	jp crlf
+
+cmd_o:
+	call gethex
+	jp c,err
+	ld c,e
+	call gethex
+	jp c,err
+	ld a,e
+	out (c),a
+	ret
+
+cmd_w:
+	call gethex
+	jr c,w_show
+	ld a,e			; window 6,8,A,C is switch $33,$30,$31,$32
+	srl a
+	and 3
+	or $30
+	ld b,a
+	call gethex
+	jp c,err
+	ld h,$e0
+	ld l,b
+	ld (hl),e
+	ret
+w_show:
+	ld hl,wtab
+	ld b,4
+ws1:
+	ld a,(hl)
+	inc hl
+	call putc
+	ld a,'='
+	call putc
+	ld e,(hl)
+	inc hl
+	ld d,$e0
+	ld a,(de)
+	call phex8
+	ld a,' '
+	call putc
+	djnz ws1
+	jp crlf
+wtab:
+	defb '6',$33,'8',$30,'A',$31,'C',$32
+
+cmd_h:
+	halt
+	ret
+
+cmd_help:
+	call pstr
+	defm "D [s [e]]  dump",13
+	defm "E a b..    enter",13
+	defm "F s e b    fill",13
+	defm "M s e d    move",13
+	defm "C s e o    compare",13
+	defm "S s e b..  search",13
+	defm "U [s [e]]  unassemble",13
+	defm "G a        go",13
+	defm "I p        in",13
+	defm "O p b      out",13
+	defm "W [n s]    window 6/8/A/C",13
+	defm "H          halt",13,0
+	ret
+
+; ---------------------------------------------------------------- disassembler
+
+cmd_u:
+	ld bc,$2f
+	call getse
+	ld de,disasm
+	jp rngloop
+
+; disassemble the instruction at HL and print it. returns HL = next instruction
+disasm:
+	ld (v_start),hl
+	ld de,outbuf
+	ld (v_out),de
+	xor a
+	ld (v_pfx),a
+	ld (v_mem),a
+	inc a
+	ld (v_buf),a		; build the text in the buffer
+dpfx:
+	call fetch
+	cp $dd
+	jr z,dpf1
+	cp $fd
+	jr nz,dpf2
+dpf1:
+	ld (v_pfx),a
+	jr dpfx
+dpf2:
+	ld (v_op),a
+	call decode
+	xor a
+	call putc		; end the text
+	ld (v_buf),a		; back to the screen
+	ex de,hl		; DE = next instruction
+	ld hl,(v_start)
+	call phex16
+	ld a,':'
+	call putc
+	ld b,4			; room for 4 bytes
+dp1:
+	ld a,' '
+	call putc
+	push hl
+	or a
+	sbc hl,de
+	pop hl
+	jr z,dp2
+	ld a,(hl)
+	inc hl
+	call phex8
+	jr dp3
+dp2:
+	ld a,' '
+	call putc
+	call putc
+dp3:
+	djnz dp1
+	ld a,' '
+	call putc
+	call putc
+	ld hl,outbuf
+	call puts
+	call crlf
+	ex de,hl
+	ret
+
+fetch:
+	ld a,(hl)
+	inc hl
+	ret
+
+; opcode fields: x = bits 7-6, y = bits 5-3, z = bits 2-0, p = y/2, q = y&1
+getz:
+	ld a,(v_op)
+	and 7
+	ret
+gety:
+	ld a,(v_op)
+	rrca
+	rrca
+	rrca
+	and 7
+	ret
+getp:
+	call gety
+	srl a
+	ret
+getq:
+	call gety
+	and 1
+	ret
+
+; print string number A of the zero terminated strings at DE
+estr:
+	ld b,a
+es1:
+	ld a,b
+	or a
+	jr z,es3
+	dec b
+es2:
+	ld a,(de)
+	inc de
+	or a
+	jr nz,es2
+	jr es1
+es3:
+	ld a,(de)
+	inc de
+	or a
+	ret z
+	call putc
+	jr es3
+
+en8:				; 8 bit immediate: $nn
+	call fetch
+	jp phexs8
+en16:				; 16 bit immediate: $nnnn
+	call fetch
+	ld e,a
+	call fetch
+	ld d,a
+	push hl
+	ex de,hl
+	call ehex16
+	pop hl
+	ret
+ehex16:				; $ and HL in hex
+	ld a,'$'
+	call putc
+	jp phex16
+
+erel:				; relative branch target
+	call fetch
+	ld e,a
+	rla
+	sbc a,a
+	ld d,a
+	push hl
+	add hl,de
+	call ehex16
+	pop hl
+	ret
+
+eixy:				; IX or IY
+	ld a,'I'
+	call putc
+	ld a,(v_pfx)
+	cp $dd
+	ld a,'X'
+	jr z,eixy1
+	ld a,'Y'
+eixy1:
+	jp putc
+
+ehl:				; HL, or IX/IY after a prefix
+	ld a,(v_pfx)
+	or a
+	jr nz,eixy
+	call pstr
+	defm "HL",0
+	ret
+
+erp:				; register pair A (BC,DE,HL,SP)
+	cp 2
+	jr z,ehl
+	ld de,t_rp
+	jp estr
+
+erp2:				; register pair A for push/pop (BC,DE,HL,AF)
+	cp 2
+	jr z,ehl
+	ld de,t_rp2
+	jp estr
+
+ecc:				; condition code from y
+	call gety
+	ld de,t_cc
+	jp estr
+
+ereg:				; register A (B,C,D,E,H,L,(HL),A)
+	cp 6
+	jr z,emem
+	cp 4
+	jr c,er2
+	cp 7			; A is never IXH/IXL
+	jr z,er2
+	ld c,a			; H and L become IXH/IXL after a prefix,
+	ld a,(v_pfx)		; unless the instruction also has a memory operand
+	or a
+	jr z,er1
+	ld a,(v_mem)
+	or a
+	jr nz,er1
+	call eixy
+	ld a,c
+	sub 4
+	ld a,'H'
+	jp z,putc
+	ld a,'L'
+	jp putc
+er1:
+	ld a,c
+er2:
+	ld de,t_r
+	jp estr
+
+emem:				; (HL) or (IX+d)
+	ld a,(v_pfx)
+	or a
+	jr nz,em1
+	call pstr
+	defm "(HL)",0
+	ret
+em1:
+	ld a,'('
+	call putc
+	call eixy
+	call fetch
+	ld c,a
+	ld a,'+'
+	bit 7,c
+	jr z,em2
+	ld a,c
+	neg
+	ld c,a
+	ld a,'-'
+em2:
+	call putc
+	ld a,c
+	call phexs8
+	ld a,')'
+	jp putc
+
+decode:
+	ld a,(v_op)
+	cp $ed
+	jp z,d_ed
+	cp $cb
+	jp z,d_cb
+	cp $40
+	jp c,d_x0
+	cp $80
+	jp c,d_x1
+	cp $c0
+	jp c,d_x2
+	jp d_x3
+
+d_x1:				; LD r,r'
+	ld a,(v_op)
+	cp $76
+	jr nz,x1a
+	call pstr
+	defm "HALT",0
+	ret
+x1a:
+	call gety
+	cp 6
+	jr z,x1b
+	call getz
+	cp 6
+	jr nz,x1c
+x1b:
+	ld a,1
+	ld (v_mem),a
+x1c:
+	call pstr
+	defm "LD ",0
+	call gety
+	call ereg
+	ld a,','
+	call putc
+	call getz
+	jp ereg
+
+d_x2:				; ALU A,r
+	call gety
+	ld de,t_alu
+	call estr
+	call getz
+	jp ereg
+
+d_x0:
+	call getz
+	or a
+	jp z,x0z0
+	dec a
+	jp z,x0z1
+	dec a
+	jp z,x0z2
+	dec a
+	jp z,x0z3
+	dec a
+	jp z,x0z4
+	dec a
+	jp z,x0z5
+	dec a
+	jp z,x0z6
+	call gety		; z = 7
+	ld de,t_acc
+	jp estr
+
+x0z0:
+	call gety
+	or a
+	jr nz,z0a
+	call pstr
+	defm "NOP",0
+	ret
+z0a:
+	dec a
+	jr nz,z0b
+	call pstr
+	defm "EX AF,AF'",0
+	ret
+z0b:
+	dec a
+	jr nz,z0c
+	call pstr
+	defm "DJNZ ",0
+	jp erel
+z0c:
+	dec a
+	jr nz,z0d
+	call pstr
+	defm "JR ",0
+	jp erel
+z0d:
+	call pstr
+	defm "JR ",0
+	call gety
+	sub 4
+	ld de,t_cc
+	call estr
+	ld a,','
+	call putc
+	jp erel
+
+x0z1:
+	call getq
+	or a
+	jr nz,z1a
+	call pstr
+	defm "LD ",0
+	call getp
+	call erp
+	ld a,','
+	call putc
+	jp en16
+z1a:
+	call pstr
+	defm "ADD ",0
+	call ehl
+	ld a,','
+	call putc
+	call getp
+	jp erp
+
+x0z2:
+	call pstr
+	defm "LD ",0
+	call getq
+	or a
+	jr nz,z2b
+	call z2mem
+	ld a,','
+	call putc
+	jr z2reg
+z2b:
+	call z2reg
+	ld a,','
+	call putc
+z2mem:
+	ld a,'('
+	call putc
+	call getp
+	cp 2
+	jr nc,z2m2
+	ld de,t_rp
+	call estr
+	jr z2m3
+z2m2:
+	call en16
+z2m3:
+	ld a,')'
+	jp putc
+z2reg:
+	call getp
+	cp 2
+	jp z,ehl
+	ld a,'A'
+	jp putc
+
+x0z3:
+	call getq
+	or a
+	jr nz,z3a
+	call pstr
+	defm "INC ",0
+	jr z3b
+z3a:
+	call pstr
+	defm "DEC ",0
+z3b:
+	call getp
+	jp erp
+
+x0z4:
+	call pstr
+	defm "INC ",0
+	jr z4a
+x0z5:
+	call pstr
+	defm "DEC ",0
+z4a:
+	call gety
+	jp ereg
+
+x0z6:
+	call pstr
+	defm "LD ",0
+	call gety
+	call ereg
+	ld a,','
+	call putc
+	jp en8
+
+d_x3:
+	call getz
+	or a
+	jr nz,x3a
+	call pstr		; z = 0
+	defm "RET ",0
+	jp ecc
+x3a:
+	dec a
+	jr nz,x3b
+	call getq		; z = 1
+	or a
+	jr nz,x3a1
+	call pstr
+	defm "POP ",0
+	call getp
+	jp erp2
+x3a1:
+	call getp
+	or a
+	jr nz,x3a2
+	call pstr
+	defm "RET",0
+	ret
+x3a2:
+	dec a
+	jr nz,x3a3
+	call pstr
+	defm "EXX",0
+	ret
+x3a3:
+	dec a
+	jr nz,x3a4
+	call pstr
+	defm "JP (",0
+	call ehl
+	ld a,')'
+	jp putc
+x3a4:
+	call pstr
+	defm "LD SP,",0
+	jp ehl
+x3b:
+	dec a
+	jr nz,x3c
+	call pstr		; z = 2
+	defm "JP ",0
+	call ecc
+	ld a,','
+	call putc
+	jp en16
+x3c:
+	dec a
+	jr nz,x3d
+	call gety		; z = 3
+	or a
+	jr nz,x3c1
+	call pstr
+	defm "JP ",0
+	jp en16
+x3c1:
+	cp 2
+	jr nz,x3c2
+	call pstr
+	defm "OUT (",0
+	call en8
+	call pstr
+	defm "),A",0
+	ret
+x3c2:
+	cp 3
+	jr nz,x3c3
+	call pstr
+	defm "IN A,(",0
+	call en8
+	ld a,')'
+	jp putc
+x3c3:
+	cp 4
+	jr nz,x3c4
+	call pstr
+	defm "EX (SP),",0
+	jp ehl
+x3c4:
+	cp 5
+	jr nz,x3c5
+	call pstr
+	defm "EX DE,HL",0
+	ret
+x3c5:
+	cp 6
+	jr nz,x3c6
+	call pstr
+	defm "DI",0
+	ret
+x3c6:
+	call pstr
+	defm "EI",0
+	ret
+x3d:
+	dec a
+	jr nz,x3e
+	call pstr		; z = 4
+	defm "CALL ",0
+	call ecc
+	ld a,','
+	call putc
+	jp en16
+x3e:
+	dec a
+	jr nz,x3f
+	call getq		; z = 5
+	or a
+	jr nz,x3e1
+	call pstr
+	defm "PUSH ",0
+	call getp
+	jp erp2
+x3e1:
+	call pstr
+	defm "CALL ",0
+	jp en16
+x3f:
+	dec a
+	jr nz,x3g
+	call gety		; z = 6
+	ld de,t_alu
+	call estr
+	jp en8
+x3g:
+	call pstr		; z = 7
+	defm "RST ",0
+	call gety
+	add a,a
+	add a,a
+	add a,a
+	jp phexs8
+
+d_cb:
+	ld a,(v_pfx)
+	or a
+	jr z,cb1
+	inc hl			; DD CB d op: the opcode comes after the displacement
+	ld a,(hl)
+	dec hl
+	ld (v_op),a
+	call cb2
+	inc hl
+	ret
+cb1:
+	call fetch
+	ld (v_op),a
+cb2:
+	ld a,(v_op)
+	cp $40
+	jr c,cb_rot
+	cp $80
+	jr c,cb_bit
+	cp $c0
+	jr c,cb_res
+	call pstr
+	defm "SET ",0
+	jr cb_n
+cb_rot:
+	call gety
+	ld de,t_rot
+	call estr
+	ld a,' '
+	call putc
+	jr cb_r
+cb_bit:
+	call pstr
+	defm "BIT ",0
+	jr cb_n
+cb_res:
+	call pstr
+	defm "RES ",0
+cb_n:
+	call gety
+	add a,'0'
+	call putc
+	ld a,','
+	call putc
+cb_r:
+	ld a,(v_pfx)
+	or a
+	jr nz,cb_x
+	call getz
+	jp ereg
+cb_x:
+	ld a,6			; always (IX+d) after a prefix
+	call ereg
+	ld a,(v_op)		; undocumented: the result is also copied to a register
+	and $c0
+	cp $40
+	ret z
+	call getz
+	cp 6
+	ret z
+	ld a,','
+	call putc
+	call getz
+	ld de,t_r
+	jp estr
+
+d_ed:
+	xor a
+	ld (v_pfx),a		; ED ignores DD/FD
+	call fetch
+	ld (v_op),a
+	cp $40
+	jr c,ed_nop
+	cp $80
+	jr c,ed_x1
+	and $e4
+	cp $a0
+	jr nz,ed_nop
+	ld a,(v_op)		; block instruction
+	ld c,a
+	srl a
+	and $0c
+	ld b,a
+	ld a,c
+	and 3
+	or b
+	ld de,t_blk
+	jp estr
+ed_nop:
+	call pstr
+	defm "NOP",0
+	ret
+ed_x1:
+	call getz
+	or a
+	jr nz,ed1
+	call pstr
+	defm "IN ",0
+	call gety
+	cp 6
+	jr nz,ed0a
+	ld a,'F'
+	call putc
+	jr ed0b
+ed0a:
+	call ereg
+ed0b:
+	call pstr
+	defm ",(C)",0
+	ret
+ed1:
+	dec a
+	jr nz,ed2
+	call pstr
+	defm "OUT (C),",0
+	call gety
+	cp 6
+	jp nz,ereg
+	ld a,'0'
+	jp putc
+ed2:
+	dec a
+	jr nz,ed3
+	call getq
+	or a
+	jr nz,ed2a
+	call pstr
+	defm "SBC ",0
+	jr ed2b
+ed2a:
+	call pstr
+	defm "ADC ",0
+ed2b:
+	call pstr
+	defm "HL,",0
+	call getp
+	jp erp
+ed3:
+	dec a
+	jr nz,ed4
+	call pstr
+	defm "LD ",0
+	call getq
+	or a
+	jr nz,ed3a
+	ld a,'('
+	call putc
+	call en16
+	ld a,')'
+	call putc
+	ld a,','
+	call putc
+	call getp
+	jp erp
+ed3a:
+	call getp
+	call erp
+	ld a,','
+	call putc
+	ld a,'('
+	call putc
+	call en16
+	ld a,')'
+	jp putc
+ed4:
+	dec a
+	jr nz,ed5
+	call pstr
+	defm "NEG",0
+	ret
+ed5:
+	dec a
+	jr nz,ed6
+	call gety
+	dec a
+	jr nz,ed5a
+	call pstr
+	defm "RETI",0
+	ret
+ed5a:
+	call pstr
+	defm "RETN",0
+	ret
+ed6:
+	dec a
+	jr nz,ed7
+	call pstr
+	defm "IM ",0
+	call gety
+	and 3
+	sub 1			; 0,0,1,2
+	adc a,0
+	add a,'0'
+	jp putc
+ed7:
+	call gety
+	ld de,t_ed7
+	jp estr
+
+; string tables, selected by number
+t_r:
+	defm "B",0,"C",0,"D",0,"E",0,"H",0,"L",0,"(HL)",0,"A",0
+t_rp:
+	defm "BC",0,"DE",0,"HL",0,"SP",0
+t_rp2:
+	defm "BC",0,"DE",0,"HL",0,"AF",0
+t_cc:
+	defm "NZ",0,"Z",0,"NC",0,"C",0,"PO",0,"PE",0,"P",0,"M",0
+t_alu:
+	defm "ADD A,",0,"ADC A,",0,"SUB ",0,"SBC A,",0,"AND ",0,"XOR ",0,"OR ",0,"CP ",0
+t_rot:
+	defm "RLC",0,"RRC",0,"RL",0,"RR",0,"SLA",0,"SRA",0,"SLL",0,"SRL",0
+t_acc:
+	defm "RLCA",0,"RRCA",0,"RLA",0,"RRA",0,"DAA",0,"CPL",0,"SCF",0,"CCF",0
+t_blk:
+	defm "LDI",0,"CPI",0,"INI",0,"OUTI",0,"LDD",0,"CPD",0,"IND",0,"OUTD",0
+	defm "LDIR",0,"CPIR",0,"INIR",0,"OTIR",0,"LDDR",0,"CPDR",0,"INDR",0,"OTDR",0
+t_ed7:
+	defm "LD I,A",0,"LD R,A",0,"LD A,I",0,"LD A,R",0,"RRD",0,"RLD",0,"NOP",0,"NOP",0
+
+romend:
