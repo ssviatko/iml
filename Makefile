@@ -25,10 +25,16 @@ CONS_OBJS = console.o memio_driver.o
 CONS_TARGET = console
 FASTCONS_OBJS = fastconsole.o memio_driver.o
 FASTCONS_TARGET = fconsole
+TCONS_OBJS = tconsole.o memio_driver.o
+TCONS_TARGET = tconsole
 MMGC_OBJS = mmgc.o mmgc_test.o
 MMGC_TARGET = mmgc_test
 
-all: $(65816_TARGET) $(Z80_TARGET) $(M68K_TARGET) $(RV_TARGET) $(NC_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET)
+all: $(65816_TARGET) $(Z80_TARGET) $(M68K_TARGET) $(RV_TARGET) $(NC_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET) $(TCONS_TARGET)
+
+$(TCONS_TARGET): $(TCONS_OBJS)
+
+	$(LD) $(TCONS_OBJS) -o $(TCONS_TARGET) $(LDFLAGS)
 
 $(FASTCONS_TARGET): $(FASTCONS_OBJS)
 
@@ -85,4 +91,5 @@ clean:
 	rm -f $(65816_TARGET)
 	rm -f $(MMGC_TARGET)
 	rm -f $(FASTCONS_TARGET)
+	rm -f $(TCONS_TARGET)
 

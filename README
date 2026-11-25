@@ -27,6 +27,19 @@ window.
 
 example: ./console -s3 -e./randvideo
 
+tconsole - Text console for a terminal, no X11 needed. It prints the characters
+the server writes to the text console (IO_CON_REGISTER and IO_CON_CR) on stdout
+as they are written, in video modes 8 and 9. Modes 0-7 show nothing, and the
+cursor position and clear screen soft switches are ignored. Keys are sent like
+fconsole sends them (Enter = 13, Backspace = 8, arrows = 8/9/10/11); Ctrl-Alt-End
+is a warm reset and Ctrl-C quits. Input can also be piped in.
+
+example: ./tconsole -e ./m68k
+
+tconsole connects with IO_CMD_CLIENTALIVE byte = 1, which tells the server's IO
+driver to send every console character as an IO_CMD_CONCHAR ($F903) message. The
+X11 consoles connect with byte = 0 and get no such messages.
+
 --- Server programs ---
 
 65816 - This is my 65816 emulator. It loads up a ROM file called "e4.o" at

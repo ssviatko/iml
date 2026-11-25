@@ -85,6 +85,9 @@ int io_driver_wait_forward(io_message_t *a_msg)
 	return 0;
 }
 
+// nonzero when the connected client wants the text console as a character stream (tconsole)
+static int g_con_stream = 0;
+
 int io_driver_wait_backchannel(io_message_t *a_msg)
 {
 	if (msgrcv(g_qid_backchannel, a_msg, sizeof(io_message_t), 0, IPC_NOWAIT) == -1) {
@@ -93,6 +96,12 @@ int io_driver_wait_backchannel(io_message_t *a_msg)
 		fprintf(stderr, "msgrcv(backchannel) %s qid=%d\n", strerror(errno), g_qid_backchannel);
 		exit(-1);
 	}
+	// every server sees the client connect and disconnect here, so this is where we learn
+	// whether to stream console characters to it
+	if (a_msg->address == IO_CMD_CLIENTALIVE)
+		g_con_stream = (a_msg->byte == IO_CLIENT_TEXTSTREAM);
+	else if (a_msg->address == IO_CMD_CLIENTDEAD)
+		g_con_stream = 0;
 	return 0;
 }
 
@@ -367,6 +376,15 @@ static void scrollup()
 	}
 }
 
+// send a console character to a text stream client (in the text modes only)
+static void con_stream(uint8_t a_char)
+{
+	uint8_t l_mode = g_shm_ptr[IOSTART + IO_VIDMODE];
+
+	if (g_con_stream && ((l_mode == 0x08) || (l_mode == 0x09)))
+		io_driver_post_forward(IO_CMD_CONCHAR, a_char);
+}
+
 void con_register()
 {
 	uint8_t l_w;
@@ -378,6 +396,8 @@ void con_register()
 		// not in either of the text modes, so print no character
 		return;
 	}
+	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] != 0x0d)
+		con_stream(g_shm_ptr[IOSTART + IO_CON_CHAROUT]); // (CR is sent by con_cr)
 	// check for CR
 	if (g_shm_ptr[IOSTART + IO_CON_CHAROUT] == 0x0d) {
 		con_cr();
@@ -428,6 +448,7 @@ register_advance:
 
 void con_cr()
 {
+	con_stream(0x0d);
 	g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
 	g_shm_ptr[IOSTART + IO_CON_CURSORV] += 1;
 	scrollup();

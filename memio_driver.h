@@ -118,6 +118,11 @@ const static uint16_t IO_CMD_CLIENTDEAD = 0xF803;
 const static uint16_t IO_CMD_VIDEODIRTY = 0xF900;
 const static uint16_t IO_CMD_KEYPRESS = 0xF901;
 const static uint16_t IO_CMD_WARMRESET = 0xF902;
+// server -> client: a character written to the text console (IO_CON_REGISTER or IO_CON_CR).
+// Only sent to a client that connected with IO_CMD_CLIENTALIVE byte = IO_CLIENT_TEXTSTREAM,
+// and only in the text modes (8/9).
+const static uint16_t IO_CMD_CONCHAR = 0xF903;
+const static uint8_t IO_CLIENT_TEXTSTREAM = 1;
 
 // Z80 constants
 const static uint16_t Z80_ROM_END = 0x1fff;
