@@ -58,6 +58,25 @@ into memory, bypassing the soft switches and the ROM write protection.
 example: ./bsave -a 1c0000h -l 1024 vectors.bin
          ./bload -a 10000h prog.bin
 
+gconvert - Convert a BMP, Targa or JPEG image to a 4096 color screen image.
+
+usage: ./gconvert -i input.(bmp/tga/jpg) -o screen.scr -m (4/5/6) [-s]
+       (long forms: --input --output --mode --scale)
+
+Mode 4 is 120x68, 5 is 240x136 and 6 is 480x272. The output is the raw video
+memory for that mode, to be loaded at 180000h: one 16 bit pixel per position, red
+in bits 8-11, green 4-7, blue 0-3, stored low byte first (the way the consoles
+read it). An image smaller than the screen is centered on black. An image bigger
+than the screen is an error unless -s is given; -s scales the image up or down to
+fit, keeping its aspect ratio, and fills the rest of the screen with black.
+
+Supported: BMP (1/4/8 bit palette, RLE4/RLE8, 16/24/32 bit), Targa (palette,
+truecolor, grayscale, plain or RLE) and baseline JPEG. Progressive JPEGs aren't
+supported (e.g. "magick in.jpg -interlace none out.jpg" makes a baseline one).
+
+example: ./gconvert -i photo.jpg -o photo.scr -m 6 -s
+         ./bload -a 180000h photo.scr   (with a server running in mode 6)
+
 --- Server programs ---
 
 65816 - This is my 65816 emulator. It loads up a ROM file called "e4.o" at
