@@ -18,7 +18,8 @@ From the monitor:
 In BASIC, MONITOR (or BYE) goes back to the monitor, leaving everything in memory, so W
 returns to it. After a Ctrl-Alt-End reset, W also gets the program back.
 
-Ctrl-C stops a running program ("Break in 120"); CONT carries on from there.
+Ctrl-Z stops a running program ("Break in 120"); CONT carries on from there. (It's
+Ctrl-Z rather than Ctrl-C because Ctrl-C quits tconsole.)
 
 
 Entering programs
@@ -183,7 +184,7 @@ CLS
 COLOR(foreground [, background])
     Text colors, 0-15.
 CONT
-    Carry on after Ctrl-C or STOP.
+    Carry on after Ctrl-Z or STOP.
 DEF FNname[(param, ...)] = expression
     Define a function, in a program (not as a direct command). The name has a type like a
     variable (FNA, FNA%, FNA&, FNA$), and the result is converted to it. Up to 8
@@ -246,7 +247,7 @@ LET var = expression
 LINE INPUT ["prompt";] var$
     Read a whole line (commas and quotes included) into a string variable.
 LIST [from-to]
-    List the program, or part of it (like DELETE). Ctrl-C stops it.
+    List the program, or part of it (like DELETE). Ctrl-Z stops it.
 MID$(var$, start [, n]) = string
     Replace characters in a string variable, from position start (1 = the first), n of
     them at most (or as many as the new string has). The variable's length never
@@ -314,7 +315,7 @@ RETURN
 RUN [line]
     Clear the variables and run the program (from the start, or from that line).
 STOP
-    Stop the program as if Ctrl-C had been pressed (CONT carries on).
+    Stop the program as if Ctrl-Z had been pressed (CONT carries on).
 SWAP var, var
     Exchange the values of two variables (or array elements) of the same type.
 SWITCH expression
@@ -473,7 +474,7 @@ white). Coordinates start at 0,0 in the top left corner; anything off the screen
 simply not drawn. The parentheses around the arguments can be left out (PLOT 10,20).
 
 Text doesn't show in a graphics mode. When a program ends normally the picture stays on
-the screen (type TEXT(9) to get the text back); an error or Ctrl-C switches to text mode
+the screen (type TEXT(9) to get the text back); an error or Ctrl-Z switches to text mode
 9 by itself so that the message can be seen.
 
   10 GR(6)

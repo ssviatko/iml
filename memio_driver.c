@@ -223,6 +223,8 @@ static void mem_write_phys(uint32_t a_address, uint8_t a_byte)
 		kbd_dequeue();
 	} else if (a_address == IOSTART + IO_KEYQ_CLEAR) {
 		kbd_clear();
+	} else if (a_address == IOSTART + IO_KEYQ_FIND) {
+		g_shm_ptr[IOSTART + IO_KEYQ_FOUND] = kbd_remove(a_byte);
 	} else if (a_address == IOSTART + IO_CON_CLS) {
 		con_cls();
 	} else if (a_address == IOSTART + IO_CON_REGISTER) {
@@ -337,13 +339,33 @@ uint8_t kbd_dequeue()
 		kbd_qsize = 0;
 		kbd_q[0] = 0;
 	} else {
-		for (uint8_t i = 1; i <= kbd_qsize; ++i)
-			kbd_q[i -1] = kbd_q[i];
+		for (uint8_t i = 1; i < kbd_qsize; ++i)
+			kbd_q[i - 1] = kbd_q[i];
+		--kbd_qsize;
 	}
 	g_shm_ptr[IOSTART + IO_KEYQ_SIZE] = kbd_qsize;
 	g_shm_ptr[IOSTART + IO_KEYQ_WAITING] = kbd_q[0];
 
 	return kbd_q[0];
+}
+
+// remove the first a_char in the queue, wherever it is (other keys stay in order).
+// returns 1 if there was one
+uint8_t kbd_remove(uint8_t a_char)
+{
+	for (unsigned int i = 0; i < kbd_qsize; ++i) {
+		if (kbd_q[i] == a_char) {
+			for (unsigned int j = i + 1; j < kbd_qsize; ++j)
+				kbd_q[j - 1] = kbd_q[j];
+			--kbd_qsize;
+			if (kbd_qsize == 0)
+				kbd_q[0] = 0;
+			g_shm_ptr[IOSTART + IO_KEYQ_SIZE] = kbd_qsize;
+			g_shm_ptr[IOSTART + IO_KEYQ_WAITING] = kbd_q[0];
+			return 1;
+		}
+	}
+	return 0;
 }
 
 void kbd_clear()

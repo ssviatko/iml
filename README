@@ -32,7 +32,8 @@ the server writes to the text console (IO_CON_REGISTER and IO_CON_CR) on stdout
 as they are written, in video modes 8 and 9. Modes 0-7 show nothing, and the
 cursor position and clear screen soft switches are ignored. Keys are sent like
 fconsole sends them (Enter = 13, Backspace = 8, arrows = 8/9/10/11); Ctrl-Alt-End
-is a warm reset and Ctrl-C quits. Input can also be piped in.
+is a warm reset and Ctrl-C quits (Ctrl-Z is passed on as a key: it's BASIC's break key).
+Input can also be piped in.
 
 example: ./tconsole -e ./m68k
 
@@ -152,6 +153,8 @@ IO_KEYQ_SIZE = 0x1bfc00 - (read) - Number of keypresses waiting in keyboard queu
 IO_KEYQ_WAITING = 0x1bfc01 - (read) The next waiting keypress
 IO_KEYQ_DEQUEUE = 0x1bfc02 - (write any value) - Remove longest keypress, reveal next waiting keypress
 IO_KEYQ_CLEAR = 0x1bfc03 - (write any value) - Clear keyboard queue
+IO_KEYQ_FIND = 0x1bfc04 - (write a key code) - Remove the first of that key from anywhere in the queue (other keys stay in order)
+IO_KEYQ_FOUND = 0x1bfc05 - (read) - 1 if IO_KEYQ_FIND found the key, 0 if not
 IO_CON_CLS = 0x1bfc10 - (write any value) - Clear the text screen (video modes 8/9) to CHAROUT using COLOR
 IO_CON_COLOR = 0x1bfc11 - (read/write) - Set color byte to be used on next CLS or REGISTER operation
 IO_CON_CHAROUT = 0x1bfc12 - (read/write) - Character to use for next CLS or REGISTER operation

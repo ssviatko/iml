@@ -7,7 +7,8 @@
 // position and clear screen soft switches are ignored.
 //
 // Keys go to the server like fconsole sends them: Enter = 13, Backspace = 8, arrow keys =
-// 8/9/10/11 (left/up/down/right). Ctrl-Alt-End sends a warm reset. Ctrl-C quits.
+// 8/9/10/11 (left/up/down/right). Ctrl-Alt-End sends a warm reset. Ctrl-C quits; Ctrl-Z is
+// passed on as a key (BASIC uses it to stop a program) instead of suspending tconsole.
 
 #include <stdio.h>
 #include <string.h>
@@ -53,6 +54,7 @@ static void raw_terminal(void)
 	t = g_saved_termios;
 	t.c_lflag &= ~(ICANON | ECHO);   // keys one at a time, no echo; ISIG stays so Ctrl-C quits
 	t.c_iflag &= ~(ICRNL | INLCR | IXON); // Enter arrives as 13, Ctrl-S/Ctrl-Q are just keys
+	t.c_cc[VSUSP] = _POSIX_VDISABLE;      // Ctrl-Z is a key too (BASIC's break key), not suspend
 	t.c_cc[VMIN] = 0;
 	t.c_cc[VTIME] = 0;
 	tcsetattr(STDIN_FILENO, TCSANOW, &t);

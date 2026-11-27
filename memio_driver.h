@@ -65,6 +65,8 @@ const static uint32_t IO_KEYQ_SIZE = 0x00;
 const static uint32_t IO_KEYQ_WAITING = 0x01;
 const static uint32_t IO_KEYQ_DEQUEUE = 0x02;
 const static uint32_t IO_KEYQ_CLEAR = 0x03;
+const static uint32_t IO_KEYQ_FIND = 0x04;  // (write a key) remove it from anywhere in the queue,
+const static uint32_t IO_KEYQ_FOUND = 0x05; // (read) and this is 1 if it was there
 
 // Console
 const static uint32_t IO_CON_CLS = 0x10;
@@ -169,6 +171,7 @@ int io_driver_wait_backchannel(io_message_t *a_msg);
 // keyboard queue and console support, used by the server
 void kbd_enqueue(uint8_t a_char);
 uint8_t kbd_dequeue();
+uint8_t kbd_remove(uint8_t a_char);
 void kbd_clear();
 void con_cls();
 void con_register();

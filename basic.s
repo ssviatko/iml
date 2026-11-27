@@ -31,6 +31,8 @@ IO		equ	$1bfc00
 IO_KEYQ_SIZE	equ	IO+$00
 IO_KEYQ_WAITING	equ	IO+$01
 IO_KEYQ_DEQUEUE	equ	IO+$02
+IO_KEYQ_FIND	equ	IO+$04		; write a key: take it out of the queue if it's there
+IO_KEYQ_FOUND	equ	IO+$05		; 1 if it was
 IO_CON_CLS	equ	IO+$10
 IO_CON_COLOR	equ	IO+$11
 IO_CON_CHAROUT	equ	IO+$12
@@ -69,6 +71,7 @@ FPARG		equ	$1bfcf0
 X		equ	$20		; extended (80 bit) operation on FACC
 XA		equ	$60		; extended operation on FARG
 
+BRKKEY		equ	26		; Ctrl-Z stops a program (Ctrl-C belongs to tconsole)
 BPTR		equ	$1000		; LOMEM of the BASIC in memory (for the warm start)
 STACKTOP	equ	$10000		; the 68000 stack (shared with the monitor)
 STKLIMIT	equ	$3000		; expressions nested deeper than this: FORMULA TOO COMPLEX
@@ -502,7 +505,7 @@ main:
 	lea STACKTOP,sp
 	move.l D_VARBOT(a6),D_TMPPTR(a6)
 	bsr inputline
-	bmi main			; Ctrl-C
+	bmi main			; Ctrl-Z
 	move.l a0,a5
 	bsr peek
 	beq main
@@ -1136,7 +1139,7 @@ getkey:
 	move.b d0,IO_KEYQ_DEQUEUE
 	rts
 
-; read a line into D_INBUF -> A0. N set (D0 = -1) if Ctrl-C was pressed
+; read a line into D_INBUF -> A0. N set (D0 = -1) if Ctrl-Z was pressed
 inputline:
 	lea D_INBUF(a6),a0
 	moveq #0,d1
@@ -1146,7 +1149,7 @@ inputline:
 	beq .cr
 	cmp.b #8,d0
 	beq .bs
-	cmp.b #3,d0
+	cmp.b #BRKKEY,d0
 	beq .brk
 	cmp.b #' ',d0
 	bcs .l
@@ -1170,7 +1173,7 @@ inputline:
 	moveq #0,d0
 	rts
 .brk:
-	PRINTS <"^C",13>
+	PRINTS <"^Z",13>
 	moveq #-1,d0
 	rts
 
@@ -1645,17 +1648,13 @@ listline:
 	movem.l (sp)+,a0-a1
 	rts
 
-; Ctrl-C waiting? Z clear (and the key taken) if so
+; Ctrl-Z (the break key) waiting? Z clear (and the key taken) if so
 brkkey:
 	tst.b IO_KEYQ_SIZE
 	beq .r
-	cmp.b #3,IO_KEYQ_WAITING
-	bne .no
-	move.b d0,IO_KEYQ_DEQUEUE
-	moveq #1,d0
-	rts
-.no:
+	move.b #BRKKEY,IO_KEYQ_FIND	; anywhere in the queue
 	moveq #0,d0
+	move.b IO_KEYQ_FOUND,d0
 .r:
 	rts
 
@@ -1690,12 +1689,11 @@ st_delete:
 ; start the statement at A5 (or the ':' or end of line before it)
 newstmt:
 	lea STACKTOP,sp
-	tst.b IO_KEYQ_SIZE		; Ctrl-C?
+	tst.b IO_KEYQ_SIZE		; Ctrl-Z? (even behind keys typed ahead)
 	beq .nb
-	cmp.b #3,IO_KEYQ_WAITING
-	bne .nb
-	move.b d0,IO_KEYQ_DEQUEUE
-	bra do_break
+	move.b #BRKKEY,IO_KEYQ_FIND
+	tst.b IO_KEYQ_FOUND
+	bne do_break
 .nb:
 	move.l D_VARBOT(a6),D_TMPPTR(a6)
 	; low on space and some of the heap is dead: compact it now, while no temporary
@@ -1904,7 +1902,7 @@ gwnum:
 	dc.b 2,7,8,13,6,11,5,1,3,4,9,10,15,17,16,30,31,29,32,33,23,18,20,0,12,8,35
 	even
 
-; Ctrl-C: stop, remembering where for CONT
+; Ctrl-Z: stop, remembering where for CONT
 do_break:
 	bsr textback
 	bsr col0
@@ -4296,7 +4294,7 @@ gargs:
 .fc:
 	ERROR E_FC
 
-; after an error or Ctrl-C in a graphics mode, go back to text so the message shows
+; after an error or Ctrl-Z in a graphics mode, go back to text so the message shows
 textback:
 	cmp.b #8,IO_VIDMODE
 	bcc .r
