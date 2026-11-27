@@ -183,6 +183,8 @@ IO_FP_TO_ASCII_G = 0x1bfc51 - the register to FPASCII in %g style (bits 0-4 = si
 IO_FP_FUNC = 0x1bfc52 - in place, bits 0-4: 0 log10, 1 sqrt, 2 abs, 3 negate, 4 floor, 5 ceiling, 6 truncate, 7 round, 8 arcsin, 9 arccos
 IO_FP_CLASSIFY = 0x1bfc53 - the register -> FPCOND: 1 zero, 2 negative, $10 not a number, $20 infinite
 IO_FP_ISAVE_CHECKED = 0x1bfc54 - like ISAVE, but FPCOND bit 5 (and 0) if it doesn't fit in 64 bits
+IO_FP_TO_ASCII_F = 0x1bfc55 - the register to FPASCII in fixed point, bits 0-4 = digits after the point (too long for 32 bytes: "" and FPCOND bit 5)
+IO_FP_TO_ASCII_E = 0x1bfc56 - the same with an exponent (1.23E+03)
 
 Video modes:
 

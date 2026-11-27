@@ -59,6 +59,8 @@ FP_TOA		equ	IO+$51
 FP_FUNC		equ	IO+$52		; low bits: 0 log10 1 sqrt 2 abs 3 neg 4 floor 5 ceil 6 trunc 7 round 8 asin 9 acos
 FP_CLASS	equ	IO+$53		; FPCOND: 1 zero, 2 negative, $10 NaN, $20 infinite
 FP_ISAVEC	equ	IO+$54		; to FPINT, FPCOND $20 if out of range
+FP_TOAF		equ	IO+$55		; fixed point text, low bits = decimals
+FP_TOAE		equ	IO+$56		; exponent text
 FPCOND		equ	$1bfcbf
 FPASCII		equ	$1bfcc0
 FPINT		equ	$1bfcd8
@@ -73,7 +75,7 @@ STKLIMIT	equ	$3000		; expressions nested deeper than this: FORMULA TOO COMPLEX
 DEF_LOMEM	equ	$10000
 DEF_HIMEM	equ	$16ffff
 RAMTOP		equ	$180000		; video memory starts here
-MAGIC		equ	'IMLB'
+MAGIC		equ	'IMLC'		; (changes when the layout of the block does)
 
 ; ---------------------------------------------------------------- internal variables (at LOMEM, A6)
 
@@ -124,13 +126,69 @@ D_GH		equ	486		; .w height
 D_GROW		equ	488		; .w bytes per row
 D_GDEEP		equ	490		; .b 1 = 4096 colors (2 bytes per pixel)
 D_INBUF		equ	512		; 256 bytes: input line
+D_ONERR		equ	1800		; ON ERROR GOTO line
+D_ERRLIN	equ	1804		; the line (pointer) of the last trapped error
+D_ERRSTMT	equ	1808		; and its statement
+D_FNFRAME	equ	1812		; the innermost FN call's parameters (0 = none)
+D_UFMT		equ	1816		; PRINT USING: the format,
+D_UFLEN		equ	1820		; its length,
+D_UPOS		equ	1824		; where we are in it
+D_ERRNUM	equ	1828		; ERR
+D_ERRLINE	equ	1832		; ERL
+D_ERRCODE	equ	1836		; .w the error (our number)
+D_ONERRF	equ	1838		; .b ON ERROR is set
+D_INERR		equ	1839		; .b running an error handler
+D_UNL		equ	1840		; .b PRINT USING: no new line at the end
+D_UTYPE		equ	1841		; .b field: 1 number, 2 !, 3 \ \, 4 &
+D_UBEF		equ	1842		; .w positions before the point
+D_UDIG		equ	1844		; .w # positions before the point
+D_UDEC		equ	1846		; .w digits after the point
+D_UPT		equ	1848		; .b there is a point
+D_UCOMMA	equ	1849		; .b commas
+D_UPLUS		equ	1850		; .b leading +
+D_UTRAIL	equ	1851		; .b trailing sign: 1 -, 2 +
+D_USTAR		equ	1852		; .b ** fill
+D_UDOLLAR	equ	1853		; .b $
+D_UEXP		equ	1854		; .b ^^^^
+D_UWID		equ	1856		; .w \ \ width
+D_RNEW		equ	1860		; RENUM: new first number,
+D_RFROM		equ	1864		; from this old line,
+D_RSTEP		equ	1868		; step
+D_LBLCNT	equ	1872		; .w labels in the cache
+D_LBLOK		equ	1874		; .b 0 = no cache, 1 = all labels in it, 2 = too many for it
 D_CRUNCH	equ	768		; 512 bytes: crunched program line
 D_DIRBUF	equ	1280		; a direct command as a line: length, $ffff, text, then a zero word
 D_CSTBOT	equ	2048		; control stack
 D_CSTTOP	equ	10240
-D_SIZE		equ	10240		; the program starts here
+D_LBLTAB	equ	10240		; label cache: LBLMAX entries of LB_SIZE
+D_SIZE		equ	16384		; the program starts here
+
+; label cache entries (built when a label is first looked up, dropped when the program
+; or the variables are cleared)
+LB_NAME		equ	0		; the name, in the program text (after the *)
+LB_LINE		equ	4		; the line it starts
+LB_HASH		equ	8		; .w
+LB_LEN		equ	10		; .w
+LB_SIZE		equ	12
+LBLMAX		equ	(D_SIZE-D_LBLTAB)/LB_SIZE
 
 MAXLINE		equ	500		; crunched line length limit
+
+; an FN call's parameters, on the stack: entries are laid out like variables
+FN_PREV		equ	0		; the call outside this one
+FN_CNT		equ	4		; .w parameters
+FN_KIND		equ	6		; .w the function's kind
+FN_CALLER	equ	8		; the caller's text pointer
+FN_EXPR		equ	12		; the definition's expression
+FN_ENT		equ	16
+FN_ESIZE	equ	56		; size.l, kind.b, namelen.b, name (32), data (16)
+FN_MAX		equ	8
+FN_SIZE		equ	FN_ENT+FN_MAX*FN_ESIZE
+
+; a program line: length.w (whole line, even), number.l, the crunched text, a zero
+LNUM		equ	2		; offset of the line number
+LH		equ	6		; offset of the text
+DIRECT		equ	$ffffffff	; the line number of a direct command
 
 ; values: a 16 byte block. +0 type.w, +4 data: int64 (hi.l, lo.l), 80 bit float (Intel
 ; byte order, 10 bytes), or string (pointer.l, length.l)
@@ -204,6 +262,11 @@ E_WH		equ	17		; WHILE without WEND
 E_IF		equ	18		; IF without ENDIF
 E_SW		equ	19		; SWITCH without ENDSWITCH
 E_LL		equ	20		; line too long
+E_UF		equ	21		; undefined function
+E_RW		equ	22		; RESUME without error
+E_UP		equ	23		; unprintable error (ERROR n with a number BASIC doesn't use)
+E_ID		equ	24		; illegal direct
+E_UL		equ	25		; undefined label
 
 ; ---------------------------------------------------------------- tokens
 
@@ -263,19 +326,29 @@ TK_RECTANGLE	equ	$b4
 TK_CIRCLE	equ	$b5
 TK_FILLRECT	equ	$b6
 TK_FILLCIRCLE	equ	$b7
-TK_LASTST	equ	$b7		; last statement token
-TK_THEN		equ	$b8		; other keywords
-TK_TO		equ	$b9
-TK_STEP		equ	$ba
-TK_AND		equ	$bb
-TK_OR		equ	$bc
-TK_XOR		equ	$bd
-TK_NOT		equ	$be
-TK_MOD		equ	$bf
-TK_TAB		equ	$c0
-TK_SPC		equ	$c1
-TK_FIRSTFN	equ	$c2		; functions, in the order of fntab
-TK_LASTFN	equ	$e8
+TK_DEF		equ	$b8
+TK_SWAP		equ	$b9
+TK_RENUM	equ	$ba
+TK_RESUME	equ	$bb
+TK_ERROR	equ	$bc
+TK_ELSEIF	equ	$bd
+TK_LABELS	equ	$be
+TK_LASTST	equ	$be		; last statement token
+TK_THEN		equ	$bf		; other keywords
+TK_TO		equ	$c0
+TK_STEP		equ	$c1
+TK_AND		equ	$c2
+TK_OR		equ	$c3
+TK_XOR		equ	$c4
+TK_NOT		equ	$c5
+TK_MOD		equ	$c6
+TK_TAB		equ	$c7
+TK_SPC		equ	$c8
+TK_USING	equ	$c9
+TK_FN		equ	$ca
+TK_FIRSTFN	equ	$cb		; functions, in the order of fntab
+TK_MID		equ	TK_FIRSTFN+27
+TK_LASTFN	equ	$f3
 
 ; ---------------------------------------------------------------- macros
 
@@ -325,6 +398,7 @@ warm:
 	PRINTS <"Program changed: variables cleared",13>
 	bsr clear_all
 .same:
+	clr.b D_LBLOK(a6)
 	clr.l D_CONTPTR(a6)
 	lea D_CSTTOP(a6),a0
 	move.l a0,D_CSP(a6)
@@ -353,18 +427,16 @@ checkblock:
 checkprog:
 	lea D_SIZE(a6),a0
 	move.l D_MEMTOP(a6),a2
-	moveq #-1,d2			; last line number + 1 must not go down
-	moveq #0,d3
+	moveq #0,d3			; the next line number must be at least this
 .l:
 	move.w (a0),d0
 	beq .end
 	btst #0,d0
 	bne .bad
-	cmp.w #6,d0
+	cmp.w #LH+1,d0
 	bcs .bad
-	moveq #0,d1
-	move.w 2(a0),d1
-	cmp.l #65535,d1
+	move.l LNUM(a0),d1
+	cmp.l #DIRECT,d1
 	bcc .bad
 	cmp.l d3,d1
 	bcs .bad
@@ -437,7 +509,7 @@ main:
 	cmp.b #'9'+1,d0
 	bcs .number
 .direct:
-	lea D_DIRBUF+4(a6),a1
+	lea D_DIRBUF+LH(a6),a1
 	bsr crunch
 	lea D_DIRBUF(a6),a0
 	move.l a1,d0
@@ -445,10 +517,10 @@ main:
 	addq.l #1,d0
 	and.b #$fe,d0
 	move.w d0,(a0)
-	move.w #$ffff,2(a0)
+	move.l #DIRECT,LNUM(a0)
 	clr.w (a0,d0.w)			; no line after it
 	move.l a0,D_CURLIN(a6)
-	lea 4(a0),a5
+	lea LH(a0),a5
 	clr.b D_SLIF(a6)
 	jmp newstmt
 
@@ -470,13 +542,14 @@ main:
 	clr.l D_CONTPTR(a6)
 	bra main
 
-; parse a line number at A5 into D0 (0-65534)
+; parse a line number at A5 into D0 (0-4294967294). keeps D2-D7
 linenum:
 	bsr peek
 	cmp.b #'0',d0
 	bcs .sn
 	cmp.b #'9'+1,d0
 	bcc .sn
+	move.l d2,-(sp)
 	moveq #0,d0
 	moveq #0,d1
 .l:
@@ -486,19 +559,274 @@ linenum:
 	cmp.b #10,d1
 	bcc .e
 	addq.l #1,a5
-	mulu #10,d0
+	cmp.l #429496729,d0		; *10 would overflow
+	bhi .sn2
+	move.l d0,d2
+	lsl.l #3,d0
+	add.l d2,d0
+	add.l d2,d0
 	add.l d1,d0
-	cmp.l #65535,d0
-	bcc .sn
+	bcs .sn2
+	cmp.l #DIRECT,d0
+	beq .sn2
 	bra .l
 .e:
+	move.l (sp)+,d2
 	rts
+.sn2:
+	move.l (sp)+,d2
 .sn:
 	ERROR E_SN
 
+; is D0.B the start of a jump target (a digit or the * of a label)? carry clear if so
+isjump:
+	cmp.b #'*',d0
+	bne isdigit
+	andi.b #$fe,ccr
+	rts
+
+; a line number or a *label at A5 -> D0 = the line number. keeps D2-D7
+jumpline:
+	bsr peek
+	cmp.b #'*',d0
+	bne linenum
+	movem.l d2/a0-a2,-(sp)
+	addq.l #1,a5
+	move.l a5,a2			; the name
+.n:
+	move.b (a5),d0
+	bsr islabel
+	bcs .e
+	addq.l #1,a5
+	bra .n
+.e:
+	move.l a5,d2
+	sub.l a2,d2			; its length
+	beq .sn
+	bsr lblfind
+	move.l a0,d0
+	beq .ul
+	move.l LNUM(a0),d0
+	movem.l (sp)+,d2/a0-a2
+	rts
+.ul:
+	movem.l (sp)+,d2/a0-a2
+	ERROR E_UL
+.sn:
+	movem.l (sp)+,d2/a0-a2
+	ERROR E_SN
+
+; the line that label A2 (D2 characters) starts -> A0, or 0. keeps D2/A2
+lblfind:
+	movem.l d1/d3-d4/a1/a3,-(sp)
+	tst.b D_LBLOK(a6)
+	bne .c
+	bsr lblbuild
+.c:
+	bsr lblhash			; -> D3
+	lea D_LBLTAB(a6),a3
+	move.w D_LBLCNT(a6),d4
+	bra .e
+.l:
+	cmp.w LB_HASH(a3),d3
+	bne .n
+	cmp.w LB_LEN(a3),d2
+	bne .n
+	move.l LB_NAME(a3),a0
+	move.l a2,a1
+	move.w d2,d1
+	subq.w #1,d1
+.cc:
+	cmpm.b (a0)+,(a1)+
+	bne .n
+	dbra d1,.cc
+	move.l LB_LINE(a3),a0
+	bra .r
+.n:
+	lea LB_SIZE(a3),a3
+.e:
+	dbra d4,.l
+	suba.l a0,a0
+	cmp.b #2,D_LBLOK(a6)
+	bne .r
+	bsr lblscan			; the cache is full: look through the program
+.r:
+	movem.l (sp)+,d1/d3-d4/a1/a3
+	rts
+
+; hash of the label A2 (D2 characters) -> D3.W. keeps the rest
+lblhash:
+	movem.l d0-d1/a2,-(sp)
+	moveq #0,d3
+	move.w d2,d1
+	subq.w #1,d1
+.l:
+	move.w d3,d0
+	lsl.w #5,d3
+	sub.w d0,d3			; * 31
+	moveq #0,d0
+	move.b (a2)+,d0
+	add.w d0,d3
+	dbra d1,.l
+	movem.l (sp)+,d0-d1/a2
+	rts
+
+; the label at the start of line A0 -> A1 = its name, D0 = its length (0 if none)
+lblat:
+	lea LH(a0),a1
+.s:
+	cmp.b #' ',(a1)+
+	beq .s
+	moveq #0,d0
+	cmp.b #'*',-1(a1)
+	bne .r
+	move.l a1,-(sp)
+.l:
+	move.b (a1)+,d0
+	bsr islabel
+	bcc .l
+	move.l a1,d0
+	move.l (sp)+,a1
+	sub.l a1,d0
+	subq.l #1,d0
+.r:
+	rts
+
+; build the label cache from the program (the first line with a label wins)
+lblbuild:
+	movem.l d0-d4/a0-a4,-(sp)
+	clr.w D_LBLCNT(a6)
+	move.b #1,D_LBLOK(a6)
+	lea D_SIZE(a6),a0
+.l:
+	tst.w (a0)
+	beq .done
+	bsr lblat
+	tst.l d0
+	beq .nx
+	move.l a1,a2
+	move.l d0,d2
+	bsr lblhash
+	; already there?
+	lea D_LBLTAB(a6),a3
+	move.w D_LBLCNT(a6),d4
+	bra .de
+.dl:
+	cmp.w LB_HASH(a3),d3
+	bne .dn
+	cmp.w LB_LEN(a3),d2
+	bne .dn
+	move.l LB_NAME(a3),a4
+	move.l a2,a1
+	move.w d2,d1
+	subq.w #1,d1
+.dc:
+	cmpm.b (a4)+,(a1)+
+	bne .dn
+	dbra d1,.dc
+	bra .nx				; a duplicate: the first one counts
+.dn:
+	lea LB_SIZE(a3),a3
+.de:
+	dbra d4,.dl
+	cmp.w #LBLMAX,D_LBLCNT(a6)
+	bcs .add
+	move.b #2,D_LBLOK(a6)		; full: the rest are found by looking
+	bra .nx
+.add:
+	move.l a2,LB_NAME(a3)
+	move.l a0,LB_LINE(a3)
+	move.w d3,LB_HASH(a3)
+	move.w d2,LB_LEN(a3)
+	addq.w #1,D_LBLCNT(a6)
+.nx:
+	adda.w (a0),a0
+	bra .l
+.done:
+	movem.l (sp)+,d0-d4/a0-a4
+	rts
+
+; look through the program for label A2 (D2 characters) -> A0 line, or 0. keeps D2/A2
+lblscan:
+	movem.l d0-d1/a1/a3,-(sp)
+	lea D_SIZE(a6),a0
+.l:
+	tst.w (a0)
+	beq .no
+	bsr lblat
+	cmp.l d2,d0
+	bne .n
+	move.l a2,a3
+	move.w d2,d1
+	subq.w #1,d1
+.c:
+	cmpm.b (a1)+,(a3)+
+	bne .n
+	dbra d1,.c
+	bra .r
+.n:
+	adda.w (a0),a0
+	bra .l
+.no:
+	suba.l a0,a0
+.r:
+	movem.l (sp)+,d0-d1/a1/a3
+	rts
+
+; LABELS: list the labels and their lines
+st_labels:
+	lea D_SIZE(a6),a0
+.l:
+	tst.w (a0)
+	beq .r
+	bsr lblat
+	tst.l d0
+	beq .nx
+	movem.l a0,-(sp)
+	move.l a1,a2
+	move.l d0,d2
+	moveq #'*',d0
+	bsr putc
+	move.l a2,a0
+	move.l d2,d1
+	bsr putn
+.pad:
+	bsr space			; the line number in column 20 (or after a space)
+	cmp.b #20,IO_CON_CURSORH
+	bcs .pad
+	movem.l (sp),a0
+	moveq #0,d0
+	move.l LNUM(a0),d1
+	bsr pint
+	bsr lblfind			; the one a jump would go to
+	cmpa.l (sp),a0
+	beq .ok
+	PRINTS "  (duplicate: not used)"
+.ok:
+	bsr crlf
+	movem.l (sp)+,a0
+	bsr brkkey
+	bne .r
+.nx:
+	adda.w (a0),a0
+	bra .l
+.r:
+	rts
+
+; can D0.B be in a label (letters, digits, _)? carry clear if so
+islabel:
+	cmp.b #'_',d0
+	beq .y
+	bsr isalpha
+	bcc .y
+	bra isdigit
+.y:
+	andi.b #$fe,ccr
+	rts
+
 ; ---------------------------------------------------------------- program lines
 
-; line D0.W -> A0 = the first line with that number or above (or the end of the program).
+; line D0 -> A0 = the first line with that number or above (or the end of the program).
 ; D1 = 1 if it's that line exactly. keeps D0
 findline:
 	lea D_SIZE(a6),a0
@@ -507,7 +835,7 @@ findfrom:
 .l:
 	tst.w (a0)
 	beq .r
-	cmp.w 2(a0),d0
+	cmp.l LNUM(a0),d0
 	bls .f
 	adda.w (a0),a0
 	bra .l
@@ -537,7 +865,7 @@ edit_line:
 	tst.l d6
 	beq .r
 	move.l d6,d5
-	addq.l #5,d5
+	addq.l #LH+1,d5
 	and.b #$fe,d5			; new line size
 	move.l D_PRGEND(a6),a1
 	lea (a1,d5.l),a1
@@ -552,14 +880,16 @@ edit_line:
 	bsr moveup			; moves [A0, A1) up by D5
 	add.l d5,D_PRGEND(a6)
 	move.w d5,(a0)+
-	move.w d7,(a0)+
+	move.l d7,(a0)+
 	lea D_CRUNCH(a6),a1
 	move.l d6,d0
 	subq.w #1,d0
 .c:
 	move.b (a1)+,(a0)+
 	dbra d0,.c
-	clr.b (a0)			; padding (or harmless)
+	btst #0,d6			; LH + an odd length: there's a padding byte
+	beq .r
+	clr.b (a0)
 .r:
 	rts
 .om:
@@ -609,6 +939,9 @@ clear_all:
 	move.l a0,D_STRTOP(a6)
 	clr.l D_GARBAGE(a6)
 	clr.l D_GCROOT(a6)
+	clr.b D_ONERRF(a6)
+	clr.b D_INERR(a6)
+	clr.b D_LBLOK(a6)
 	lea D_CSTTOP(a6),a0
 	move.l a0,D_CSP(a6)
 	lea D_SIZE(a6),a0
@@ -617,7 +950,7 @@ clear_all:
 ; RESTORE to the line at A0
 restore_at:
 	move.l a0,D_DATLIN(a6)
-	addq.l #4,a0
+	addq.l #LH,a0
 	move.l a0,D_DATPTR(a6)
 	clr.b D_DATIN(a6)
 	rts
@@ -858,7 +1191,7 @@ nextstmt:
 	adda.w (a1),a1
 	tst.w (a1)
 	beq .end
-	lea 4(a1),a0
+	lea LH(a1),a0
 	moveq #0,d0
 	rts
 .end:
@@ -895,6 +1228,8 @@ crunch:
 	beq .print
 	cmp.b #$27,d0
 	beq .apos
+	cmp.b #'*',d0
+	beq .star
 	bsr isalpha
 	bcc .word
 	move.b d0,(a1)+
@@ -902,6 +1237,43 @@ crunch:
 .print:
 	move.b #TK_PRINT,(a1)+
 	bra .l
+.star:
+	; *name is a label at the start of a statement or after GOTO, GOSUB, THEN, ELSE,
+	; RESTORE, RUN, RESUME or a comma (ON ... GOTO); anywhere else * multiplies
+	move.b d0,(a1)+
+	move.b (a5),d0
+	bsr isalpha
+	bcs .l
+	move.l a1,a2
+	subq.l #1,a2
+.sb:
+	cmpa.l a3,a2
+	beq .lab			; the start of the line
+	move.b -(a2),d0
+	cmp.b #' ',d0
+	beq .sb
+	lea .after(pc),a4
+.sa:
+	tst.b (a4)
+	beq .l
+	cmp.b (a4)+,d0
+	bne .sa
+.lab:
+	move.b (a5),d0
+	bsr islabel
+	bcs .l
+	addq.l #1,a5
+	cmp.b #'a',d0
+	bcs .lu
+	cmp.b #'z'+1,d0
+	bcc .lu
+	sub.b #$20,d0
+.lu:
+	move.b d0,(a1)+
+	bra .lab
+.after:
+	dc.b ':',',',TK_GOTO,TK_GOSUB,TK_THEN,TK_ELSE,TK_RESTORE,TK_RUN,TK_RESUME,0
+	even
 .apos:
 	move.b #TK_APOS,(a1)+
 	bra .raw
@@ -955,7 +1327,20 @@ crunch:
 	clr.b (a2)
 	bsr findkw
 	tst.b d0
-	beq .name
+	bne .kw
+	; FNname: the FN keyword, then the name
+	lea D_WORD(a6),a2
+	cmp.b #'F',(a2)
+	bne .name
+	cmp.b #'N',1(a2)
+	bne .name
+	move.b 2(a2),d0
+	bsr isalpha
+	bcs .name
+	move.b #TK_FN,(a1)+
+	addq.l #2,a2
+	bra .nl
+.kw:
 	move.b d0,(a1)+
 	cmp.b #TK_REM,d0
 	beq .raw
@@ -1066,14 +1451,17 @@ kwtab:
 	dc.b "RANDOMIZE",0,"TRON",0,"TROFF",0,"LINE",0,"'",0,"LOMEM",0,"HIMEM",0
 	dc.b "GR",0,"TEXT",0,"GRCLS",0,"PLOT",0,"GRCOLOR",0,"RECTANGLE",0,"CIRCLE",0
 	dc.b "FILLRECTANGLE",0,"FILLCIRCLE",0
-	; $b8
+	dc.b "DEF",0,"SWAP",0,"RENUM",0,"RESUME",0,"ERROR",0,"ELSEIF",0,"LABELS",0
+	; $bf
 	dc.b "THEN",0,"TO",0,"STEP",0,"AND",0,"OR",0,"XOR",0,"NOT",0,"MOD",0,"TAB",0,"SPC",0
-	; $c2: functions
+	dc.b "USING",0,"FN",0
+	; $cb: functions
 	dc.b "SGN",0,"INT",0,"FIX",0,"ABS",0,"SQR",0,"RND",0,"LOG",0,"LN",0
 	dc.b "LOG10",0,"EXP",0,"SIN",0,"COS",0,"TAN",0,"ATN",0,"ASN",0,"ACS",0
 	dc.b "PI",0,"ROOT",0,"PEEK",0,"FRE",0,"LEN",0,"ASC",0,"VAL",0,"CHR$",0
 	dc.b "STR$",0,"LEFT$",0,"RIGHT$",0,"MID$",0,"HEX$",0,"SHEX$",0,"DEC",0,"INSTR",0
 	dc.b "STRING$",0,"SPACE$",0,"UCASE$",0,"LCASE$",0,"INKEY$",0,"POS",0,"CINT",0
+	dc.b "ERR",0,"ERL",0
 	dc.b 0
 	even
 
@@ -1082,7 +1470,7 @@ kwtab:
 ; parse a line range at A5: [n][-[m]] -> D6 = from, D7 = to. D5 = 1 if anything was given
 range:
 	moveq #0,d6
-	move.l #65535,d7
+	move.l #DIRECT-1,d7
 	moveq #0,d5
 	bsr peek
 	bsr isdigit
@@ -1097,7 +1485,7 @@ range:
 	bne .r
 	addq.l #1,a5
 	moveq #1,d5
-	move.l #65535,d7
+	move.l #DIRECT-1,d7
 	bsr peek
 	bsr isdigit
 	bcs .r
@@ -1113,8 +1501,7 @@ st_list:
 .l:
 	tst.w (a0)
 	beq .done
-	moveq #0,d0
-	move.w 2(a0),d0
+	move.l LNUM(a0),d0
 	cmp.l d7,d0
 	bhi .done
 	bsr listline
@@ -1128,12 +1515,11 @@ st_list:
 listline:
 	movem.l a0-a1,-(sp)
 	move.l a0,a1
-	moveq #0,d1
-	move.w 2(a1),d1
+	move.l LNUM(a1),d1
 	moveq #0,d0
 	bsr pint
 	bsr space
-	lea 4(a1),a1
+	lea LH(a1),a1
 	moveq #0,d1			; in quotes
 .l:
 	move.b (a1)+,d0
@@ -1188,8 +1574,7 @@ st_delete:
 	bsr findline
 	tst.w (a0)
 	beq .done
-	moveq #0,d0
-	move.w 2(a0),d0
+	move.l LNUM(a0),d0
 	cmp.l d7,d0
 	bhi .done
 	move.l d0,d6			; delete this one
@@ -1238,8 +1623,14 @@ newstmt:
 	beq nextline
 	lea -1(a5),a0
 	move.l a0,D_STMT(a6)
+	clr.l D_FNFRAME(a6)
 	tst.b d0
 	bpl ns_let
+	cmp.b #TK_MID,d0
+	bne .nm
+	bsr st_midset
+	bra after_stmt
+.nm:
 	cmp.b #TK_LASTST,d0
 	bhi ns_sn
 	and.w #$7f,d0
@@ -1258,6 +1649,15 @@ after_stmt:
 ns_sn:
 	ERROR E_SN
 ns_let:
+	cmp.b #'*',d0			; *label: nothing to do
+	bne .nl
+.lb:
+	move.b (a5),d0
+	bsr islabel
+	bcs after_stmt
+	addq.l #1,a5
+	bra .lb
+.nl:
 	subq.l #1,a5
 	bsr isalpha
 	bcs ns_sn
@@ -1272,11 +1672,12 @@ stmttab:
 	dc.l st_case,st_endsw,st_else,st_endif,st_call,st_monitor,st_monitor,st_delete
 	dc.l st_randomize,st_tron,st_troff,st_line,st_rem,st_lomem,st_himem
 	dc.l st_gr,st_text,st_grcls,st_plot,st_grcolor,st_rect,st_circle,st_fillrect,st_fillcircle
+	dc.l st_def,st_swap,st_renum,st_resume,st_error,st_elseif,st_labels
 
 ; the end of a line: go on to the next one
 nextline:
 	move.l D_CURLIN(a6),a0
-	cmp.w #$ffff,2(a0)
+	cmp.l #DIRECT,LNUM(a0)
 	beq .direct
 	adda.w (a0),a0
 	tst.w (a0)
@@ -1290,15 +1691,14 @@ nextline:
 ; make A0 the current line, A5 its start
 enterline:
 	move.l a0,D_CURLIN(a6)
-	lea 4(a0),a5
+	lea LH(a0),a5
 	clr.b D_SLIF(a6)
 	tst.b D_TRACE(a6)
 	beq .r
 	moveq #'[',d0
 	bsr putc
 	moveq #0,d0
-	moveq #0,d1
-	move.w 2(a0),d1
+	move.l LNUM(a0),d1
 	bsr pint
 	moveq #']',d0
 	bsr putc
@@ -1320,6 +1720,40 @@ goline:
 
 error:
 	lea STACKTOP,sp
+	clr.l D_FNFRAME(a6)
+	cmp.w #E_UP,d0
+	beq .num
+	lea gwnum(pc),a0
+	moveq #0,d1
+	move.b (a0,d0.w),d1
+	move.l d1,D_ERRNUM(a6)
+.num:
+	move.w d0,D_ERRCODE(a6)
+	move.l D_CURLIN(a6),a0
+	move.l LNUM(a0),D_ERRLINE(a6)
+	cmp.l #DIRECT,LNUM(a0)
+	bne .p
+	clr.l D_ERRLINE(a6)
+	bra .show			; direct commands aren't trapped
+.p:
+	tst.b D_ONERRF(a6)
+	beq .show
+	tst.b D_INERR(a6)
+	bne .show			; an error in the handler stops the program
+	move.l a0,D_ERRLIN(a6)
+	move.l D_STMT(a6),D_ERRSTMT(a6)
+	move.l d0,d7
+	move.l D_ONERR(a6),d0
+	bsr findline
+	tst.l d1
+	beq .nh
+	st D_INERR(a6)
+	bsr enterline
+	jmp newstmt
+.nh:
+	move.l d7,d0
+.show:
+	clr.b D_INERR(a6)
 	move.l d0,d7
 	bsr textback
 	bsr col0
@@ -1333,6 +1767,13 @@ error:
 .f:
 	dbra d7,.s
 	bsr puts
+	cmp.w #E_UP,D_ERRCODE(a6)
+	bne .e
+	moveq #0,d0
+	move.l D_ERRNUM(a6),d1
+	bsr space
+	bsr pint
+.e:
 	PRINTS " error"
 	bsr inline
 	bsr crlf
@@ -1344,12 +1785,11 @@ error:
 ; print " in <line>" unless it was a direct command
 inline:
 	move.l D_CURLIN(a6),a0
-	cmp.w #$ffff,2(a0)
+	cmp.l #DIRECT,LNUM(a0)
 	beq .r
 	PRINTS " in "
 	moveq #0,d0
-	moveq #0,d1
-	move.w 2(a0),d1
+	move.l LNUM(a0),d1
 	bsr pint
 .r:
 	rts
@@ -1361,7 +1801,13 @@ errmsgs:
 	dc.b "Bad subscript",0,"Redimensioned array",0,"String too long",0
 	dc.b "Can't continue",0,"Formula too complex",0,"WEND without WHILE",0
 	dc.b "UNTIL without REPEAT",0,"WHILE without WEND",0,"IF without ENDIF",0
-	dc.b "SWITCH without ENDSWITCH",0,"Line too long",0
+	dc.b "SWITCH without ENDSWITCH",0,"Line too long",0,"Undefined function",0
+	dc.b "RESUME without",0,"Unprintable",0,"Illegal direct",0,"Undefined label",0
+	even
+
+; the error numbers ERR gives (the GW-BASIC numbers where there is one), by error
+gwnum:
+	dc.b 2,7,8,13,6,11,5,1,3,4,9,10,15,17,16,30,31,29,32,33,23,18,20,0,12,8
 	even
 
 ; Ctrl-C: stop, remembering where for CONT
@@ -1371,7 +1817,7 @@ do_break:
 	move.l a5,D_CONTPTR(a6)
 	move.l D_CURLIN(a6),a0
 	move.l a0,D_CONTLIN(a6)
-	cmp.w #$ffff,2(a0)
+	cmp.l #DIRECT,LNUM(a0)
 	bne .p
 	clr.l D_CONTPTR(a6)		; can't continue a direct command
 .p:
@@ -1519,9 +1965,9 @@ st_call:
 
 st_run:
 	bsr peek
-	bsr isdigit
+	bsr isjump
 	bcs .top
-	bsr linenum
+	bsr jumpline
 	move.l d0,-(sp)
 	bsr clear_all
 	clr.l D_CONTPTR(a6)
@@ -1539,11 +1985,11 @@ st_run:
 	jmp ready
 
 st_goto:
-	bsr linenum
+	bsr jumpline
 	bra goline
 
 st_gosub:
-	bsr linenum
+	bsr jumpline
 	move.l d0,-(sp)
 	bsr gosubframe
 	move.l (sp)+,d0
@@ -1592,6 +2038,9 @@ st_return:
 
 ; ON expr GOTO/GOSUB line, line, ...
 st_on:
+	bsr peek
+	cmp.b #TK_ERROR,d0
+	beq st_onerror
 	bsr evalint
 	move.l d1,d7			; the choice (only the low long matters if the high is 0)
 	tst.l d0
@@ -1609,7 +2058,7 @@ st_on:
 	moveq #0,d5			; the line chosen, if any
 	moveq #0,d4			; found one
 .l:
-	bsr linenum
+	bsr jumpline
 	subq.l #1,d7
 	bne .n
 	move.l d0,d5
@@ -1660,9 +2109,9 @@ st_if:
 	beq .block
 	tst.l d7
 	beq .false
-	bsr isdigit
+	bsr isjump
 	bcs .stmts
-	bsr linenum
+	bsr jumpline
 	bra goline
 .stmts:
 	st D_SLIF(a6)
@@ -1671,7 +2120,7 @@ st_if:
 	addq.l #1,a5
 	tst.l d7
 	beq .false
-	bsr linenum
+	bsr jumpline
 	bra goline
 .block:
 	tst.l d7
@@ -1714,9 +2163,9 @@ st_if:
 	bpl .fl
 	move.l a0,a5			; after the ELSE
 	bsr peek
-	bsr isdigit
+	bsr isjump
 	bcs newstmt
-	bsr linenum
+	bsr jumpline
 	bra goline
 .none:
 	bra nextline
@@ -1749,9 +2198,34 @@ skipblock:
 	beq .end
 	cmp.b #TK_ELSE,d0
 	beq .else
+	cmp.b #TK_ELSEIF,d0
+	beq .elseif
 .sk:
 	bsr skipstmt
 	bra .l
+.elseif:
+	tst.l d5
+	bne .sk1
+	tst.l d6
+	bne .sk1
+	; test it: true runs this part, false keeps looking
+	lea 1(a0),a5
+	move.l a1,D_CURLIN(a6)
+	bsr evaltruth
+	move.l d0,d7
+	bsr peek
+	cmp.b #TK_THEN,d0
+	bne .et
+	addq.l #1,a5
+.et:
+	clr.b D_SLIF(a6)
+	tst.l d7
+	bne newstmt
+	move.l a5,a0
+	move.l D_CURLIN(a6),a1
+	moveq #0,d5
+	moveq #0,d6
+	bra .sk
 .nif:
 	bsr isblockif
 	bne .nb
@@ -2279,6 +2753,9 @@ st_let:
 	bra assign
 
 st_print:
+	bsr peek
+	cmp.b #TK_USING,d0
+	beq st_using
 	moveq #0,d7			; 1: the last item was ; or , (no new line)
 .l:
 	bsr peek
@@ -2664,9 +3141,9 @@ dataitem:
 ; RESTORE [line]
 st_restore:
 	bsr peek
-	bsr isdigit
+	bsr isjump
 	bcs .top
-	bsr linenum
+	bsr jumpline
 	bsr findline
 	tst.l d1
 	beq .us
@@ -2743,6 +3220,7 @@ st_lomem:
 .use:
 	addq.l #4,sp
 	move.l a6,BPTR
+	clr.b D_LBLOK(a6)
 	bsr checkprog
 	beq .ok
 	bsr clear_all
@@ -2827,6 +3305,38 @@ getname:
 
 ; find the variable D_NAME of kind D7 (bit 7 = array) -> A0 entry, or 0. keeps D7
 findvar:
+	move.l D_FNFRAME(a6),d0
+	beq .vars
+	cmp.b #$40,d7
+	bcc .vars
+	move.l d0,a2
+	move.w D_NAMELEN(a6),d2
+.fr:
+	move.w FN_CNT(a2),d1
+	lea FN_ENT(a2),a0
+	bra .fe
+.fl:
+	cmp.b 4(a0),d7
+	bne .fn
+	cmp.b 5(a0),d2
+	bne .fn
+	lea 6(a0),a1
+	lea D_NAME(a6),a3
+	move.w d2,d0
+	subq.w #1,d0
+.fc:
+	cmpm.b (a1)+,(a3)+
+	bne .fn
+	dbra d0,.fc
+	rts				; a parameter: A0 is laid out like a variable
+.fn:
+	lea FN_ESIZE(a0),a0
+.fe:
+	dbra d1,.fl
+	move.l FN_PREV(a2),d0		; the next call out
+	move.l d0,a2
+	bne .fr
+.vars:
 	move.l D_VARBOT(a6),a0
 	move.l D_MEMTOP(a6),a2
 	move.w D_NAMELEN(a6),d2
@@ -3456,6 +3966,8 @@ primary:
 	beq fn_lomem
 	cmp.b #TK_HIMEM,d0
 	beq fn_himem
+	cmp.b #TK_FN,d0
+	beq fn_user
 .sn:
 	ERROR E_SN
 .st:
@@ -3513,7 +4025,7 @@ fntab:
 	dc.l fn_log10,fn_exp,fn_sin,fn_cos,fn_tan,fn_atn,fn_asn,fn_acs
 	dc.l fn_pi,fn_root,fn_peek,fn_fre,fn_len,fn_asc,fn_val,fn_chr
 	dc.l fn_str,fn_left,fn_right,fn_mid,fn_hex,fn_shex,fn_dec,fn_instr
-	dc.l fn_string,fn_space,fn_ucase,fn_lcase,fn_inkey,fn_pos,fn_cint
+	dc.l fn_string,fn_space,fn_ucase,fn_lcase,fn_inkey,fn_pos,fn_cint,fn_err,fn_erl
 
 ; ---------------------------------------------------------------- operators
 
@@ -4190,6 +4702,1202 @@ ellipse:
 	bsr pset
 	exg d2,d4
 	rts
+
+; ---------------------------------------------------------------- DEF FN
+
+; DEF FNname[(param, ...)] = expression     (in a program)
+st_def:
+	move.l D_CURLIN(a6),a0
+	cmp.l #DIRECT,LNUM(a0)
+	beq .id
+	bsr peek
+	cmp.b #TK_FN,d0
+	bne .sn
+	addq.l #1,a5
+	bsr getname
+	or.b #$40,d7
+	bsr findvar
+	move.l a0,d0
+	beq .new
+	bsr vardata
+	bra .set
+.new:
+	moveq #8,d6
+	bsr newvar
+.set:
+	move.l a5,(a1)			; the parameters, then = expression
+	move.l D_CURLIN(a6),4(a1)
+	move.l a5,a0
+	bsr skipstmt
+	move.l a0,a5
+	rts
+.sn:
+	ERROR E_SN
+.id:
+	ERROR E_ID
+
+; FNname[(arg, ...)]: a user function
+fn_user:
+	bsr getname
+	or.b #$40,d7
+	bsr findvar
+	move.l a0,d0
+	beq .uf
+	bsr vardata
+	lea -FN_SIZE(sp),sp
+	clr.w FN_CNT(sp)
+	and.w #$3f,d7
+	move.w d7,FN_KIND(sp)
+	move.l a5,FN_CALLER(sp)
+	move.l (a1),a5			; the definition
+	; the parameter names
+	bsr peek
+	cmp.b #'(',d0
+	bne .np
+	addq.l #1,a5
+.pl:
+	move.w FN_CNT(sp),d0
+	cmp.w #FN_MAX,d0
+	bcc .sn
+	mulu #FN_ESIZE,d0
+	lea FN_ENT(sp,d0.l),a2
+	move.l a2,-(sp)
+	bsr getname
+	move.l (sp)+,a2
+	move.b d7,4(a2)
+	move.w D_NAMELEN(a6),d0
+	move.b d0,5(a2)
+	lea 6(a2),a3
+	lea D_NAME(a6),a0
+	subq.w #1,d0
+.cn:
+	move.b (a0)+,(a3)+
+	dbra d0,.cn
+	addq.w #1,FN_CNT(sp)
+	bsr peek
+	addq.l #1,a5
+	cmp.b #',',d0
+	beq .pl
+	cmp.b #')',d0
+	bne .sn
+.np:
+	EXPECT '='
+	move.l a5,FN_EXPR(sp)
+	; the arguments, worked out where the function is used
+	move.l FN_CALLER(sp),a5
+	tst.w FN_CNT(sp)
+	beq .go
+	EXPECT '('
+	moveq #0,d0
+.al:
+	move.w d0,-(sp)
+	bsr eval
+	move.w (sp)+,d0
+	move.w d0,d1
+	mulu #FN_ESIZE,d1
+	lea FN_ENT(sp,d1.l),a0
+	move.w d0,-(sp)
+	bsr vardata			; A1 = the parameter's data
+	moveq #0,d7
+	move.b 4(a0),d7
+	cmp.w #K_STR,d7
+	bne .an
+	cmp.w #T_STR,D_VA(a6)
+	bne .tm
+	move.l D_VA+4(a6),(a1)		; strings are passed as they are
+	move.l D_VA+8(a6),4(a1)
+	bra .ad
+.an:
+	bsr assign
+.ad:
+	move.w (sp)+,d0
+	addq.w #1,d0
+	cmp.w FN_CNT(sp),d0
+	beq .ae
+	move.w d0,-(sp)
+	EXPECT ','
+	move.w (sp)+,d0
+	bra .al
+.ae:
+	EXPECT ')'
+.go:
+	; run the definition with the parameters in scope
+	move.l D_FNFRAME(a6),FN_PREV(sp)
+	move.l sp,D_FNFRAME(a6)
+	move.l a5,FN_CALLER(sp)
+	move.l FN_EXPR(sp),a5
+	bsr eval
+	bsr peek			; the definition has to end there
+	beq .end
+	cmp.b #':',d0
+	bne .sn
+.end:
+	move.l FN_PREV(sp),D_FNFRAME(a6)
+	move.l FN_CALLER(sp),a5
+	move.w FN_KIND(sp),d7
+	lea FN_SIZE(sp),sp
+	; the result as the function's type
+	cmp.w #K_STR,d7
+	bne .rn
+	cmp.w #T_STR,D_VA(a6)
+	bne .tm
+	rts
+.rn:
+	cmp.w #T_STR,D_VA(a6)
+	beq .tm
+	lea D_VA(a6),a0
+	cmp.w #K_FLT,d7
+	beq toflt
+	bsr toint
+	cmp.w #K_INT,d7
+	bne .r
+	move.l d1,d0			; 32 bits
+	smi d0
+	ext.w d0
+	ext.l d0
+	bra setint
+.r:
+	rts
+.uf:
+	ERROR E_UF
+.sn:
+	ERROR E_SN
+.tm:
+	ERROR E_TM
+
+; ---------------------------------------------------------------- SWAP, MID$ =
+
+; SWAP var, var (the same type)
+st_swap:
+	bsr target
+	movem.l a1/d7,-(sp)
+	EXPECT ','
+	bsr target
+	movem.l (sp)+,a2/d6
+	cmp.w d6,d7
+	bne .tm
+	lea ksize(pc),a0
+	moveq #0,d0
+	move.b (a0,d7.w),d0
+	lsr.w #1,d0
+	subq.w #1,d0
+	move.l a1,a0
+	move.l a2,a3
+.s:
+	move.w (a0),d1
+	move.w (a3),(a0)+
+	move.w d1,(a3)+
+	dbra d0,.s
+	cmp.w #K_STR,d7
+	bne .r
+	; the heap blocks know who owns them
+	move.l a1,a0
+	move.l a2,a3
+	bsr .own
+	move.l a2,a0
+	move.l a1,a3
+.own:					; A0 now holds what A3 had
+	move.l (a0),d0
+	beq .r
+	move.l d0,a4
+	subq.l #8,a4
+	cmpa.l (a4),a3
+	bne .r
+	move.l a0,(a4)
+.r:
+	rts
+.tm:
+	ERROR E_TM
+
+; MID$(var$, start [, n]) = string: replace characters (the length doesn't change)
+st_midset:
+	EXPECT '('
+	bsr target
+	cmp.w #K_STR,d7
+	bne .tm
+	move.l a1,-(sp)
+	EXPECT ','
+	bsr evalint
+	tst.l d0
+	bne .fc
+	tst.l d1
+	beq .fc
+	move.l d1,-(sp)
+	move.l #65535,d1
+	bsr peek
+	cmp.b #',',d0
+	bne .nn
+	addq.l #1,a5
+	bsr evalint
+	tst.l d0
+	bne .fc
+.nn:
+	move.l d1,-(sp)
+	EXPECT ')'
+	EXPECT '='
+	bsr evalstr
+	move.l (sp)+,d2			; n
+	move.l (sp)+,d1			; start
+	move.l (sp)+,a1			; the variable
+	move.l 4(a1),d3			; its length
+	cmp.l d3,d1
+	bhi .fc
+	sub.l d1,d3
+	addq.l #1,d3			; room from start to the end
+	move.l D_VA+8(a6),d0
+	cmp.l d2,d0
+	bls .a
+	move.l d2,d0
+.a:
+	cmp.l d3,d0
+	bls .b
+	move.l d3,d0
+.b:
+	move.l (a1),a1
+	add.l d1,a1
+	subq.l #1,a1
+	move.l D_VA+4(a6),a0
+	bra movebytes
+.fc:
+	ERROR E_FC
+.tm:
+	ERROR E_TM
+
+; copy D0 bytes from A0 to A1, the right way round if they overlap
+movebytes:
+	tst.l d0
+	beq .r
+	cmpa.l a0,a1
+	bcs copyb
+	beq .r
+	add.l d0,a0
+	add.l d0,a1
+.l:
+	move.b -(a0),-(a1)
+	subq.l #1,d0
+	bne .l
+.r:
+	rts
+
+; ELSEIF reached by running: the end of a THEN part, go past ENDIF
+st_elseif:
+	moveq #1,d6
+	bra skipblock
+
+; ---------------------------------------------------------------- ON ERROR, RESUME, ERROR
+
+; ON ERROR GOTO line (0 = off)
+st_onerror:
+	addq.l #1,a5
+	bsr peek
+	cmp.b #TK_GOTO,d0
+	bne .sn
+	addq.l #1,a5
+	bsr jumpline
+	tst.l d0
+	beq .off
+	move.l d0,D_ONERR(a6)
+	st D_ONERRF(a6)
+	rts
+.off:
+	clr.b D_ONERRF(a6)
+	tst.b D_INERR(a6)
+	beq .r
+	; inside the handler: stop with the error after all
+	clr.b D_INERR(a6)
+	move.l D_ERRLIN(a6),D_CURLIN(a6)
+	moveq #0,d0
+	move.w D_ERRCODE(a6),d0
+	jmp error
+.r:
+	rts
+.sn:
+	ERROR E_SN
+
+; RESUME [0 | NEXT | line]
+st_resume:
+	tst.b D_INERR(a6)
+	beq .rw
+	bsr peek
+	beq .same
+	cmp.b #':',d0
+	beq .same
+	cmp.b #TK_ELSE,d0
+	beq .same
+	cmp.b #TK_NEXT,d0
+	beq .next
+	bsr jumpline
+	tst.l d0
+	beq .same
+	clr.b D_INERR(a6)
+	bra goline
+.same:
+	clr.b D_INERR(a6)
+	move.l D_ERRLIN(a6),D_CURLIN(a6)
+	move.l D_ERRSTMT(a6),a5
+	clr.b D_SLIF(a6)
+	bra newstmt
+.next:
+	clr.b D_INERR(a6)
+	move.l D_ERRLIN(a6),D_CURLIN(a6)
+	move.l D_ERRSTMT(a6),a0
+	bsr skipstmt
+	move.l a0,a5
+	clr.b D_SLIF(a6)
+	bra newstmt
+.rw:
+	ERROR E_RW
+
+; ERROR n: cause error n (1-255)
+st_error:
+	bsr evalint
+	tst.l d0
+	bne .fc
+	tst.l d1
+	beq .fc
+	cmp.l #256,d1
+	bcc .fc
+	lea gwnum(pc),a0
+	moveq #0,d0
+.l:
+	cmp.b (a0,d0.w),d1
+	beq .e
+	addq.w #1,d0
+	cmp.w #E_UL+1,d0
+	bcs .l
+	move.l d1,D_ERRNUM(a6)
+	moveq #E_UP,d0
+.e:
+	jmp error
+.fc:
+	ERROR E_FC
+
+fn_err:
+	move.l D_ERRNUM(a6),d1
+	moveq #0,d0
+	bra setint
+fn_erl:
+	move.l D_ERRLINE(a6),d1
+	moveq #0,d0
+	bra setint
+
+; ---------------------------------------------------------------- PRINT USING
+
+; PRINT USING format$; item [, or ; item ...]
+st_using:
+	addq.l #1,a5
+	bsr evalstr
+	move.l D_VA+4(a6),D_UFMT(a6)
+	move.l D_VA+8(a6),D_UFLEN(a6)
+	beq .fc
+	clr.l D_UPOS(a6)
+	clr.b D_UNL(a6)
+	bsr peek
+	cmp.b #';',d0
+	beq .s
+	cmp.b #',',d0
+	bne .sn
+.s:
+	addq.l #1,a5
+.item:
+	bsr peek
+	beq .fin
+	cmp.b #':',d0
+	beq .fin
+	cmp.b #TK_ELSE,d0
+	beq .fin
+	moveq #1,d0			; print up to the next field, going round if need be
+	bsr ufield
+	bsr eval
+	cmp.b #1,D_UTYPE(a6)
+	beq .num
+	cmp.w #T_STR,D_VA(a6)
+	bne .tm
+	bsr ustr
+	bra .sep
+.num:
+	cmp.w #T_STR,D_VA(a6)
+	beq .tm
+	bsr unum
+.sep:
+	clr.b D_UNL(a6)
+	bsr peek
+	cmp.b #';',d0
+	beq .more
+	cmp.b #',',d0
+	bne .fin
+.more:
+	addq.l #1,a5
+	st D_UNL(a6)
+	bra .item
+.fin:
+	tst.b D_UNL(a6)
+	bne .r
+	moveq #0,d0			; the text after the last field
+	bsr ufield
+	bsr crlf
+.r:
+	rts
+.fc:
+	ERROR E_FC
+.sn:
+	ERROR E_SN
+.tm:
+	ERROR E_TM
+
+; print the format's text from D_UPOS up to the next field and read that field into D_U...
+; D0 = 1: go round to the start at the end (there must be a field somewhere); 0: stop at
+; the end
+ufield:
+	move.l d0,d4
+	moveq #0,d5			; went round already
+	move.l D_UFMT(a6),a2
+.l:
+	move.l D_UPOS(a6),d3
+	cmp.l D_UFLEN(a6),d3
+	bcs .c
+	tst.l d4
+	beq .none
+	tst.l d5
+	bne .fc
+	moveq #1,d5
+	clr.l D_UPOS(a6)
+	bra .l
+.c:
+	lea (a2,d3.l),a0
+	bsr ustart			; a field here?
+	tst.b D_UTYPE(a6)
+	bne .r
+	move.b (a0),d0
+	cmp.b #'_',d0			; _ prints the next character as it is
+	bne .p
+	addq.l #1,D_UPOS(a6)
+	move.l D_UPOS(a6),d3
+	cmp.l D_UFLEN(a6),d3
+	bcc .l
+	move.b 1(a0),d0
+.p:
+	bsr putc
+	addq.l #1,D_UPOS(a6)
+	bra .l
+.none:
+	clr.b D_UTYPE(a6)
+.r:
+	rts
+.fc:
+	ERROR E_FC
+
+; is there a field at A0 (position D_UPOS)? sets D_UTYPE (0 = no) and moves D_UPOS past it
+ustart:
+	clr.b D_UTYPE(a6)
+	move.l D_UFMT(a6),a1
+	add.l D_UFLEN(a6),a1		; the end
+	move.b (a0),d0
+	cmp.b #'!',d0
+	bne .bs
+	move.b #2,D_UTYPE(a6)
+	addq.l #1,D_UPOS(a6)
+	rts
+.bs:
+	cmp.b #'&',d0
+	bne .bk
+	move.b #4,D_UTYPE(a6)
+	addq.l #1,D_UPOS(a6)
+	rts
+.bk:
+	cmp.b #'\',d0
+	bne .n
+	lea 1(a0),a3
+.bl:
+	cmpa.l a1,a3
+	bcc .no				; no closing \: just text
+	cmp.b #' ',(a3)
+	bne .be
+	addq.l #1,a3
+	bra .bl
+.be:
+	cmp.b #'\',(a3)
+	bne .no
+	addq.l #1,a3
+	move.l a3,d0
+	sub.l a0,d0
+	move.w d0,D_UWID(a6)
+	add.l d0,D_UPOS(a6)
+	move.b #3,D_UTYPE(a6)
+	rts
+.n:
+	; a number field? + # . $$ ** **$
+	move.l a0,a3
+	clr.l D_UBEF(a6)		; UBEF and UDIG
+	clr.w D_UDEC(a6)
+	clr.l D_UPT(a6)			; UPT UCOMMA UPLUS UTRAIL
+	clr.l D_USTAR(a6)		; USTAR UDOLLAR UEXP
+	cmp.b #'+',(a3)
+	bne .st
+	; + only starts a field if # or . (then #) or $$ or ** follows
+	lea 1(a3),a4
+	bsr .numahead
+	bcs .no
+	st D_UPLUS(a6)
+	addq.w #1,D_UBEF(a6)
+	addq.l #1,a3
+.st:
+	bsr .is2star
+	bne .dl
+	st D_USTAR(a6)
+	addq.w #2,D_UBEF(a6)
+	addq.l #2,a3
+	cmpa.l a1,a3
+	bcc .digs
+	cmp.b #'$',(a3)
+	bne .digs
+	st D_UDOLLAR(a6)
+	addq.w #1,D_UBEF(a6)
+	addq.l #1,a3
+	bra .digs
+.dl:
+	cmp.b #'$',(a3)
+	bne .digs0
+	lea 1(a3),a4
+	cmpa.l a1,a4
+	bcc .no
+	cmp.b #'$',(a4)
+	bne .no
+	st D_UDOLLAR(a6)
+	addq.w #2,D_UBEF(a6)
+	addq.l #2,a3
+	bra .digs
+.digs0:
+	; it has to start with # or .#
+	move.l a3,a4
+	bsr .numahead
+	bcs .no
+.digs:
+	cmpa.l a1,a3
+	bcc .end
+	move.b (a3),d0
+	cmp.b #'#',d0
+	bne .cm
+	addq.w #1,D_UBEF(a6)
+	addq.w #1,D_UDIG(a6)
+	addq.l #1,a3
+	bra .digs
+.cm:
+	cmp.b #',',d0
+	bne .pt
+	tst.w D_UBEF(a6)		; a comma only counts inside the digits
+	beq .end
+	st D_UCOMMA(a6)
+	addq.w #1,D_UBEF(a6)
+	addq.l #1,a3
+	bra .digs
+.pt:
+	cmp.b #'.',d0
+	bne .ex
+	st D_UPT(a6)
+	addq.l #1,a3
+.dd:
+	cmpa.l a1,a3
+	bcc .end
+	cmp.b #'#',(a3)
+	bne .ex
+	addq.w #1,D_UDEC(a6)
+	addq.l #1,a3
+	bra .dd
+.ex:
+	; ^^^^
+	lea 4(a3),a4
+	cmpa.l a1,a4
+	bhi .tr
+	cmp.b #'^',(a3)
+	bne .tr
+	cmp.b #'^',1(a3)
+	bne .tr
+	cmp.b #'^',2(a3)
+	bne .tr
+	cmp.b #'^',3(a3)
+	bne .tr
+	st D_UEXP(a6)
+	addq.l #4,a3
+.tr:
+	cmpa.l a1,a3
+	bcc .end
+	cmp.b #'-',(a3)
+	bne .tp
+	move.b #1,D_UTRAIL(a6)
+	addq.l #1,a3
+	bra .end
+.tp:
+	tst.b D_UPLUS(a6)
+	bne .end
+	cmp.b #'+',(a3)
+	bne .end
+	move.b #2,D_UTRAIL(a6)
+	addq.l #1,a3
+.end:
+	move.b #1,D_UTYPE(a6)
+	move.l a3,d0
+	sub.l a0,d0
+	add.l d0,D_UPOS(a6)
+.no:
+	rts
+; does a number field start at A4? (# or .# or $$ or **) carry clear if so
+.numahead:
+	cmpa.l a1,a4
+	bcc .nah
+	move.b (a4),d0
+	cmp.b #'#',d0
+	beq .yes
+	cmp.b #'.',d0
+	bne .na2
+	lea 1(a4),a4
+	cmpa.l a1,a4
+	bcc .nah
+	cmp.b #'#',(a4)
+	beq .yes
+	bra .nah
+.na2:
+	cmp.b #'$',d0
+	beq .na3
+	cmp.b #'*',d0
+	bne .nah
+.na3:
+	lea 1(a4),a4
+	cmpa.l a1,a4
+	bcc .nah
+	cmp.b (a4),d0
+	beq .yes
+.nah:
+	ori.b #1,ccr
+	rts
+.yes:
+	andi.b #$fe,ccr
+	rts
+; ** at A3? Z set if so
+.is2star:
+	lea 1(a3),a4
+	cmpa.l a1,a4
+	bcc .n2
+	cmp.b #'*',(a3)
+	bne .n2
+	cmp.b #'*',(a4)
+	rts
+.n2:
+	moveq #1,d0
+	rts
+
+; print the string VA in the field just read
+ustr:
+	move.l D_VA+4(a6),a0
+	move.l D_VA+8(a6),d1
+	cmp.b #4,D_UTYPE(a6)
+	beq putn			; & all of it
+	moveq #1,d2			; ! one character
+	cmp.b #2,D_UTYPE(a6)
+	beq .w
+	move.w D_UWID(a6),d2
+.w:
+	cmp.l d2,d1
+	bls .p
+	move.l d2,d1
+.p:
+	sub.l d1,d2			; padding
+	bsr putn
+.sp:
+	tst.l d2
+	beq .r
+	bsr space
+	subq.l #1,d2
+	bra .sp
+.r:
+	rts
+
+; print the number VA in the field just read
+unum:
+	lea D_VA(a6),a0
+	bsr toflt
+	lea D_VA+4(a6),a0
+	lea FPACC,a3
+	bsr fcopy
+	move.b #X,FP_CLASS
+	moveq #2,d7
+	and.b FPCOND,d7			; D7 = negative
+	move.b #X+2,FP_FUNC		; |x|
+	moveq #0,d0
+	move.w D_UDEC(a6),d0
+	cmp.w #20,d0
+	bcs .dc
+	moveq #19,d0
+.dc:
+	or.b #X,d0
+	tst.b D_UEXP(a6)
+	bne .e
+	move.b d0,FP_TOAF
+	bra .t
+.e:
+	move.b d0,FP_TOAE
+.t:
+	btst #5,FPCOND
+	bne .over
+	; the digits before the point (or the mantissa's one digit), then the rest
+	lea FPASCII,a0
+	lea D_SCRATCH(a6),a1
+	moveq #0,d3			; integer digits
+.i:
+	move.b (a0),d0
+	beq .ie
+	cmp.b #'.',d0
+	beq .ie
+	cmp.b #'E',d0
+	beq .ie
+	move.b d0,(a1)+
+	addq.l #1,a0
+	addq.w #1,d3
+	bra .i
+.ie:
+	move.l a0,a4			; the rest: .digits and/or E+nn
+	; "0" with no # before the point prints nothing there
+	cmp.w #1,d3
+	bne .bl
+	cmp.b #'0',D_SCRATCH(a6)
+	bne .bl
+	tst.w D_UDIG(a6)
+	bne .bl
+	moveq #0,d3
+.bl:
+	; build the left part at D_NUMBUF: sign, $, digits with commas
+	lea D_NUMBUF(a6),a1
+	tst.b D_UPLUS(a6)
+	beq .ns
+	moveq #'+',d0
+	tst.b d7
+	beq .ps
+	moveq #'-',d0
+.ps:
+	move.b d0,(a1)+
+	bra .dol
+.ns:
+	tst.b D_UTRAIL(a6)
+	bne .dol
+	tst.b d7
+	beq .dol
+	move.b #'-',(a1)+
+.dol:
+	tst.b D_UDOLLAR(a6)
+	beq .dg
+	move.b #'$',(a1)+
+.dg:
+	lea D_SCRATCH(a6),a0
+	move.w d3,d4			; digits left
+	bra .de
+.dl:
+	move.b (a0)+,(a1)+
+	subq.w #1,d4
+	beq .de
+	tst.b D_UCOMMA(a6)
+	beq .de
+	moveq #0,d0
+	move.w d4,d0
+	divu #3,d0
+	swap d0
+	tst.w d0
+	bne .de
+	move.b #',',(a1)+
+.de:
+	tst.w d4
+	bne .dl
+	; pad to the width
+	move.l a1,d1
+	lea D_NUMBUF(a6),a0
+	sub.l a0,d1			; length
+	moveq #0,d2
+	move.w D_UBEF(a6),d2
+	sub.l d1,d2
+	bcc .pad
+	moveq #'%',d0			; too wide: % and all of it
+	bsr putc
+	moveq #0,d2
+.pad:
+	moveq #' ',d0
+	tst.b D_USTAR(a6)
+	beq .pl
+	moveq #'*',d0
+.pl:
+	tst.l d2
+	beq .pp
+	bsr putc
+	subq.l #1,d2
+	bra .pl
+.pp:
+	bsr putn
+	; the point, the decimals and the exponent
+	move.l a4,a0
+	bsr puts
+	; a trailing sign
+	move.b D_UTRAIL(a6),d1
+	beq .r
+	moveq #'-',d0
+	tst.b d7
+	bne .tc
+	moveq #' ',d0
+	cmp.b #2,d1
+	bne .tc
+	moveq #'+',d0
+.tc:
+	bra putc
+.r:
+	rts
+.over:
+	moveq #'%',d0			; doesn't fit at all
+	bsr putc
+	bsr numtext
+	bra puts
+
+; ---------------------------------------------------------------- RENUM
+
+; RENUM [new [, from [, step]]]: renumber the lines from line "from" on (default: all),
+; starting at new (default 10), step apart (default 10), and change the line numbers in
+; GOTO, GOSUB, THEN, ELSE, ON ... GOTO/GOSUB, RESTORE, RUN and RESUME to match
+st_renum:
+	moveq #10,d0
+	move.l d0,D_RNEW(a6)
+	move.l d0,D_RSTEP(a6)
+	clr.l D_RFROM(a6)
+	bsr peek
+	bsr isdigit
+	bcs .a2
+	bsr linenum
+	move.l d0,D_RNEW(a6)
+	bsr peek
+.a2:
+	cmp.b #',',d0
+	bne .go
+	addq.l #1,a5
+	bsr peek
+	bsr isdigit
+	bcs .a3
+	bsr linenum
+	move.l d0,D_RFROM(a6)
+	bsr peek
+.a3:
+	cmp.b #',',d0
+	bne .go
+	addq.l #1,a5
+	bsr linenum
+	tst.l d0
+	beq .fc
+	move.l d0,D_RSTEP(a6)
+.go:
+	; the line before "from" has to stay below the new numbers, and the last new number
+	; has to fit
+	lea D_SIZE(a6),a0
+	moveq #0,d4			; lines being renumbered
+	moveq #-1,d5			; the line before "from" (none)
+	move.l D_RFROM(a6),d0
+.c:
+	tst.w (a0)
+	beq .ce
+	cmp.l LNUM(a0),d0
+	bls .in
+	move.l LNUM(a0),d5
+	bra .cn
+.in:
+	addq.l #1,d4
+.cn:
+	adda.w (a0),a0
+	bra .c
+.ce:
+	tst.l d4
+	beq .done
+	cmp.l #-1,d5
+	beq .lo
+	cmp.l D_RNEW(a6),d5
+	bcc .fc
+.lo:
+	move.l d4,d0
+	subq.l #1,d0
+	move.l D_RSTEP(a6),d1
+	bsr umul32
+	tst.l d0
+	bne .fc
+	add.l D_RNEW(a6),d1
+	bcs .fc
+	cmp.l #DIRECT,d1
+	bcc .fc
+	; pass 1: the references (the line numbers aren't changed yet)
+	lea D_SIZE(a6),a0
+.p1:
+	tst.w (a0)
+	beq .p2
+	move.l a0,-(sp)
+	bsr rnline
+	move.l (sp)+,a0
+	adda.w (a0),a0
+	bra .p1
+.p2:
+	; pass 2: the line numbers
+	lea D_SIZE(a6),a0
+	move.l D_RNEW(a6),d1
+	move.l D_RFROM(a6),d0
+.q:
+	tst.w (a0)
+	beq .done
+	cmp.l LNUM(a0),d0
+	bhi .qn
+	move.l d1,LNUM(a0)
+	add.l D_RSTEP(a6),d1
+.qn:
+	adda.w (a0),a0
+	bra .q
+.done:
+	bsr clear_all
+	clr.l D_CONTPTR(a6)
+	jmp ready
+.fc:
+	ERROR E_FC
+
+; the new number for old line D0 -> D1, carry set if there's no such line
+rnmap:
+	movem.l d2/a0,-(sp)
+	lea D_SIZE(a6),a0
+	moveq #0,d2			; index among the renumbered lines
+.l:
+	tst.w (a0)
+	beq .no
+	cmp.l LNUM(a0),d0
+	bne .n
+	move.l d0,d1			; found; it keeps its number if it's before "from"
+	cmp.l D_RFROM(a6),d0
+	bcs .yes
+	move.l d2,d0
+	move.l D_RSTEP(a6),d1
+	bsr mul32lo
+	add.l D_RNEW(a6),d0
+	move.l d0,d1
+	bra .yes
+.n:
+	move.l LNUM(a0),d1
+	cmp.l D_RFROM(a6),d1
+	bcs .nx
+	addq.l #1,d2
+.nx:
+	adda.w (a0),a0
+	bra .l
+.yes:
+	movem.l (sp)+,d2/a0
+	andi.b #$fe,ccr
+	rts
+.no:
+	movem.l (sp)+,d2/a0
+	ori.b #1,ccr
+	rts
+
+; rewrite the references in line A0 (into D_CRUNCH, then back into the line)
+rnline:
+	move.l a0,a4			; the line
+	lea LH(a0),a2			; from
+	lea D_CRUNCH(a6),a3		; to
+.l:
+	move.b (a2)+,d0
+	move.b d0,(a3)+
+	beq .end
+	cmp.b #'"',d0
+	beq .str
+	cmp.b #TK_REM,d0
+	beq .raw
+	cmp.b #TK_APOS,d0
+	beq .raw
+	cmp.b #TK_DATA,d0
+	beq .data
+	cmp.b #TK_GOTO,d0
+	beq .list
+	cmp.b #TK_GOSUB,d0
+	beq .list
+	cmp.b #TK_THEN,d0
+	beq .one
+	cmp.b #TK_ELSE,d0
+	beq .one
+	cmp.b #TK_RESTORE,d0
+	beq .one
+	cmp.b #TK_RUN,d0
+	beq .one
+	cmp.b #TK_RESUME,d0
+	beq .one
+	bra .l
+.str:
+	move.b (a2)+,d0
+	move.b d0,(a3)+
+	beq .end
+	cmp.b #'"',d0
+	bne .str
+	bra .l
+.raw:
+	move.b (a2)+,(a3)+
+	bne .raw
+	bra .end
+.data:
+	moveq #0,d1
+.dl:
+	move.b (a2),d0
+	beq .l
+	cmp.b #'"',d0
+	bne .dq
+	not.b d1
+.dq:
+	tst.b d1
+	bne .dc
+	cmp.b #':',d0
+	beq .l
+.dc:
+	move.b (a2)+,(a3)+
+	bra .dl
+.one:
+	bsr .num
+	bra .l
+.list:
+	bsr .num
+	bcs .l
+.ll:
+	move.b (a2),d0			; , another number (ON ... GOTO)
+	cmp.b #' ',d0
+	bne .lc
+	move.b (a2)+,(a3)+
+	bra .ll
+.lc:
+	cmp.b #',',d0
+	bne .l
+	move.b (a2)+,(a3)+
+	bsr .num
+	bcc .ll
+	bra .l
+; spaces, then a line number to change. carry set if there was no number
+.num:
+	move.b (a2),d0
+	cmp.b #' ',d0
+	bne .nd
+	move.b (a2)+,(a3)+
+	bra .num
+.nd:
+	bsr isdigit
+	bcs .nno
+	; read it (an overflowing number is left alone)
+	move.l a2,a1
+	moveq #0,d0
+	moveq #0,d1
+.nr:
+	move.b (a2),d1
+	sub.b #'0',d1
+	bcs .ne
+	cmp.b #10,d1
+	bcc .ne
+	addq.l #1,a2
+	cmp.l #429496729,d0
+	bhi .nbig
+	move.l d0,d2
+	lsl.l #3,d0
+	add.l d2,d0
+	add.l d2,d0
+	add.l d1,d0
+	bcs .nbig
+	bra .nr
+.nbig:
+	moveq #-1,d0
+	bra .nr
+.ne:
+	move.l d0,d5
+	bsr rnmap
+	bcs .nf
+	; write the new number
+	moveq #0,d0
+	movem.l a2-a4,-(sp)
+	bsr itoa
+	movem.l (sp)+,a2-a4
+.nw:
+	move.b (a0)+,d0
+	beq .nok
+	move.b d0,(a3)+
+	bra .nw
+.nf:
+	; no such line: leave it, and say so
+	movem.l a1-a4,-(sp)
+	PRINTS "Undefined line "
+	moveq #0,d0
+	move.l d5,d1
+	bsr pint
+	PRINTS " in "
+	moveq #0,d0
+	move.l LNUM(a4),d1
+	bsr pint
+	bsr crlf
+	movem.l (sp)+,a1-a4
+.nc:
+	cmpa.l a2,a1
+	bcc .nok
+	move.b (a1)+,(a3)+
+	bra .nc
+.nok:
+	andi.b #$fe,ccr
+	rts
+.nno:
+	ori.b #1,ccr
+	rts
+.end:
+	; put it back in the line, which may be longer or shorter now
+	move.l a3,d6
+	lea D_CRUNCH(a6),a0
+	sub.l a0,d6			; the text with its zero
+	cmp.l #MAXLINE,d6
+	bhi .ll2
+	move.l d6,d5
+	addq.l #LH+1,d5
+	and.b #$fe,d5			; the new size
+	moveq #0,d4
+	move.w (a4),d4			; the old size
+	move.l d5,d1
+	sub.l d4,d1			; how much longer
+	beq .copy
+	bmi .shrink
+	move.l D_PRGEND(a6),a1
+	add.l d1,a1
+	lea 2+1024(a1),a1
+	cmpa.l D_MEMTOP(a6),a1
+	bcc .om
+	movem.l d1/d4-d6/a4,-(sp)
+	lea (a4,d4.l),a0		; the rest of the program moves up
+	move.l D_PRGEND(a6),a1
+	addq.l #2,a1
+	move.l d1,d5
+	move.l a1,d1
+	sub.l a0,d1
+	bsr moveup
+	movem.l (sp)+,d1/d4-d6/a4
+	add.l d1,D_PRGEND(a6)
+	bra .copy
+.shrink:
+	movem.l d1/d4-d6/a4,-(sp)
+	lea (a4,d4.l),a1		; the rest of the program moves down
+	lea (a4,d5.l),a2
+	move.l D_PRGEND(a6),d1
+	addq.l #2,d1
+	sub.l a1,d1
+	bsr movedown
+	movem.l (sp)+,d1/d4-d6/a4
+	add.l d1,D_PRGEND(a6)
+.copy:
+	move.w d5,(a4)
+	lea LH(a4),a1
+	lea D_CRUNCH(a6),a0
+	move.l d6,d0
+	bsr copyb
+	btst #0,d6			; LH + an odd length: there's a padding byte
+	beq .np
+	clr.b (a1)
+.np:
+	rts
+.om:
+	ERROR E_OM
+.ll2:
+	ERROR E_LL
 
 ; ---------------------------------------------------------------- numbers
 

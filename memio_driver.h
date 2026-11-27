@@ -120,6 +120,8 @@ const static uint16_t IO_FP_TO_ASCII_G = 0x51;   // register -> FPASCII (up to 3
 const static uint16_t IO_FP_FUNC = 0x52;         // more unary functions, selected by bits 0-4
 const static uint16_t IO_FP_CLASSIFY = 0x53;     // zero/negative/NaN/infinite -> FPCOND
 const static uint16_t IO_FP_ISAVE_CHECKED = 0x54; // ISAVE with an out of range check
+const static uint16_t IO_FP_TO_ASCII_F = 0x55;   // register -> FPASCII, fixed point, bits 0-4 = decimals
+const static uint16_t IO_FP_TO_ASCII_E = 0x56;   // register -> FPASCII, exponent form, bits 0-4 = decimals
 
 const static uint16_t IO_CMD_SERVERALIVE = 0xF800;
 const static uint16_t IO_CMD_SERVERDEAD = 0xF801;
@@ -219,5 +221,6 @@ void fp_to_ascii_g(uint8_t a_byte);
 void fp_func(uint8_t a_byte);
 void fp_classify(uint8_t a_byte);
 void fp_isave_checked(uint8_t a_byte);
+void fp_to_ascii_fe(uint8_t a_byte, int a_exp);
 
 #endif // IO_DRIVER_H

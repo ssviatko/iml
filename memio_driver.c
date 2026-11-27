@@ -289,6 +289,10 @@ static void mem_write_phys(uint32_t a_address, uint8_t a_byte)
 		fp_classify(a_byte);
 	} else if (a_address == IOSTART + IO_FP_ISAVE_CHECKED) {
 		fp_isave_checked(a_byte);
+	} else if (a_address == IOSTART + IO_FP_TO_ASCII_F) {
+		fp_to_ascii_fe(a_byte, 0);
+	} else if (a_address == IOSTART + IO_FP_TO_ASCII_E) {
+		fp_to_ascii_fe(a_byte, 1);
 	}
 	
 	g_shm_ptr[a_address] = a_byte;
@@ -1099,4 +1103,25 @@ void fp_isave_checked(uint8_t a_byte)
 	}
 	for (int i = 0; i < 8; ++i)
 		g_shm_ptr[FPINT + i] = l_fpint.bytes[i];
+}
+
+void fp_to_ascii_fe(uint8_t a_byte, int a_exp)
+{
+	// converts FACC/FARG (bit 6) to text with bits 0-4 digits after the point: fixed
+	// ("1234.50") or with an exponent ("1.23E+03"). The zero terminated text goes to
+	// FPASCII and can be up to 32 bytes long (running on into FPINT); if it would be
+	// longer, FPASCII gets "" and FPCOND bit 5 is set
+	char buff[64];
+	long double val;
+	int i, n;
+	fp_parse_command(a_byte);
+	val = fp_read_specified(fp_width, fp_extended, fp_reg);
+	n = snprintf(buff, sizeof(buff), a_exp ? "%.*LE" : "%.*Lf", (int)fp_cmd, val);
+	g_shm_ptr[FPCOND] = 0;
+	if ((n < 0) || (n > 31)) {
+		buff[0] = 0;
+		g_shm_ptr[FPCOND] = 0x20;
+	}
+	for (i = 0; i < 32; ++i)
+		g_shm_ptr[FPASCII + i] = (i <= n) ? buff[i] : 0;
 }

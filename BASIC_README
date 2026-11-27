@@ -24,17 +24,39 @@ Ctrl-C stops a running program ("Break in 120"); CONT carries on from there.
 Entering programs
 -----------------
 
-A line that starts with a number is stored in the program (0-65534); one without a number
-is run straight away. Typing just a line number deletes that line.
+A line that starts with a number is stored in the program; one without a number is run
+straight away. Typing just a line number deletes that line. Line numbers are 32 bits:
+anything from 0 to 4294967294 can be used (RENUM tidies them up).
 
   10 PRINT "HELLO"
   20 GOTO 10
   RUN
 
+Labels: a line can start with *name, and *name can then be used anywhere a line number
+can: GOTO, GOSUB, THEN, ELSE, IF ... GOTO, ON ... GOTO/GOSUB, RESTORE, RUN, RESUME and
+ON ERROR GOTO. Names are letters, digits and _, and upper and lower case are the same
+(they are listed in upper case). The label must be the first thing on its line; it can
+be alone or followed by a colon and statements. If two lines have the same label, the
+first one counts. RENUM leaves labels alone, so they're a good way to keep jumps readable.
+LABELS lists them.
+
+The first jump to a label builds a cache of all the labels and the lines they're on (in
+BASIC's own memory at LOMEM, room for 512 labels), so later jumps don't have to look
+through the program. Any change to the program, and RUN or CLEAR, drops the cache and
+the next label jump builds it again. A program with more than 512 labels still works:
+the ones that don't fit in the cache are found by looking through the program.
+
+  10 *Start: INPUT "Number"; N
+  20 IF N < 0 THEN *Done
+  30 GOSUB *Square: GOTO *Start
+  40 *Square: PRINT N * N: RETURN
+  50 *Done: PRINT "Bye"
+
 Several statements can go on a line, separated by colons. Keywords and names are made
 upper case. Keywords are whole words, so put spaces between keywords and names:
 FOR I=1 TO 10 (not FORI=1TO10), GOTO 100 (not GOTO100). ? is short for PRINT and ' is
-short for REM.
+short for REM. A name that starts with FN followed by a letter is a user function (see
+DEF FN), so ordinary variables can't start that way.
 
 
 Memory, LOMEM and HIMEM
@@ -43,7 +65,8 @@ Memory, LOMEM and HIMEM
 Everything BASIC keeps is in one block of memory from LOMEM to HIMEM (by default
 $010000-$16FFFF, 1.4 MB):
 
-  LOMEM          BASIC's own variables, buffers and the FOR/GOSUB/WHILE/REPEAT stack (10K)
+  LOMEM          BASIC's own variables, buffers, the FOR/GOSUB/WHILE/REPEAT stack and
+                 the label cache (16K)
   then           the program, growing up
   then           strings, growing up
   ...            free
@@ -149,6 +172,16 @@ COLOR(foreground [, background])
     Text colors, 0-15.
 CONT
     Carry on after Ctrl-C or STOP.
+DEF FNname[(param, ...)] = expression
+    Define a function, in a program (not as a direct command). The name has a type like a
+    variable (FNA, FNA%, FNA&, FNA$), and the result is converted to it. Up to 8
+    parameters; they are local to the function, so they don't change variables with the
+    same names. Other variables in the expression are the program's own. A function can
+    use other functions. Redefining it replaces the old definition.
+      10 DEF FNSQ(X) = X*X
+      20 DEF FNHYP(A, B) = SQR(FNSQ(A) + FNSQ(B))
+      30 DEF FNNAME$(F$, L$) = F$ + " " + L$
+      40 PRINT FNHYP(3, 4); FNNAME$("Ada", "Lovelace")
 DATA item, item, ...
     Values for READ: numbers, or text (in quotes if it has commas, colons or spaces at
     either end).
@@ -158,10 +191,13 @@ DELETE from-to
     Delete program lines: DELETE 100, DELETE 100-200, DELETE -50, DELETE 300-.
 DIM name(size [, size ...]) [, ...]
     Make arrays.
-ELSE, ENDIF
+ELSE, ELSEIF, ENDIF
     See IF.
 END
     End the program.
+ERROR n
+    Cause error number n (1-255), as if it had happened: an ON ERROR handler sees it in
+    ERR. Numbers BASIC doesn't use print as "?Unprintable n error".
 ENDSWITCH
     See SWITCH.
 FOR var = start TO end [STEP step] ... NEXT [var [, var ...]]
@@ -178,21 +214,31 @@ IF condition GOTO line [ELSE ...]
     ones after ELSE. IFs can be nested on a line; each ELSE belongs to the nearest IF.
 IF condition THEN          (nothing after THEN)
    ...
+[ELSEIF condition [THEN]   (as many as needed, each on a line of its own)
+   ...]
 [ELSE]                     (on a line of its own)
    ...
 ENDIF
-    A block IF over several lines. Blocks can be nested.
+    A block IF over several lines: the part after the first true condition runs (or
+    ELSE's, if none is true). Blocks can be nested.
 INPUT ["prompt";] var [, var ...]
 INPUT ["prompt",] var [, var ...]
     Read values typed at the keyboard, separated by commas. With ; after the prompt (or
     no prompt) a "? " is shown; with a comma it isn't. If what's typed doesn't fit,
     "?Redo from start" asks again.
+LABELS
+    List the labels and the lines they're on, in program order. A label that's used
+    again further down is marked "(duplicate: not used)".
 LET var = expression
     Assignment; the word LET can be left out.
 LINE INPUT ["prompt";] var$
     Read a whole line (commas and quotes included) into a string variable.
 LIST [from-to]
     List the program, or part of it (like DELETE). Ctrl-C stops it.
+MID$(var$, start [, n]) = string
+    Replace characters in a string variable, from position start (1 = the first), n of
+    them at most (or as many as the new string has). The variable's length never
+    changes: S$="HELLO WORLD": MID$(S$,7)="THERE" makes "HELLO THERE".
 LOCATE(column, row)
 LOCATE(row)
     Move the text cursor. Columns and rows start at 0 (0-79 and 0-33 in 80 columns, 0-39
@@ -207,12 +253,25 @@ ON expr GOTO line, line, ...
 ON expr GOSUB line, line, ...
     Go to the first line if expr is 1, the second if it is 2, and so on. Out of range:
     nothing happens.
+ON ERROR GOTO line
+    From now on, an error in the program goes to that line instead of stopping (errors
+    in direct commands are never trapped). ERR is the error's number and ERL its line.
+    The handler finishes with RESUME. An error inside the handler stops the program as
+    usual. ON ERROR GOTO 0 turns trapping off (inside a handler, it stops with the error
+    being handled). RUN, CLEAR and editing the program turn it off too.
+      10 ON ERROR GOTO 1000
+      20 INPUT "A number"; N: PRINT 100 / N: END
+      1000 PRINT "Error"; ERR; "in line"; ERL: RESUME 20
 POKE addr, value
     Store a byte (0-255) at a 24 bit address.
 PRINT [items]
     Print expressions. Between items: ; prints the next item right after, , moves to the
     next 14 column zone. A ; or , at the end stops the new line. TAB(n) moves to column n
     (0 is the first), SPC(n) prints n spaces.
+PRINT USING format$; item [; item ...]
+    Print items laid out by a format (see "PRINT USING formats" below). Items can be
+    separated by ; or , (it makes no difference here); a ; or , at the end stops the new
+    line.
 RANDOMIZE [n]
     Accepted for compatibility; the random numbers come from the machine and need no
     seed.
@@ -220,16 +279,32 @@ READ var [, var ...]
     Take the next values from the DATA statements.
 REM text  or  ' text
     A comment.
+RENUM [new [, from [, step]]]
+    Renumber the program: the lines from line "from" on (default: all of them) get new
+    numbers starting at new (default 10), step apart (default 10). Line numbers after
+    GOTO, GOSUB, THEN, ELSE, ON ... GOTO/GOSUB, ON ERROR GOTO, RESTORE, RUN and RESUME are
+    changed to match; numbers anywhere else (in strings, DATA, REM, or compared with ERL)
+    are not. A reference to a line that doesn't exist is left as it is, with a warning
+    ("Undefined line 9999 in 40"). RENUM refuses (Illegal function call) if the new
+    numbers would run past 4294967294 or come before a line that isn't being renumbered.
+    Examples: RENUM, RENUM 1000, RENUM 500,300,5, RENUM ,,1.
 REPEAT ... UNTIL condition
     A loop that runs until the condition is true (always at least once).
 RESTORE [line]
     READ starts again from the first DATA statement (or the first one from that line).
+RESUME            (or RESUME 0)
+RESUME NEXT
+RESUME line
+    End an ON ERROR handler: run the statement that failed again, carry on with the
+    statement after it, or go to a line.
 RETURN
     See GOSUB.
 RUN [line]
     Clear the variables and run the program (from the start, or from that line).
 STOP
     Stop the program as if Ctrl-C had been pressed (CONT carries on).
+SWAP var, var
+    Exchange the values of two variables (or array elements) of the same type.
 SWITCH expression
 CASE value [, value ...]
     ...
@@ -298,6 +373,15 @@ Strings:
   UCASE$(s$)         upper case
   VAL(s$)            the number at the start of s$, 0 if there isn't one: VAL("3.5kg") = 3.5
 
+Errors (for ON ERROR handlers):
+
+  ERR                the number of the last error (see the table under Errors)
+  ERL                the line it happened in
+
+User functions:
+
+  FNname[(args)]     a function made with DEF FN
+
 Machine and memory:
 
   CALL(addr [, d0, ...])
@@ -307,6 +391,41 @@ Machine and memory:
   HIMEM, LOMEM       the current HIMEM and LOMEM
   PEEK(addr)         the byte at a 24 bit address
   POS(x)             the column the cursor is in (0 is the first)
+
+
+PRINT USING formats
+-------------------
+
+The format string is printed as it is, except for fields, which are filled in with the
+items one after another. If there are more items than fields, the format starts again
+from the beginning.
+
+Numbers:
+
+  #        a digit position. PRINT USING "###"; 7 prints "  7"
+  .        the decimal point: "##.##" prints 3.14159 as " 3.14" (rounded)
+  ,        before the point: commas between thousands. "#,###,###.##"
+  +        at the start or the end: always show the sign (+ or -)
+  -        at the end: a - after negative numbers (a space after others)
+  **       at the start: fill the space in front with *  ("**###.##" -> ****12.50)
+  $$       at the start: a $ just in front of the number ("$$###.##" -> "  $12.50")
+  **$      both
+  ^^^^     at the end: exponent form ("#.##^^^^" -> 1.23E+04); one digit before the point
+
+The # (and $$, **) positions in front of the point include the room for a minus sign,
+unless the field has a + or a trailing -. A number that doesn't fit is printed in full
+after a % ("##" with 1234 prints %1234).
+
+Strings:
+
+  !        the first character
+  \  \     as many characters as the field is wide, counting both \ (padded with spaces)
+  &        the whole string
+
+  _        prints the next character as it is (_# prints #)
+
+  PRINT USING "Name: \       \  Total: $$#,###.##"; N$; T
+  PRINT USING "##.#% "; 12.34; 56.78; 90.1
 
 
 Graphics
@@ -355,27 +474,36 @@ the screen (type TEXT(9) to get the text back); an error or Ctrl-C switches to t
 Errors
 ------
 
-  ?Syntax error                  something can't be understood
-  ?Out of memory                 no room for the program, variables or strings, or too
-                                 many FOR/GOSUB/WHILE/REPEAT levels (about 150)
-  ?Undefined line                GOTO, GOSUB, RUN or RESTORE to a line that isn't there
-  ?Type mismatch                 a string where a number belongs or the other way round
-  ?Overflow                      a number too big (for its type, or at all)
-  ?Division by zero
-  ?Illegal function call         a value out of range for a statement or function
-  ?NEXT without FOR
-  ?RETURN without GOSUB
-  ?Out of DATA
-  ?Bad subscript                 an array index out of range or the wrong number of them
-  ?Redimensioned array           DIM of an array that already exists
-  ?String too long               a string over 65535 characters
-  ?Can't continue                CONT when there's nothing to continue
-  ?Formula too complex           an expression nested too deeply
-  ?WEND without WHILE
-  ?UNTIL without REPEAT
-  ?WHILE without WEND
-  ?IF without ENDIF
-  ?SWITCH without ENDSWITCH
-  ?Line too long                 a program line over 500 bytes once stored
+  ERR  message
+    2  ?Syntax error                  something can't be understood
+    7  ?Out of memory                 no room for the program, variables or strings, or
+                                      too many FOR/GOSUB/WHILE/REPEAT levels (about 150)
+    8  ?Undefined line                GOTO, GOSUB, RUN, RESTORE, RESUME or ON ERROR to a
+                                      line that isn't there
+   13  ?Type mismatch                 a string where a number belongs or the other way round
+    6  ?Overflow                      a number too big (for its type, or at all)
+   11  ?Division by zero
+    5  ?Illegal function call         a value out of range for a statement or function
+    1  ?NEXT without FOR
+    3  ?RETURN without GOSUB
+    4  ?Out of DATA
+    9  ?Bad subscript                 an array index out of range or the wrong number of them
+   10  ?Redimensioned array           DIM of an array that already exists
+   15  ?String too long               a string over 65535 characters
+   17  ?Can't continue                CONT when there's nothing to continue
+   16  ?Formula too complex           an expression nested too deeply (or an FN that
+                                      calls itself without end)
+   30  ?WEND without WHILE
+   31  ?UNTIL without REPEAT
+   29  ?WHILE without WEND
+   32  ?IF without ENDIF
+   33  ?SWITCH without ENDSWITCH
+   23  ?Line too long                 a program line over 500 bytes once stored
+   18  ?Undefined function            FN of a function that hasn't been defined
+   20  ?RESUME without error          RESUME outside an error handler
+   12  ?Illegal direct                DEF FN as a direct command
+    8  ?Undefined label               a jump to a *label no line starts with
+       ?Unprintable n error           ERROR n with a number BASIC doesn't use
 
-In a program, the line number follows: "?Division by zero error in 120".
+The numbers are GW-BASIC's where it has the same error. In a program, the line number
+follows the message: "?Division by zero error in 120".
