@@ -75,7 +75,7 @@ STKLIMIT	equ	$3000		; expressions nested deeper than this: FORMULA TOO COMPLEX
 DEF_LOMEM	equ	$10000
 DEF_HIMEM	equ	$16ffff
 RAMTOP		equ	$180000		; video memory starts here
-MAGIC		equ	'IMLC'		; (changes when the layout of the block does)
+MAGIC		equ	'IMLD'		; (changes when the layout of the block does)
 
 ; ---------------------------------------------------------------- internal variables (at LOMEM, A6)
 
@@ -348,7 +348,7 @@ TK_USING	equ	$c9
 TK_FN		equ	$ca
 TK_FIRSTFN	equ	$cb		; functions, in the order of fntab
 TK_MID		equ	TK_FIRSTFN+27
-TK_LASTFN	equ	$f3
+TK_LASTFN	equ	$f2
 
 ; ---------------------------------------------------------------- macros
 
@@ -1459,7 +1459,7 @@ kwtab:
 	dc.b "SGN",0,"INT",0,"FIX",0,"ABS",0,"SQR",0,"RND",0,"LOG",0,"LN",0
 	dc.b "LOG10",0,"EXP",0,"SIN",0,"COS",0,"TAN",0,"ATN",0,"ASN",0,"ACS",0
 	dc.b "PI",0,"ROOT",0,"PEEK",0,"FRE",0,"LEN",0,"ASC",0,"VAL",0,"CHR$",0
-	dc.b "STR$",0,"LEFT$",0,"RIGHT$",0,"MID$",0,"HEX$",0,"SHEX$",0,"DEC",0,"INSTR",0
+	dc.b "STR$",0,"LEFT$",0,"RIGHT$",0,"MID$",0,"HEX$",0,"DEC",0,"INSTR",0
 	dc.b "STRING$",0,"SPACE$",0,"UCASE$",0,"LCASE$",0,"INKEY$",0,"POS",0,"CINT",0
 	dc.b "ERR",0,"ERL",0
 	dc.b 0
@@ -4024,7 +4024,7 @@ fntab:
 	dc.l fn_sgn,fn_int,fn_fix,fn_abs,fn_sqr,fn_rnd,fn_log,fn_log
 	dc.l fn_log10,fn_exp,fn_sin,fn_cos,fn_tan,fn_atn,fn_asn,fn_acs
 	dc.l fn_pi,fn_root,fn_peek,fn_fre,fn_len,fn_asc,fn_val,fn_chr
-	dc.l fn_str,fn_left,fn_right,fn_mid,fn_hex,fn_shex,fn_dec,fn_instr
+	dc.l fn_str,fn_left,fn_right,fn_mid,fn_hex,fn_dec,fn_instr
 	dc.l fn_string,fn_space,fn_ucase,fn_lcase,fn_inkey,fn_pos,fn_cint,fn_err,fn_erl
 
 ; ---------------------------------------------------------------- operators
@@ -7322,32 +7322,13 @@ copystr:
 	move.l a2,a0
 	bra copyb
 
-; HEX$(n): hex digits, with a - in front for a negative number
+; HEX$(n): hex digits without leading zeros. A negative number is shown as its 64 bit
+; two's complement (HEX$(-1) = "FFFFFFFFFFFFFFFF")
 fn_hex:
 	bsr pnum
 	lea D_VA(a6),a0
 	bsr toint
-	moveq #0,d5
-	tst.l d0
-	bpl .p
-	neg.l d1
-	negx.l d0
-	moveq #1,d5
-.p:
 	moveq #1,d2
-	bsr hextext
-	tst.l d5
-	beq copystr
-	move.b #'-',-(a0)
-	addq.l #1,d0
-	bra copystr
-
-; SHEX$(n): 16 digits, two's complement
-fn_shex:
-	bsr pnum
-	lea D_VA(a6),a0
-	bsr toint
-	moveq #16,d2
 	bsr hextext
 	bra copystr
 

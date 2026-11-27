@@ -27,7 +27,7 @@ STR$() command converts floating point and all integer types to strings.
 
 BASIC internal data area should be placed at the start of the BASIC program buffer (at LOMEM) so that the entire buffer can be saved and restored using bsave and bload. This will also enable multiple programs to be placed in memory by changing LOMEM and HIMEM. NEW should initialize a BASIC buffer with all pointers and internal data needed to function.
 
-PRINT statement should allow printing hexadecimal numbers up to 64 bits in width as decimal using the &H prefix, e.g. PRINT &HFE will print 254. There will be a DEC("HEX STRING") which will return up to a 64 bit decimal value in response to a hexadecimal string. The hex string argument need not be prefixed by a $, a 0x, or suffixed with a h or H. There will be a HEX$(number) function which will convert a decimal number into a hex string. There will also be an SHEX$(number) function which will convert a signed number into a two's complement hex string 64 bits in length.
+PRINT statement should allow printing hexadecimal numbers up to 64 bits in width as decimal using the &H prefix, e.g. PRINT &HFE will print 254. There will be a DEC("HEX STRING") which will return up to a 64 bit decimal value in response to a hexadecimal string. The hex string argument need not be prefixed by a $, a 0x, or suffixed with a h or H. There will be a HEX$(number) function which will convert a decimal number into a hex string.
 
 All common trig functions available to operate on floating point numbers (SIN, COS, TAN, ATN). Exponential, Base 10 log, natural log as well as raising a number to a power and nth root.
 

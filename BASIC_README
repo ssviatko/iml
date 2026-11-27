@@ -356,7 +356,9 @@ Strings:
   DEC(s$)            the value of a hex string, up to 64 bits: DEC("FF") = 255. A $, 0x
                      or &H in front or an h after are allowed but not needed. Anything
                      that isn't hex gives 0
-  HEX$(n)            n in hex: HEX$(255) = "FF", HEX$(-255) = "-FF"
+  HEX$(n)            n in hex, without leading zeros: HEX$(255) = "FF". A negative
+                     number is shown as its 64 bit two's complement:
+                     HEX$(-255) = "FFFFFFFFFFFFFF01"
   INKEY$             the key waiting, or "" (doesn't wait)
   INSTR([start,] s$, find$)
                      where find$ is in s$ (1 = the first character), or 0
@@ -366,7 +368,6 @@ Strings:
   MID$(s$, start [, n])
                      n characters (or the rest) from position start (1 = the first)
   RIGHT$(s$, n)      the last n characters
-  SHEX$(n)           n as 16 hex digits, two's complement: SHEX$(-1) = "FFFFFFFFFFFFFFFF"
   SPACE$(n)          n spaces
   STR$(n)            a number as a string, like PRINT shows it: STR$(12) = " 12"
   STRING$(n, c)      n copies of a character (c is a code or a string)
