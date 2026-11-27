@@ -1,0 +1,381 @@
+IML BASIC 68000
+===============
+
+A Microsoft-style BASIC for the IML 68000 machine, with 64 bit integers, 80 bit floating
+point, long strings, structured statements (block IF, WHILE, REPEAT, SWITCH) and graphics.
+It lives in ROM just above the 68000 monitor (basic.s, assembled to basic.bin and loaded
+by m68k).
+
+
+Starting and stopping
+---------------------
+
+From the monitor:
+
+  B        cold start: a new, empty BASIC (also sets LOMEM/HIMEM back to their defaults)
+  W        warm start: back into BASIC with the program and variables as they were
+
+In BASIC, MONITOR (or BYE) goes back to the monitor, leaving everything in memory, so W
+returns to it. After a Ctrl-Alt-End reset, W also gets the program back.
+
+Ctrl-C stops a running program ("Break in 120"); CONT carries on from there.
+
+
+Entering programs
+-----------------
+
+A line that starts with a number is stored in the program (0-65534); one without a number
+is run straight away. Typing just a line number deletes that line.
+
+  10 PRINT "HELLO"
+  20 GOTO 10
+  RUN
+
+Several statements can go on a line, separated by colons. Keywords and names are made
+upper case. Keywords are whole words, so put spaces between keywords and names:
+FOR I=1 TO 10 (not FORI=1TO10), GOTO 100 (not GOTO100). ? is short for PRINT and ' is
+short for REM.
+
+
+Memory, LOMEM and HIMEM
+-----------------------
+
+Everything BASIC keeps is in one block of memory from LOMEM to HIMEM (by default
+$010000-$16FFFF, 1.4 MB):
+
+  LOMEM          BASIC's own variables, buffers and the FOR/GOSUB/WHILE/REPEAT stack (10K)
+  then           the program, growing up
+  then           strings, growing up
+  ...            free
+  HIMEM          the variable table, growing down from HIMEM
+
+Because it is all in that block, the block can be saved and loaded back with the bsave
+and bload utilities (with a server running):
+
+  bsave --address 10000h --length 160000h myprog.img     (the whole default block)
+  bload --address 10000h myprog.img                      (then W in the monitor)
+
+LOMEM address   Switch to the BASIC block at that address. If there isn't one there, a new
+                empty one is made, with the current HIMEM (or $16FFFF if the current HIMEM
+                is below the new block). This way several programs can sit in memory at
+                once. LOMEM must be even and at least $10000.
+HIMEM address   Set the top of the current block (the last byte the variables can use).
+                Clears the variables.
+LOMEM, HIMEM    As functions, give the current values: PRINT LOMEM; HIMEM
+
+When keeping two programs, lower the first one's HIMEM below the second one's LOMEM so
+their variables don't overlap:
+
+  HIMEM &H0FFFFF            (first program: $10000-$FFFFF)
+  LOMEM &H100000            (a new block for the second program, $100000-$16FFFF)
+  LOMEM &H10000             (back to the first one)
+
+FRE(0) gives the free memory.
+
+
+Variables
+---------
+
+Names start with a letter, then letters and digits (up to 32 characters, all of them
+significant). The last character says the type:
+
+  A$     string, up to 65535 characters (one byte each)
+  A      floating point, 80 bit Intel extended precision (about 19 digits, 1E-4951 to
+         1E+4932), worked out by the machine's floating point unit
+  A&     64 bit integer (-9223372036854775808 to 9223372036854775807)
+  A%     32 bit integer
+
+A, A$, A& and A% are four different variables. A variable that hasn't been set is 0 (or
+"" for a string).
+
+Numbers convert between the types as needed. A float stored in an integer variable is
+rounded (halves away from zero); a 64 bit value stored in a 32 bit variable keeps its low
+32 bits. Integer arithmetic is 64 bit and wraps around; it never overflows into a float.
+
+Arrays: DIM A(10), B$(5,5), M%(2,3,4) (up to 8 dimensions). Indexes start at 0, so A(10)
+has 11 elements, and an array can have up to 16,777,215 elements in all. An array that
+is used without DIM is made with 11 elements (0-10) per dimension when something is
+stored in it; reading from an array that doesn't exist gives 0 or "".
+
+
+Numbers
+-------
+
+  123            an integer (up to 9223372036854775807; bigger is a float)
+  1.5  2E10      floating point
+  &HFE           hexadecimal, up to 64 bits (16 digits): PRINT &HFE prints 254
+  0FEh  102080h  hexadecimal with an h after it (it has to start with a digit)
+
+PRINT shows integers in full and floats with up to 18 significant digits (3.5, 0.3,
+1.5E+20). Positive numbers get a space in front (where a minus sign would go) and every
+number gets a space after it, as in Microsoft BASIC.
+
+
+Operators
+---------
+
+From highest to lowest priority:
+
+  ^                  power (2^10 = 1024; 2^3^2 = 64, worked out left to right)
+  -                  negation (-2^2 = -4)
+  * /                multiply, divide (/ always gives a float: 7/2 = 3.5)
+  \                  integer divide (7\2 = 3, rounding toward zero)
+  MOD                remainder (it has the sign of the left side: -7 MOD 3 = -1)
+  + -                add, subtract; + also joins strings
+  = <> < > <= >=     compare numbers or strings; true is -1, false is 0
+  NOT                bitwise not (64 bits)
+  AND
+  OR
+  XOR
+
+AND, OR, XOR, NOT, \ and MOD work on integers (floats are rounded first), so they work
+as both logical and bitwise operators: 5 OR 2 = 7, 2>1 AND 3>2 = -1.
+
+
+Statements
+----------
+
+CALL addr [, d0, d1, ...]
+    Call a machine language routine at addr (in supervisor mode; return with RTS). Up to
+    eight more values are put in D0-D7 first. See also the CALL() function.
+CASE value [, value ...]
+    See SWITCH.
+CLEAR
+    Forget all variables and arrays, the FOR/GOSUB/WHILE/REPEAT stack and the READ
+    position.
+CLS
+    Clear the text screen and put the cursor at the top left.
+COLOR(foreground [, background])
+    Text colors, 0-15.
+CONT
+    Carry on after Ctrl-C or STOP.
+DATA item, item, ...
+    Values for READ: numbers, or text (in quotes if it has commas, colons or spaces at
+    either end).
+DEFAULT
+    See SWITCH.
+DELETE from-to
+    Delete program lines: DELETE 100, DELETE 100-200, DELETE -50, DELETE 300-.
+DIM name(size [, size ...]) [, ...]
+    Make arrays.
+ELSE, ENDIF
+    See IF.
+END
+    End the program.
+ENDSWITCH
+    See SWITCH.
+FOR var = start TO end [STEP step] ... NEXT [var [, var ...]]
+    A counted loop. The variable can be any numeric type. The loop always runs at least
+    once (as on the 8 bit Microsoft BASICs). NEXT without a name ends the innermost loop.
+GOSUB line ... RETURN
+    Call a subroutine; RETURN goes back to just after the GOSUB.
+GOTO line
+    Jump to a line.
+IF condition THEN statements [ELSE statements]
+IF condition THEN line [ELSE line]
+IF condition GOTO line [ELSE ...]
+    On one line: the statements after THEN run if the condition isn't 0, otherwise the
+    ones after ELSE. IFs can be nested on a line; each ELSE belongs to the nearest IF.
+IF condition THEN          (nothing after THEN)
+   ...
+[ELSE]                     (on a line of its own)
+   ...
+ENDIF
+    A block IF over several lines. Blocks can be nested.
+INPUT ["prompt";] var [, var ...]
+INPUT ["prompt",] var [, var ...]
+    Read values typed at the keyboard, separated by commas. With ; after the prompt (or
+    no prompt) a "? " is shown; with a comma it isn't. If what's typed doesn't fit,
+    "?Redo from start" asks again.
+LET var = expression
+    Assignment; the word LET can be left out.
+LINE INPUT ["prompt";] var$
+    Read a whole line (commas and quotes included) into a string variable.
+LIST [from-to]
+    List the program, or part of it (like DELETE). Ctrl-C stops it.
+LOCATE(column, row)
+LOCATE(row)
+    Move the text cursor. Columns and rows start at 0 (0-79 and 0-33 in 80 columns, 0-39
+    and 0-16 in 40). With just a row, the cursor goes to column 0.
+LOMEM address, HIMEM address
+    See "Memory, LOMEM and HIMEM".
+MONITOR, BYE
+    Go back to the monitor (W comes back).
+NEW
+    Erase the program and the variables.
+ON expr GOTO line, line, ...
+ON expr GOSUB line, line, ...
+    Go to the first line if expr is 1, the second if it is 2, and so on. Out of range:
+    nothing happens.
+POKE addr, value
+    Store a byte (0-255) at a 24 bit address.
+PRINT [items]
+    Print expressions. Between items: ; prints the next item right after, , moves to the
+    next 14 column zone. A ; or , at the end stops the new line. TAB(n) moves to column n
+    (0 is the first), SPC(n) prints n spaces.
+RANDOMIZE [n]
+    Accepted for compatibility; the random numbers come from the machine and need no
+    seed.
+READ var [, var ...]
+    Take the next values from the DATA statements.
+REM text  or  ' text
+    A comment.
+REPEAT ... UNTIL condition
+    A loop that runs until the condition is true (always at least once).
+RESTORE [line]
+    READ starts again from the first DATA statement (or the first one from that line).
+RETURN
+    See GOSUB.
+RUN [line]
+    Clear the variables and run the program (from the start, or from that line).
+STOP
+    Stop the program as if Ctrl-C had been pressed (CONT carries on).
+SWITCH expression
+CASE value [, value ...]
+    ...
+CASE ...
+    ...
+DEFAULT
+    ...
+ENDSWITCH
+    Runs the statements after the first CASE with a value equal to the expression (number
+    or string), up to the next CASE, DEFAULT or ENDSWITCH. Nothing falls through from one
+    case to the next. If no CASE matches, DEFAULT's statements run (if there is a
+    DEFAULT). SWITCHes can be nested.
+TRON, TROFF
+    Trace on and off: while it's on, each line number is printed in [brackets] as it runs.
+WHILE condition ... WEND
+    A loop that runs while the condition is true (maybe not at all).
+
+
+Functions
+---------
+
+Numbers:
+
+  ABS(x)        absolute value
+  ACS(x)        arccosine (radians)
+  ASN(x)        arcsine (radians)
+  ATN(x)        arctangent (radians)
+  CINT(x)       round to the nearest integer (halves away from zero)
+  COS(x)        cosine (x in radians)
+  EXP(x)        e to the power x
+  FIX(x)        integer part (rounding toward zero): FIX(-3.7) = -3
+  INT(x)        the largest integer not above x: INT(-3.2) = -4. Also takes a string:
+                INT("42") = 42; a string that isn't a number gives 0 (INT("4x2") = 0)
+  LOG(x), LN(x) natural logarithm
+  LOG10(x)      base 10 logarithm
+  PI            3.14159265358979324
+  RND, RND(x)   a random number from 0 up to (not including) 1
+  ROOT(x, n)    the nth root of x: ROOT(27,3) = 3, ROOT(-8,3) = -2
+  SGN(x)        -1, 0 or 1
+  SIN(x)        sine (x in radians)
+  SQR(x)        square root
+  TAN(x)        tangent (x in radians)
+  x ^ y         raise to a power (any real power: 2^0.5)
+
+Strings:
+
+  ASC(s$)            the code of the first character
+  CHR$(n)            the character with code n (0-255)
+  DEC(s$)            the value of a hex string, up to 64 bits: DEC("FF") = 255. A $, 0x
+                     or &H in front or an h after are allowed but not needed. Anything
+                     that isn't hex gives 0
+  HEX$(n)            n in hex: HEX$(255) = "FF", HEX$(-255) = "-FF"
+  INKEY$             the key waiting, or "" (doesn't wait)
+  INSTR([start,] s$, find$)
+                     where find$ is in s$ (1 = the first character), or 0
+  LCASE$(s$)         lower case
+  LEFT$(s$, n)       the first n characters
+  LEN(s$)            the length
+  MID$(s$, start [, n])
+                     n characters (or the rest) from position start (1 = the first)
+  RIGHT$(s$, n)      the last n characters
+  SHEX$(n)           n as 16 hex digits, two's complement: SHEX$(-1) = "FFFFFFFFFFFFFFFF"
+  SPACE$(n)          n spaces
+  STR$(n)            a number as a string, like PRINT shows it: STR$(12) = " 12"
+  STRING$(n, c)      n copies of a character (c is a code or a string)
+  UCASE$(s$)         upper case
+  VAL(s$)            the number at the start of s$, 0 if there isn't one: VAL("3.5kg") = 3.5
+
+Machine and memory:
+
+  CALL(addr [, d0, ...])
+                     call machine code (like the CALL statement) and give back D0 as a
+                     32 bit integer: A% = CALL(102080h)
+  FRE(x)             free memory in bytes
+  HIMEM, LOMEM       the current HIMEM and LOMEM
+  PEEK(addr)         the byte at a 24 bit address
+  POS(x)             the column the cursor is in (0 is the first)
+
+
+Graphics
+--------
+
+GR(mode)
+    Switch to a graphics mode and clear it to black:
+      0  120 x 68,  16 colors      4  120 x 68,  4096 colors
+      1  240 x 136, 16 colors      5  240 x 136, 4096 colors
+      2  480 x 272, 16 colors      6  480 x 272, 4096 colors
+TEXT(mode)
+    Back to text: 8 = 40 columns, 9 = 80 columns. Clears the screen.
+GRCLS
+    Clear the graphics screen to black.
+GRCOLOR(c)
+    The color used when a drawing command doesn't give one (at the start: $FFF, white).
+PLOT(x, y [, c])
+    Set one pixel.
+LINE(x1, y1, x2, y2 [, c])
+    A line between two points.
+RECTANGLE(x1, y1, x2, y2 [, c])
+FILLRECTANGLE(x1, y1, x2, y2 [, c])
+    A rectangle with these opposite corners, outlined or filled.
+CIRCLE(x1, y1, x2, y2 [, c])
+FILLCIRCLE(x1, y1, x2, y2 [, c])
+    The circle that fits in that rectangle (an ellipse if it isn't square), outlined or
+    filled. It can be at most 512 pixels wide and high.
+
+Colors: 0-15 in modes 0-2 (the standard 16 color palette); in modes 4-6 a 12 bit $RGB
+value, 4 bits each of red, green and blue ($F00 is red, $0F0 green, $00F blue, $FFF
+white). Coordinates start at 0,0 in the top left corner; anything off the screen is
+simply not drawn. The parentheses around the arguments can be left out (PLOT 10,20).
+
+Text doesn't show in a graphics mode. When a program ends normally the picture stays on
+the screen (type TEXT(9) to get the text back); an error or Ctrl-C switches to text mode
+9 by itself so that the message can be seen.
+
+  10 GR(6)
+  20 FOR R=10 TO 130 STEP 10
+  30 CIRCLE(240-R, 136-R, 240+R, 136+R, R*30)
+  40 NEXT
+  50 A$=INKEY$: IF A$="" THEN 50
+  60 TEXT(9)
+
+
+Errors
+------
+
+  ?Syntax error                  something can't be understood
+  ?Out of memory                 no room for the program, variables or strings, or too
+                                 many FOR/GOSUB/WHILE/REPEAT levels (about 150)
+  ?Undefined line                GOTO, GOSUB, RUN or RESTORE to a line that isn't there
+  ?Type mismatch                 a string where a number belongs or the other way round
+  ?Overflow                      a number too big (for its type, or at all)
+  ?Division by zero
+  ?Illegal function call         a value out of range for a statement or function
+  ?NEXT without FOR
+  ?RETURN without GOSUB
+  ?Out of DATA
+  ?Bad subscript                 an array index out of range or the wrong number of them
+  ?Redimensioned array           DIM of an array that already exists
+  ?String too long               a string over 65535 characters
+  ?Can't continue                CONT when there's nothing to continue
+  ?Formula too complex           an expression nested too deeply
+  ?WEND without WHILE
+  ?UNTIL without REPEAT
+  ?WHILE without WEND
+  ?IF without ENDIF
+  ?SWITCH without ENDSWITCH
+  ?Line too long                 a program line over 500 bytes once stored
+
+In a program, the line number follows: "?Division by zero error in 120".

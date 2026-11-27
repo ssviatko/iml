@@ -106,15 +106,23 @@ Apple II style mini-assembler; type ? for its commands. It is built with vasm
 name), override with "make VASM=vasmm68k_mot" if yours is called differently.
 All numbers are hex, so a TRAP is "TRAP #$F" or "TRAP #0F".
 
+BASIC (basic.s, built into basic.bin by the same make) is loaded at the next $1000
+boundary after the monitor ($1C3000 at the moment); the Makefile works the address
+out from the size of mrom.bin, and m68k checks that basic.bin was built for it. In
+the monitor, B starts BASIC (cold start) and W goes back to it keeping the program
+(warm start); MONITOR in BASIC returns to the monitor. See BASIC_README for the
+language.
+
 68000 memory map:
 
 00/0000-00/03FF - Exception vectors (RAM, copied from the ROM at reset)
 00/0400-00/0FFF - Monitor variables
-00/1000-00/FFFF - Supervisor stack (starts at 01/0000)
-01/0000-17/FFFF - User RAM
+00/1000-00/1003 - BASIC: the address of its memory block (LOMEM)
+00/1004-00/FFFF - Supervisor stack (starts at 01/0000)
+01/0000-17/FFFF - User RAM (BASIC uses 01/0000-16/FFFF by default)
 18/0000-1B/FBFF - Video buffer
 1B/FC00-1B/FFFF - Soft switches
-1C/0000-1F/FFFF - ROM: vector table, then the monitor at 1C/0400
+1C/0000-1F/FFFF - ROM: vector table, the monitor at 1C/0400, then BASIC
 
 Programs started with G run in supervisor mode and can return with RTS. Any
 exception prints its name and the registers (R shows them again) and returns
@@ -153,6 +161,28 @@ IO_CON_CURSORV = 0x1bfc15 - (read/write) - Vertizontal cursor position
 IO_CON_CURSOR = 0x1bfc16 - (read/write) - High bit set determines if cursor is visible
 IO_CON_CR = 0x1bfc17 - (write any value) - Prints a carriage return
 IO_VIDMODE = 0x1bfc20 - (read/write) - Console video mode
+
+Floating point: FACC (0x1bfce0) and FARG (0x1bfcf0) are the two registers, FPINT
+(0x1bfcd8) is a 64 bit integer (little endian), FPASCII (0x1bfcc0) is a text buffer
+and FPCOND (0x1bfcbf) reports results. Writing a command byte to one of these
+starts the operation: bit 7 = 0 float / 1 double, bit 5 = 1 Intel 80 bit (then
+bit 7 doesn't matter), bit 6 = 0 FACC / 1 FARG (the register used, or written back
+to), bits 0-4 = more data for the command.
+
+IO_FP_INIT_CONSTANT = 0x1bfc40 - load a constant (bits 0-4: 0-5, 10, 100, -1..-5, -10, pi, e, sqrt 2, phi)
+IO_FP_TO_ASCII = 0x1bfc41 - register to FPASCII, fixed point
+IO_FP_MULTIPLY/DIVIDE/ADD/SUBTRACT = 0x1bfc42-0x1bfc45 - FACC op FARG (divide by zero: FPCOND bit 7)
+IO_FP_LN = 0x1bfc46, IO_FP_EXP = 0x1bfc49 - natural log, e to the power, in place
+IO_FP_ILOAD = 0x1bfc47 - FPINT to the register
+IO_FP_ISAVE = 0x1bfc48 - the register's integer part to FPINT
+IO_FP_SIN/COS/TAN/ATN = 0x1bfc4a-0x1bfc4d - in place, radians
+IO_FP_POWER = 0x1bfc4e - FACC ^ FARG
+IO_FP_COMPARE = 0x1bfc4f - FACC vs FARG -> FPCOND: 1 equal, 2 less, 4 greater, 8 unordered
+IO_FP_FROM_ASCII = 0x1bfc50 - text at FPASCII (up to 31 characters) to the register; FPCOND bit 6 if it isn't a number
+IO_FP_TO_ASCII_G = 0x1bfc51 - the register to FPASCII in %g style (bits 0-4 = significant digits, 0 = 18), up to 32 bytes
+IO_FP_FUNC = 0x1bfc52 - in place, bits 0-4: 0 log10, 1 sqrt, 2 abs, 3 negate, 4 floor, 5 ceiling, 6 truncate, 7 round, 8 arcsin, 9 arccos
+IO_FP_CLASSIFY = 0x1bfc53 - the register -> FPCOND: 1 zero, 2 negative, $10 not a number, $20 infinite
+IO_FP_ISAVE_CHECKED = 0x1bfc54 - like ISAVE, but FPCOND bit 5 (and 0) if it doesn't fit in 64 bits
 
 Video modes:
 

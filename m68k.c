@@ -67,8 +67,29 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Cannot open ROM file.\nA file named \"mrom.bin\" must exist in this directory.\n");
 		exit(-1);
 	}
-	printf("read $%lx bytes.\n", fread(mem + M68K_ROM_BASE, 1, M68K_ROM_SIZE, mrom));
+	size_t l_romsize = fread(mem + M68K_ROM_BASE, 1, M68K_ROM_SIZE, mrom);
+	printf("read $%lx bytes.\n", l_romsize);
 	fclose(mrom);
+
+	// BASIC goes at the next $1000 boundary above the monitor (where the monitor's B and W
+	// commands expect it). basic.bin says where it was assembled for, at offset 16
+	uint32_t l_basic = M68K_ROM_BASE + ((l_romsize + 0xfff) & ~0xfff);
+	FILE *brom;
+	if ((brom = fopen("basic.bin", "r")) == NULL) {
+		fprintf(stderr, "m68k: no basic.bin, so no BASIC.\n");
+	} else {
+		size_t l_room = M68K_ROM_BASE + M68K_ROM_SIZE - l_basic;
+		uint8_t *l_b = mem + l_basic;
+		size_t l_bsize = fread(l_b, 1, l_room, brom);
+		fclose(brom);
+		uint32_t l_org = (l_b[16] << 24) | (l_b[17] << 16) | (l_b[18] << 8) | l_b[19];
+		if ((l_bsize < 20) || memcmp(l_b + 8, "IMLBASIC", 8) || (l_org != l_basic)) {
+			fprintf(stderr, "m68k: basic.bin isn't a BASIC assembled for $%06X (rebuild it with make), not loaded.\n", l_basic);
+			memset(l_b, 0, l_bsize);
+		} else {
+			printf("read $%lx bytes of BASIC at $%06X.\n", l_bsize, l_basic);
+		}
+	}
 	// the 68000 takes its reset vectors from address 0: copy the ROM's vector table there
 	memcpy(mem, mem + M68K_ROM_BASE, M68K_VECTORS_SIZE);
 	

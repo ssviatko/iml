@@ -44,13 +44,13 @@ const static uint32_t E4SHADOWEND = 0x1fffff;
 const static uint32_t FPCOND = 0x1bfcbf; // condition/error byte
 // FPCOND bits:
 // 7 = division by zero error (set)
-// 6 =
-// 5 =
-// 4 =
-// 3 =
-// 2 =
-// 1 =
-// 0 = equality (when set)
+// 6 = FP_FROM_ASCII: the text wasn't a number
+// 5 = FP_CLASSIFY: infinite. FP_ISAVE_CHECKED: out of the 64 bit range
+// 4 = FP_CLASSIFY: not a number
+// 3 = FP_COMPARE: unordered (a NaN)
+// 2 = FP_COMPARE: FACC > FARG
+// 1 = FP_COMPARE: FACC < FARG. FP_CLASSIFY: negative
+// 0 = equality (when set). FP_CLASSIFY: zero
 
 const static uint32_t FPASCII = 0x1bfcc0; // 24 byte ASCII buffer
 const static uint32_t FPINT = 0x1bfcd8; // 64 bit integer buffer
@@ -109,6 +109,17 @@ const static uint16_t IO_FP_LN = 0x46;
 const static uint16_t IO_FP_ILOAD = 0x47;
 const static uint16_t IO_FP_ISAVE = 0x48;
 const static uint16_t IO_FP_EXP = 0x49;
+const static uint16_t IO_FP_SIN = 0x4A;
+const static uint16_t IO_FP_COS = 0x4B;
+const static uint16_t IO_FP_TAN = 0x4C;
+const static uint16_t IO_FP_ATN = 0x4D;
+const static uint16_t IO_FP_POWER = 0x4E;        // FACC ^ FARG
+const static uint16_t IO_FP_COMPARE = 0x4F;      // FACC vs FARG -> FPCOND
+const static uint16_t IO_FP_FROM_ASCII = 0x50;   // FPASCII text (up to 31 chars) -> register
+const static uint16_t IO_FP_TO_ASCII_G = 0x51;   // register -> FPASCII (up to 32 bytes), %g style, digits in bits 0-4
+const static uint16_t IO_FP_FUNC = 0x52;         // more unary functions, selected by bits 0-4
+const static uint16_t IO_FP_CLASSIFY = 0x53;     // zero/negative/NaN/infinite -> FPCOND
+const static uint16_t IO_FP_ISAVE_CHECKED = 0x54; // ISAVE with an out of range check
 
 const static uint16_t IO_CMD_SERVERALIVE = 0xF800;
 const static uint16_t IO_CMD_SERVERDEAD = 0xF801;
@@ -197,5 +208,16 @@ void fp_ln(uint8_t a_byte);
 void fp_exp(uint8_t a_byte);
 void fp_iload(uint8_t a_byte);
 void fp_isave(uint8_t a_byte);
+void fp_sin(uint8_t a_byte);
+void fp_cos(uint8_t a_byte);
+void fp_tan(uint8_t a_byte);
+void fp_atn(uint8_t a_byte);
+void fp_power(uint8_t a_byte);
+void fp_compare(uint8_t a_byte);
+void fp_from_ascii(uint8_t a_byte);
+void fp_to_ascii_g(uint8_t a_byte);
+void fp_func(uint8_t a_byte);
+void fp_classify(uint8_t a_byte);
+void fp_isave_checked(uint8_t a_byte);
 
 #endif // IO_DRIVER_H

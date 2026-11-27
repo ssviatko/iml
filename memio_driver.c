@@ -267,6 +267,28 @@ static void mem_write_phys(uint32_t a_address, uint8_t a_byte)
 		fp_iload(a_byte);
 	} else if (a_address == IOSTART + IO_FP_ISAVE) {
 		fp_isave(a_byte);
+	} else if (a_address == IOSTART + IO_FP_SIN) {
+		fp_sin(a_byte);
+	} else if (a_address == IOSTART + IO_FP_COS) {
+		fp_cos(a_byte);
+	} else if (a_address == IOSTART + IO_FP_TAN) {
+		fp_tan(a_byte);
+	} else if (a_address == IOSTART + IO_FP_ATN) {
+		fp_atn(a_byte);
+	} else if (a_address == IOSTART + IO_FP_POWER) {
+		fp_power(a_byte);
+	} else if (a_address == IOSTART + IO_FP_COMPARE) {
+		fp_compare(a_byte);
+	} else if (a_address == IOSTART + IO_FP_FROM_ASCII) {
+		fp_from_ascii(a_byte);
+	} else if (a_address == IOSTART + IO_FP_TO_ASCII_G) {
+		fp_to_ascii_g(a_byte);
+	} else if (a_address == IOSTART + IO_FP_FUNC) {
+		fp_func(a_byte);
+	} else if (a_address == IOSTART + IO_FP_CLASSIFY) {
+		fp_classify(a_byte);
+	} else if (a_address == IOSTART + IO_FP_ISAVE_CHECKED) {
+		fp_isave_checked(a_byte);
 	}
 	
 	g_shm_ptr[a_address] = a_byte;
@@ -900,4 +922,181 @@ void fp_isave(uint8_t a_byte)
 	for (int i = 0; i < 8; ++i)
 		g_shm_ptr[FPINT + i] = l_fpint.bytes[i];
 	g_shm_ptr[FPCOND] = 0;
+}
+
+// unary functions: like fp_ln/fp_exp, they work on FACC or FARG (bit 6 of the command)
+// and write the result back to the same register
+static void fp_unary(uint8_t a_byte, long double (*a_fn)(long double))
+{
+	long double op;
+	fp_parse_command(a_byte);
+	op = fp_read_specified(fp_width, fp_extended, fp_reg);
+	op = a_fn(op);
+	fp_writeback(op);
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_sin(uint8_t a_byte)
+{
+	// sin(FACC/FARG), radians
+	fp_unary(a_byte, sinl);
+}
+
+void fp_cos(uint8_t a_byte)
+{
+	// cos(FACC/FARG), radians
+	fp_unary(a_byte, cosl);
+}
+
+void fp_tan(uint8_t a_byte)
+{
+	// tan(FACC/FARG), radians
+	fp_unary(a_byte, tanl);
+}
+
+void fp_atn(uint8_t a_byte)
+{
+	// atan(FACC/FARG), result in radians
+	fp_unary(a_byte, atanl);
+}
+
+void fp_power(uint8_t a_byte)
+{
+	// performs FPACCUMULATOR ^ FPARGUMENT
+	// bit 6 selects the register to write back to, like multiply/divide/add/subtract
+	long double acc, arg;
+	fp_parse_command(a_byte);
+	acc = fp_read_specified(fp_width, fp_extended, 0);
+	arg = fp_read_specified(fp_width, fp_extended, 1);
+	fp_writeback(powl(acc, arg));
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_compare(uint8_t a_byte)
+{
+	// compares FPACCUMULATOR with FPARGUMENT. Nothing is written back. FPCOND gets:
+	// bit 0 = equal, bit 1 = FACC < FARG, bit 2 = FACC > FARG, bit 3 = unordered (a NaN)
+	long double acc, arg;
+	uint8_t cond = 0;
+	fp_parse_command(a_byte);
+	acc = fp_read_specified(fp_width, fp_extended, 0);
+	arg = fp_read_specified(fp_width, fp_extended, 1);
+	if (isnan(acc) || isnan(arg))
+		cond = 0x08;
+	else if (acc == arg)
+		cond = 0x01;
+	else if (acc < arg)
+		cond = 0x02;
+	else
+		cond = 0x04;
+	g_shm_ptr[FPCOND] = cond;
+}
+
+void fp_from_ascii(uint8_t a_byte)
+{
+	// converts the zero terminated text in FPASCII to a number in FACC/FARG (bit 6). The
+	// text can be up to 31 characters long, running on into FPINT. Leading and trailing
+	// spaces are allowed. If the text isn't a number, the register gets 0 and FPCOND bit 6
+	// is set; otherwise FPCOND is 0.
+	char buff[33];
+	char *end;
+	long double val;
+	int i;
+	fp_parse_command(a_byte);
+	for (i = 0; i < 32; ++i)
+		buff[i] = g_shm_ptr[FPASCII + i];
+	buff[32] = 0;
+	val = strtold(buff, &end);
+	while (*end == ' ')
+		++end;
+	if ((end == buff) || (*end != 0) || isnan(val)) {
+		fp_writeback(0.0L);
+		g_shm_ptr[FPCOND] = 0x40;
+		return;
+	}
+	fp_writeback(val);
+	g_shm_ptr[FPCOND] = 0;
+}
+
+void fp_to_ascii_g(uint8_t a_byte)
+{
+	// converts FACC/FARG (bit 6) to text in the shortest of fixed or exponent form, with
+	// the number of significant digits in bits 0-4 (0 = 18), e.g. "0.5", "-12", "1.5E+20".
+	// The zero terminated text is written to FPASCII and can be up to 32 bytes long, so
+	// it may run on into FPINT.
+	char buff[32];
+	long double val;
+	int digits, i;
+	fp_parse_command(a_byte);
+	digits = fp_cmd ? fp_cmd : 18;
+	val = fp_read_specified(fp_width, fp_extended, fp_reg);
+	memset(buff, 0, sizeof(buff));
+	snprintf(buff, sizeof(buff), "%.*Lg", digits, val);
+	for (i = 0; i < 32; ++i) {
+		char c = buff[i];
+		if (c == 'e')
+			c = 'E';
+		g_shm_ptr[FPASCII + i] = c;
+	}
+}
+
+static long double fp_negl(long double a) { return -a; }
+
+void fp_func(uint8_t a_byte)
+{
+	// more unary functions on FACC/FARG (bit 6), written back to the same register.
+	// bits 0-4 select the function:
+	// 0 = log10, 1 = square root, 2 = absolute value, 3 = negate, 4 = floor, 5 = ceiling,
+	// 6 = truncate (toward zero), 7 = round (halves away from zero), 8 = arcsin, 9 = arccos
+	static long double (* const fns[])(long double) = {
+		log10l, sqrtl, fabsl, fp_negl, floorl, ceill, truncl, roundl, asinl, acosl
+	};
+	fp_parse_command(a_byte);
+	if (fp_cmd >= sizeof(fns) / sizeof(fns[0])) {
+		g_shm_ptr[FPCOND] = 0;
+		return;
+	}
+	fp_unary(a_byte, fns[fp_cmd]);
+}
+
+void fp_classify(uint8_t a_byte)
+{
+	// describes FACC/FARG (bit 6) in FPCOND:
+	// bit 0 = zero, bit 1 = negative, bit 4 = not a number, bit 5 = infinite
+	long double val;
+	uint8_t cond = 0;
+	fp_parse_command(a_byte);
+	val = fp_read_specified(fp_width, fp_extended, fp_reg);
+	if (isnan(val))
+		cond |= 0x10;
+	else if (isinf(val))
+		cond |= 0x20;
+	else if (val == 0.0L)
+		cond |= 0x01;
+	if (!isnan(val) && signbit(val) && (val != 0.0L))
+		cond |= 0x02;
+	g_shm_ptr[FPCOND] = cond;
+}
+
+void fp_isave_checked(uint8_t a_byte)
+{
+	// like fp_isave (the integer part of FACC/FARG to the 64 bit integer at FPINT), but
+	// sets FPCOND bit 5 and stores 0 if the value doesn't fit in 64 bits (or isn't a number)
+	union {
+		int64_t i64;
+		char bytes[8];
+	} l_fpint;
+	long double op;
+	fp_parse_command(a_byte);
+	op = fp_read_specified(fp_width, fp_extended, fp_reg);
+	g_shm_ptr[FPCOND] = 0;
+	// -2^63 <= op < 2^63 after truncation
+	if (isnan(op) || (op >= 9223372036854775808.0L) || (op <= -9223372036854775809.0L)) {
+		l_fpint.i64 = 0;
+		g_shm_ptr[FPCOND] = 0x20;
+	} else {
+		l_fpint.i64 = (int64_t)op;
+	}
+	for (int i = 0; i < 8; ++i)
+		g_shm_ptr[FPINT + i] = l_fpint.bytes[i];
 }

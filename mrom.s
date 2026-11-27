@@ -16,16 +16,20 @@
 ;   R                     show the registers saved by the last exception
 ;   ! [addr]              mini-assembler (empty line to leave, addr: to move)
 ;   H                     halt the processor (STOP)
+;   B                     BASIC, cold start (clears the BASIC program)
+;   W                     BASIC, warm start (keeps the program and variables)
 ;   ?                     help
 ;
 ; Memory map:
 ;   $000000-$0003ff  exception vectors (RAM, copied from the start of the ROM at reset)
 ;   $000400-$000fff  monitor variables
-;   $001000-$00ffff  supervisor stack (the stack pointer starts at $010000)
-;   $010000-$17ffff  user RAM
+;   $001000-$001003  BASIC: where its buffer (LOMEM) is
+;   $001004-$00ffff  supervisor stack (the stack pointer starts at $010000)
+;   $010000-$17ffff  user RAM (BASIC uses $010000-$16ffff by default)
 ;   $180000-$1bfbff  video buffer
 ;   $1bfc00-$1bffff  soft switches
-;   $1c0000-$1fffff  ROM (write protected): this vector table, then the monitor at $1c0400
+;   $1c0000-$1fffff  ROM (write protected): this vector table, then the monitor at $1c0400,
+;                    then BASIC at the next $1000 boundary after the monitor
 ;
 ; Any exception other than TRAP #15 prints the exception and the registers and
 ; returns to the monitor. TRAP #15 is a system call, function number in D0.B:
@@ -248,6 +252,10 @@ cmdtab:
 	dc.l cmd_asm
 	dc.w 'H'
 	dc.l cmd_h
+	dc.w 'B'
+	dc.l cmd_b
+	dc.w 'W'
+	dc.l cmd_w
 	dc.w '?'
 	dc.l cmd_help
 	dc.w 0
@@ -651,6 +659,25 @@ cmd_h:
 	stop #$2700
 	rts
 
+; B: BASIC, cold start (a new, empty program). W: BASIC, warm start (keeps the program)
+cmd_b:
+	moveq #0,d0
+	bra.s basic
+cmd_w:
+	moveq #4,d0
+basic:
+	lea BASIC+8,a0			; is it there?
+	lea .sig(pc),a1
+	moveq #7,d1
+.c:
+	cmpm.b (a0)+,(a1)+
+	bne err
+	dbra d1,.c
+	lea BASIC,a0
+	jmp (a0,d0.w)
+.sig:
+	dc.b "IMLBASIC"
+
 cmd_help:
 	PUTS <"D [s [e]]  dump",13>
 	PUTS <"E a b..    enter",13>
@@ -664,6 +691,8 @@ cmd_help:
 	PUTS <"R          registers at the last exception",13>
 	PUTS <"! [a]      assemble",13>
 	PUTS <"H          halt",13>
+	PUTS <"B          BASIC (cold start)",13>
+	PUTS <"W          BASIC (warm start)",13>
 	rts
 
 ; ---------------------------------------------------------------- exceptions
@@ -2734,3 +2763,8 @@ itab:
 	dc.b 0
 	even
 
+; ---------------------------------------------------------------- end
+
+; BASIC (basic.bin) is loaded at the next $1000 boundary after the monitor
+romend:
+BASIC		equ	(romend+$fff)&$fffff000
