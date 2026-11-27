@@ -1,6 +1,7 @@
-// gconvert - convert a BMP, Targa or JPEG image to an IML 4096 color screen (see docs/gconvert.md)
+// gconvert - convert a BMP, Targa, JPEG or PNG image to an IML 4096 color screen
+// (see docs/gconvert.md)
 //
-// gconvert -i input.(bmp/tga/jpg) -o screen.scr -m (4/5/6) [-s]
+// gconvert -i input.(bmp/tga/jpg/png) -o screen.scr -m (4/5/6) [-s]
 //
 // The output is the raw screen image, to be loaded at $180000: one 16 bit pixel per screen
 // position, left to right then top to bottom, with red in bits 8-11, green in bits 4-7 and blue
@@ -12,7 +13,10 @@
 // The decoders are built in: BMP (1/4/8 bit palette, 16/24/32 bit, RLE4/RLE8, bitfields),
 // Targa (palette, truecolor, grayscale, with or without RLE) and baseline JPEG (grayscale or
 // color, any chroma subsampling, restart markers). Progressive JPEGs aren't supported.
+// PNG supports every standard color type and bit depth, and interlacing; zlib does the
+// decompression. Transparent PNG pixels are blended onto black.
 
+#include <zlib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +26,7 @@
 #include <unistd.h>
 #include <getopt.h>
 
-#define MAX_PIXELS (64 * 1024 * 1024) // refuse anything bigger than this (64 megapixels)
+#define MAX_DIM 4096 // refuse images wider or taller than this
 
 typedef struct {
 	int w, h;
@@ -37,12 +41,21 @@ static int fail(const char *a_msg)
 	return -1;
 }
 
+// check an image size against the MAX_DIM x MAX_DIM limit
+static int too_large(long a_w, long a_h)
+{
+	if ((a_w <= MAX_DIM) && (a_h <= MAX_DIM))
+		return 0;
+	snprintf(g_err, sizeof(g_err), "image is %ldx%ld, larger than the %dx%d limit", a_w, a_h, MAX_DIM, MAX_DIM);
+	return 1;
+}
+
 static int alloc_image(image_t *a_img, long a_w, long a_h)
 {
 	if ((a_w <= 0) || (a_h <= 0))
 		return fail("bad image size");
-	if (a_w * a_h > MAX_PIXELS)
-		return fail("image is too large");
+	if (too_large(a_w, a_h))
+		return -1;
 	a_img->w = (int)a_w;
 	a_img->h = (int)a_h;
 	a_img->rgb = calloc((size_t)a_w * a_h, 3);
@@ -715,10 +728,8 @@ static int decode_jpeg(const uint8_t *d, size_t len, image_t *img)
 					fail("bad JPEG frame header");
 					goto done;
 				}
-				if ((long)j->width * j->height > MAX_PIXELS) {
-					fail("image is too large");
+				if (too_large(j->width, j->height))
 					goto done;
-				}
 				j->hmax = j->vmax = 1;
 				for (int i = 0; i < j->ncomp; ++i) {
 					jcomp_t *c = &j->comp[i];
@@ -883,6 +894,268 @@ done:
 	return ret;
 }
 
+// ---------------------------------------------------------------- PNG
+
+static const uint8_t g_png_sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
+
+static uint32_t u32be(const uint8_t *p) { return ((uint32_t)p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]; }
+
+static int paeth(int a, int b, int c)
+{
+	int p = a + b - c, pa = abs(p - a), pb = abs(p - b), pc = abs(p - c);
+	return ((pa <= pb) && (pa <= pc)) ? a : ((pb <= pc) ? b : c);
+}
+
+typedef struct {
+	int ctype, depth;
+	uint8_t pal[256][4];   // RGBA (alpha from tRNS)
+	int trns;              // gray/RGB: one color is transparent
+	unsigned trns_v[3];    // that color, at the image's bit depth
+} png_t;
+
+// sample n (0-based) of a row, at the image's bit depth
+static unsigned png_sample(const uint8_t *a_row, int a_depth, size_t a_n)
+{
+	switch (a_depth) {
+		case 16:
+			return (a_row[a_n * 2] << 8) | a_row[a_n * 2 + 1];
+		case 8:
+			return a_row[a_n];
+		default: {
+			size_t bit = a_n * a_depth;
+			return (a_row[bit >> 3] >> (8 - a_depth - (bit & 7))) & ((1 << a_depth) - 1);
+		}
+	}
+}
+
+// pixel x of an unfiltered row to RGB, blended onto black by its alpha
+static void png_pixel(const png_t *p, const uint8_t *a_row, size_t x, uint8_t *out)
+{
+	uint64_t max = (1u << p->depth) - 1; // the color and alpha are both 0..max
+	unsigned v[4];
+	int n = (p->ctype == 0) ? 1 : (p->ctype == 2) ? 3 : (p->ctype == 3) ? 1 : (p->ctype == 4) ? 2 : 4;
+	for (int i = 0; i < n; ++i)
+		v[i] = png_sample(a_row, p->depth, x * n + i);
+
+	uint64_t c[3], a = max;
+	switch (p->ctype) {
+		case 3: // palette: 8 bit entries
+			max = 255;
+			c[0] = p->pal[v[0]][0];
+			c[1] = p->pal[v[0]][1];
+			c[2] = p->pal[v[0]][2];
+			a = p->pal[v[0]][3];
+			break;
+		case 0: // gray
+		case 4: // gray + alpha
+			c[0] = c[1] = c[2] = v[0];
+			if (p->ctype == 4)
+				a = v[1];
+			else if (p->trns && (v[0] == p->trns_v[0]))
+				a = 0;
+			break;
+		default: // RGB, RGB + alpha
+			for (int i = 0; i < 3; ++i)
+				c[i] = v[i];
+			if (p->ctype == 6)
+				a = v[3];
+			else if (p->trns && (v[0] == p->trns_v[0]) && (v[1] == p->trns_v[1]) && (v[2] == p->trns_v[2]))
+				a = 0;
+			break;
+	}
+	// blend and scale to 8 bits in one step, so a 16 bit image is only rounded once
+	for (int i = 0; i < 3; ++i)
+		out[i] = (uint8_t)((c[i] * a * 255 + max * max / 2) / (max * max));
+}
+
+static int decode_png(const uint8_t *d, size_t len, image_t *img)
+{
+	png_t p;
+	memset(&p, 0, sizeof(p));
+	for (int i = 0; i < 256; ++i)
+		p.pal[i][3] = 255;
+	uint32_t w = 0, h = 0;
+	int interlace = 0, have_ihdr = 0, have_plte = 0, ret = -1;
+	uint8_t *z = NULL, *raw = NULL;
+	size_t zlen = 0, zcap = 0;
+
+	// collect the chunks
+	size_t pos = 8;
+	for (;;) {
+		if (pos + 12 > len) {
+			fail("PNG file is truncated");
+			goto done;
+		}
+		uint32_t clen = u32be(d + pos);
+		const uint8_t *type = d + pos + 4, *cd = d + pos + 8;
+		if ((clen > len) || (pos + 12 + (size_t)clen > len)) {
+			fail("PNG file is truncated");
+			goto done;
+		}
+		if (crc32(crc32(0, NULL, 0), type, clen + 4) != u32be(cd + clen)) {
+			fail("PNG file is damaged (bad chunk CRC)");
+			goto done;
+		}
+		pos += 12 + clen;
+
+		if (!memcmp(type, "IHDR", 4)) {
+			if (clen < 13) {
+				fail("bad PNG header");
+				goto done;
+			}
+			w = u32be(cd);
+			h = u32be(cd + 4);
+			p.depth = cd[8];
+			p.ctype = cd[9];
+			interlace = cd[12];
+			int ok;
+			switch (p.ctype) {
+				case 0: ok = (p.depth == 1) || (p.depth == 2) || (p.depth == 4) || (p.depth == 8) || (p.depth == 16); break;
+				case 3: ok = (p.depth == 1) || (p.depth == 2) || (p.depth == 4) || (p.depth == 8); break;
+				case 2: case 4: case 6: ok = (p.depth == 8) || (p.depth == 16); break;
+				default: ok = 0;
+			}
+			if (!ok || (cd[10] != 0) || (cd[11] != 0) || (interlace > 1)) {
+				fail("unsupported or bad PNG header");
+				goto done;
+			}
+			if ((w == 0) || (h == 0)) {
+				fail("bad PNG image size");
+				goto done;
+			}
+			if (too_large(w, h)) // also keeps the sizes below from overflowing
+				goto done;
+			have_ihdr = 1;
+		} else if (!have_ihdr) {
+			fail("bad PNG: first chunk isn't IHDR");
+			goto done;
+		} else if (!memcmp(type, "PLTE", 4)) {
+			if ((clen % 3) || (clen > 768)) {
+				fail("bad PNG palette");
+				goto done;
+			}
+			for (uint32_t i = 0; i < clen / 3; ++i)
+				memcpy(p.pal[i], cd + i * 3, 3);
+			have_plte = 1;
+		} else if (!memcmp(type, "tRNS", 4)) {
+			if (p.ctype == 3) {
+				for (uint32_t i = 0; (i < clen) && (i < 256); ++i)
+					p.pal[i][3] = cd[i];
+			} else if ((p.ctype == 0) && (clen >= 2)) {
+				p.trns = 1;
+				p.trns_v[0] = u16be(cd);
+			} else if ((p.ctype == 2) && (clen >= 6)) {
+				p.trns = 1;
+				for (int i = 0; i < 3; ++i)
+					p.trns_v[i] = u16be(cd + i * 2);
+			}
+		} else if (!memcmp(type, "IDAT", 4)) {
+			if (zlen + clen > zcap) {
+				size_t ncap = zcap ? zcap : 65536;
+				while (ncap < zlen + clen)
+					ncap *= 2;
+				uint8_t *nz = realloc(z, ncap);
+				if (!nz) {
+					fail("out of memory");
+					goto done;
+				}
+				z = nz;
+				zcap = ncap;
+			}
+			memcpy(z + zlen, cd, clen);
+			zlen += clen;
+		} else if (!memcmp(type, "IEND", 4)) {
+			break;
+		} else if (!(type[0] & 0x20)) { // an unknown chunk that's marked critical
+			fail("unsupported PNG (unknown critical chunk)");
+			goto done;
+		}
+	}
+	if ((p.ctype == 3) && !have_plte) {
+		fail("bad PNG: palette image without a palette");
+		goto done;
+	}
+	if (!zlen) {
+		fail("PNG has no image data");
+		goto done;
+	}
+
+	// the passes: the whole image, or the 7 Adam7 passes
+	static const int adam7[7][4] = { // x start, y start, x step, y step
+		{ 0, 0, 8, 8 }, { 4, 0, 8, 8 }, { 0, 4, 4, 8 }, { 2, 0, 4, 4 }, { 0, 2, 2, 4 }, { 1, 0, 2, 2 }, { 0, 1, 1, 2 }
+	};
+	static const int whole[1][4] = { { 0, 0, 1, 1 } };
+	const int (*passes)[4] = interlace ? adam7 : whole;
+	int npasses = interlace ? 7 : 1;
+	int channels = (p.ctype == 2) ? 3 : (p.ctype == 4) ? 2 : (p.ctype == 6) ? 4 : 1;
+	int bpp = (channels * p.depth + 7) / 8; // bytes per complete pixel, for the filters (at least 1)
+
+	size_t rawlen = 0;
+	for (int i = 0; i < npasses; ++i) {
+		size_t pw = (w + passes[i][2] - 1 - passes[i][0]) / passes[i][2];
+		size_t ph = (h + passes[i][3] - 1 - passes[i][1]) / passes[i][3];
+		if (pw && ph)
+			rawlen += ph * (1 + (pw * channels * p.depth + 7) / 8);
+	}
+	raw = malloc(rawlen);
+	if (!raw) {
+		fail("out of memory");
+		goto done;
+	}
+	uLongf outlen = rawlen;
+	int zr = uncompress(raw, &outlen, z, zlen);
+	if ((zr != Z_OK) && !((zr == Z_BUF_ERROR) && (outlen == rawlen))) {
+		fail((zr == Z_DATA_ERROR) ? "PNG image data is damaged" : "PNG image data is truncated");
+		goto done;
+	}
+	if (outlen < rawlen) {
+		fail("PNG image data is truncated");
+		goto done;
+	}
+
+	if (alloc_image(img, w, h) < 0)
+		goto done;
+	uint8_t *rp = raw;
+	for (int i = 0; i < npasses; ++i) {
+		size_t pw = (w + passes[i][2] - 1 - passes[i][0]) / passes[i][2];
+		size_t ph = (h + passes[i][3] - 1 - passes[i][1]) / passes[i][3];
+		if (!pw || !ph)
+			continue;
+		size_t rowbytes = (pw * channels * p.depth + 7) / 8;
+		uint8_t *prev = NULL;
+		for (size_t y = 0; y < ph; ++y) {
+			uint8_t filter = rp[0];
+			uint8_t *row = rp + 1;
+			for (size_t k = 0; k < rowbytes; ++k) {
+				int a = (k >= (size_t)bpp) ? row[k - bpp] : 0;
+				int b = prev ? prev[k] : 0;
+				int c = (prev && (k >= (size_t)bpp)) ? prev[k - bpp] : 0;
+				switch (filter) {
+					case 0: break;
+					case 1: row[k] += a; break;
+					case 2: row[k] += b; break;
+					case 3: row[k] += (a + b) / 2; break;
+					case 4: row[k] += paeth(a, b, c); break;
+					default:
+						fail("PNG image data is damaged (bad filter)");
+						goto done;
+				}
+			}
+			for (size_t x = 0; x < pw; ++x) {
+				size_t ix = passes[i][0] + x * passes[i][2], iy = passes[i][1] + y * passes[i][3];
+				png_pixel(&p, row, x, img->rgb + (iy * w + ix) * 3);
+			}
+			prev = row;
+			rp += 1 + rowbytes;
+		}
+	}
+	ret = 0;
+done:
+	free(z);
+	free(raw);
+	return ret;
+}
+
 // ---------------------------------------------------------------- scaling and output
 
 // one destination pixel from the source area [x0,x1) x [y0,y1) (in source pixels), area weighted
@@ -986,8 +1259,8 @@ static struct option g_options[] = {
 
 static void usage(void)
 {
-	fprintf(stderr, "usage: gconvert -i input.(bmp/tga/jpg) -o screen.scr -m (4/5/6) [-s]\n"
-		"       -i, --input   BMP, Targa or JPEG image\n"
+	fprintf(stderr, "usage: gconvert -i input.(bmp/tga/jpg/png) -o screen.scr -m (4/5/6) [-s]\n"
+		"       -i, --input   BMP, Targa, JPEG or PNG image\n"
 		"       -o, --output  screen image, to load at 180000h\n"
 		"       -m, --mode    4 = 120x68, 5 = 240x136, 6 = 480x272 (4096 colors)\n"
 		"       -s, --scale   scale the image to fit the screen\n");
@@ -1082,11 +1355,14 @@ int main(int argc, char **argv)
 	} else if ((len >= 3) && (data[0] == 0xff) && (data[1] == 0xd8) && (data[2] == 0xff)) {
 		kind = "JPEG";
 		r = decode_jpeg(data, len, &img);
+	} else if ((len >= 8) && !memcmp(data, g_png_sig, 8)) {
+		kind = "PNG";
+		r = decode_png(data, len, &img);
 	} else if (tga_header_ok(data, len)) { // Targa has no signature; go by a sensible header
 		kind = "Targa";
 		r = decode_tga(data, len, &img);
 	} else {
-		fprintf(stderr, "gconvert: %s is not a BMP, Targa or JPEG file\n", input);
+		fprintf(stderr, "gconvert: %s is not a BMP, Targa, JPEG or PNG file\n", input);
 		free(data);
 		return 1;
 	}
