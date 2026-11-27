@@ -115,10 +115,16 @@ Numbers convert between the types as needed. A float stored in an integer variab
 rounded (halves away from zero); a 64 bit value stored in a 32 bit variable keeps its low
 32 bits. Integer arithmetic is 64 bit and wraps around; it never overflows into a float.
 
-Arrays: DIM A(10), B$(5,5), M%(2,3,4) (up to 8 dimensions). Indexes start at 0, so A(10)
-has 11 elements, and an array can have up to 16,777,215 elements in all. An array that
-is used without DIM is made with 11 elements (0-10) per dimension when something is
-stored in it; reading from an array that doesn't exist gives 0 or "".
+Arrays: DIM A(10), B$(5,5), CUBE(9,19,29) (up to 8 dimensions). Indexes start at 0, so
+A(10) has 11 elements, and an array can have up to 16,777,215 elements in all. An array
+has to be made with DIM before it's used: using one that hasn't been gives "?Array not
+dimensioned error" (so a misspelt array name is caught where it happens). Like other
+variables, arrays are cleared by RUN, CLEAR, NEW and by changing the program, so DIM
+them in the program itself. ARRAYS lists the arrays there are.
+
+  10 DIM GRID%(9,9,9)             (a 10 x 10 x 10 cube of 32 bit integers)
+  20 GRID%(1,2,3) = 42
+  30 PRINT GRID%(1,2,3)
 
 
 Numbers
@@ -158,6 +164,12 @@ as both logical and bitwise operators: 5 OR 2 = 7, 2>1 AND 3>2 = -1.
 Statements
 ----------
 
+ARRAYS
+    List the arrays, oldest first: the name with the largest index of each dimension (as
+    in the DIM), the number of elements, and the bytes it takes (for a string array,
+    without the strings themselves):
+      ARY%(100000)            100001 elements, 400020 bytes
+      CUBE(9,19,29)           6000 elements, 60024 bytes
 CALL addr [, d0, d1, ...]
     Call a machine language routine at addr (in supervisor mode; return with RTS). Up to
     eight more values are put in D0-D7 first. See also the CALL() function.
@@ -489,6 +501,7 @@ Errors
     3  ?RETURN without GOSUB
     4  ?Out of DATA
     9  ?Bad subscript                 an array index out of range or the wrong number of them
+   35  ?Array not dimensioned         an array used before DIM made it
    10  ?Redimensioned array           DIM of an array that already exists
    15  ?String too long               a string over 65535 characters
    17  ?Can't continue                CONT when there's nothing to continue

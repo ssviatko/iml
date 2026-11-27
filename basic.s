@@ -75,7 +75,7 @@ STKLIMIT	equ	$3000		; expressions nested deeper than this: FORMULA TOO COMPLEX
 DEF_LOMEM	equ	$10000
 DEF_HIMEM	equ	$16ffff
 RAMTOP		equ	$180000		; video memory starts here
-MAGIC		equ	'IMLD'		; (changes when the layout of the block does)
+MAGIC		equ	'IMLE'		; (changes when the layout of the block does)
 
 ; ---------------------------------------------------------------- internal variables (at LOMEM, A6)
 
@@ -267,6 +267,7 @@ E_RW		equ	22		; RESUME without error
 E_UP		equ	23		; unprintable error (ERROR n with a number BASIC doesn't use)
 E_ID		equ	24		; illegal direct
 E_UL		equ	25		; undefined label
+E_AN		equ	26		; array not dimensioned
 
 ; ---------------------------------------------------------------- tokens
 
@@ -333,22 +334,23 @@ TK_RESUME	equ	$bb
 TK_ERROR	equ	$bc
 TK_ELSEIF	equ	$bd
 TK_LABELS	equ	$be
-TK_LASTST	equ	$be		; last statement token
-TK_THEN		equ	$bf		; other keywords
-TK_TO		equ	$c0
-TK_STEP		equ	$c1
-TK_AND		equ	$c2
-TK_OR		equ	$c3
-TK_XOR		equ	$c4
-TK_NOT		equ	$c5
-TK_MOD		equ	$c6
-TK_TAB		equ	$c7
-TK_SPC		equ	$c8
-TK_USING	equ	$c9
-TK_FN		equ	$ca
-TK_FIRSTFN	equ	$cb		; functions, in the order of fntab
+TK_ARRAYS	equ	$bf
+TK_LASTST	equ	$bf		; last statement token
+TK_THEN		equ	$c0		; other keywords
+TK_TO		equ	$c1
+TK_STEP		equ	$c2
+TK_AND		equ	$c3
+TK_OR		equ	$c4
+TK_XOR		equ	$c5
+TK_NOT		equ	$c6
+TK_MOD		equ	$c7
+TK_TAB		equ	$c8
+TK_SPC		equ	$c9
+TK_USING	equ	$ca
+TK_FN		equ	$cb
+TK_FIRSTFN	equ	$cc		; functions, in the order of fntab
 TK_MID		equ	TK_FIRSTFN+27
-TK_LASTFN	equ	$f2
+TK_LASTFN	equ	$f3
 
 ; ---------------------------------------------------------------- macros
 
@@ -772,6 +774,98 @@ lblscan:
 .r:
 	movem.l (sp)+,d0-d1/a1/a3
 	rts
+
+; ARRAYS: list the arrays (in the order they were made): name(largest indexes),
+; elements, bytes
+st_arrays:
+	; count them first, then show the oldest (highest in memory) first
+	moveq #0,d5
+	move.l D_VARBOT(a6),a0
+.c:
+	cmpa.l D_MEMTOP(a6),a0
+	bcc .show
+	tst.b 4(a0)
+	bpl .cn
+	addq.l #1,d5
+.cn:
+	adda.l (a0),a0
+	bra .c
+.show:
+	tst.l d5
+	beq .r
+	subq.l #1,d5			; the one to show: number D5 from the bottom
+	move.l D_VARBOT(a6),a0
+	move.l d5,d4
+.f:
+	tst.b 4(a0)
+	bpl .fn
+	subq.l #1,d4
+	bmi .got
+.fn:
+	adda.l (a0),a0
+	bra .f
+.got:
+	move.l a0,a4
+	; the name and its suffix
+	lea 6(a4),a0
+	moveq #0,d1
+	move.b 5(a4),d1
+	bsr putn
+	moveq #0,d0
+	move.b 4(a4),d0
+	and.b #$7f,d0
+	lea .sfx(pc),a0
+	move.b (a0,d0.w),d0
+	beq .np
+	bsr putc
+.np:
+	moveq #'(',d0
+	bsr putc
+	move.l a4,a0
+	bsr vardata			; A1 = ndims.w, counts
+	move.w (a1)+,d3
+	subq.w #1,d3
+	moveq #1,d6			; elements
+.d:
+	move.l (a1)+,d1
+	move.l d1,-(sp)
+	subq.l #1,d1			; the largest index
+	moveq #0,d0
+	movem.l d3/a1,-(sp)
+	bsr pint
+	movem.l (sp)+,d3/a1
+	move.l (sp)+,d1
+	move.l d6,d0
+	bsr mul32lo
+	move.l d0,d6
+	tst.w d3
+	beq .de
+	moveq #',',d0
+	bsr putc
+.de:
+	dbra d3,.d
+	moveq #')',d0
+	bsr putc
+.p1:
+	bsr space
+	cmp.b #24,IO_CON_CURSORH
+	bcs .p1
+	moveq #0,d0
+	move.l d6,d1
+	bsr pint
+	PRINTS " elements, "
+	moveq #0,d0
+	move.l (a4),d1			; the whole entry
+	bsr pint
+	PRINTS <" bytes",13>
+	bsr brkkey
+	bne .r
+	bra .show
+.r:
+	rts
+.sfx:
+	dc.b 0,'%','&',0,'$'
+	even
 
 ; LABELS: list the labels and their lines
 st_labels:
@@ -1451,11 +1545,11 @@ kwtab:
 	dc.b "RANDOMIZE",0,"TRON",0,"TROFF",0,"LINE",0,"'",0,"LOMEM",0,"HIMEM",0
 	dc.b "GR",0,"TEXT",0,"GRCLS",0,"PLOT",0,"GRCOLOR",0,"RECTANGLE",0,"CIRCLE",0
 	dc.b "FILLRECTANGLE",0,"FILLCIRCLE",0
-	dc.b "DEF",0,"SWAP",0,"RENUM",0,"RESUME",0,"ERROR",0,"ELSEIF",0,"LABELS",0
-	; $bf
+	dc.b "DEF",0,"SWAP",0,"RENUM",0,"RESUME",0,"ERROR",0,"ELSEIF",0,"LABELS",0,"ARRAYS",0
+	; $c0
 	dc.b "THEN",0,"TO",0,"STEP",0,"AND",0,"OR",0,"XOR",0,"NOT",0,"MOD",0,"TAB",0,"SPC",0
 	dc.b "USING",0,"FN",0
-	; $cb: functions
+	; $cc: functions
 	dc.b "SGN",0,"INT",0,"FIX",0,"ABS",0,"SQR",0,"RND",0,"LOG",0,"LN",0
 	dc.b "LOG10",0,"EXP",0,"SIN",0,"COS",0,"TAN",0,"ATN",0,"ASN",0,"ACS",0
 	dc.b "PI",0,"ROOT",0,"PEEK",0,"FRE",0,"LEN",0,"ASC",0,"VAL",0,"CHR$",0
@@ -1672,7 +1766,7 @@ stmttab:
 	dc.l st_case,st_endsw,st_else,st_endif,st_call,st_monitor,st_monitor,st_delete
 	dc.l st_randomize,st_tron,st_troff,st_line,st_rem,st_lomem,st_himem
 	dc.l st_gr,st_text,st_grcls,st_plot,st_grcolor,st_rect,st_circle,st_fillrect,st_fillcircle
-	dc.l st_def,st_swap,st_renum,st_resume,st_error,st_elseif,st_labels
+	dc.l st_def,st_swap,st_renum,st_resume,st_error,st_elseif,st_labels,st_arrays
 
 ; the end of a line: go on to the next one
 nextline:
@@ -1802,12 +1896,12 @@ errmsgs:
 	dc.b "Can't continue",0,"Formula too complex",0,"WEND without WHILE",0
 	dc.b "UNTIL without REPEAT",0,"WHILE without WEND",0,"IF without ENDIF",0
 	dc.b "SWITCH without ENDSWITCH",0,"Line too long",0,"Undefined function",0
-	dc.b "RESUME without",0,"Unprintable",0,"Illegal direct",0,"Undefined label",0
+	dc.b "RESUME without",0,"Unprintable",0,"Illegal direct",0,"Undefined label",0,"Array not dimensioned",0
 	even
 
 ; the error numbers ERR gives (the GW-BASIC numbers where there is one), by error
 gwnum:
-	dc.b 2,7,8,13,6,11,5,1,3,4,9,10,15,17,16,30,31,29,32,33,23,18,20,0,12,8
+	dc.b 2,7,8,13,6,11,5,1,3,4,9,10,15,17,16,30,31,29,32,33,23,18,20,0,12,8,35
 	even
 
 ; Ctrl-C: stop, remembering where for CONT
@@ -3505,8 +3599,8 @@ subscripts:
 .sn:
 	ERROR E_SN
 
-; an array element: D_NAME, kind D7, A5 at the (. D5 = 1: make the array (10 per
-; dimension) if it doesn't exist; 0: a missing array reads as zero/empty
+; an array element: D_NAME, kind D7, A5 at the (. The array has to have been made with
+; DIM (D5 isn't used any more)
 ; -> A1 element, D7 kind
 arrayref:
 	move.w d5,-(sp)
@@ -3517,24 +3611,7 @@ arrayref:
 	bsr findvar
 	move.l a0,d0
 	bne .have
-	tst.w d5
-	bne .make
-	lea D_VZERO(a6),a1
-	bra .r
-.make:
-	; DIM it with 11 elements (0-10) per dimension
-	lea -32(sp),sp
-	move.l sp,a2
-	move.w d6,d0
-	subq.w #1,d0
-.m:
-	move.l #11,(a2)+
-	dbra d0,.m
-	move.l sp,a2
-	movem.l d6-d7,-(sp)
-	bsr makearray
-	movem.l (sp)+,d6-d7
-	lea 32(sp),sp
+	ERROR E_AN			; no DIM for it
 .have:
 	bsr vardata			; A1 = ndims.w, counts
 	cmp.w (a1)+,d6
@@ -5063,7 +5140,7 @@ st_error:
 	cmp.b (a0,d0.w),d1
 	beq .e
 	addq.w #1,d0
-	cmp.w #E_UL+1,d0
+	cmp.w #E_AN+1,d0
 	bcs .l
 	move.l d1,D_ERRNUM(a6)
 	moveq #E_UP,d0
