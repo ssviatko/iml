@@ -27,10 +27,22 @@ FASTCONS_OBJS = fastconsole.o memio_driver.o
 FASTCONS_TARGET = fconsole
 TCONS_OBJS = tconsole.o memio_driver.o
 TCONS_TARGET = tconsole
+BSAVE_OBJS = bsave.o
+BSAVE_TARGET = bsave
+BLOAD_OBJS = bload.o
+BLOAD_TARGET = bload
 MMGC_OBJS = mmgc.o mmgc_test.o
 MMGC_TARGET = mmgc_test
 
-all: $(65816_TARGET) $(Z80_TARGET) $(M68K_TARGET) $(RV_TARGET) $(NC_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET) $(TCONS_TARGET)
+all: $(65816_TARGET) $(Z80_TARGET) $(M68K_TARGET) $(RV_TARGET) $(NC_TARGET) $(KE_TARGET) $(CONS_TARGET) $(MMGC_TARGET) $(FASTCONS_TARGET) $(TCONS_TARGET) $(BSAVE_TARGET) $(BLOAD_TARGET)
+
+$(BSAVE_TARGET): $(BSAVE_OBJS)
+
+	$(LD) $(BSAVE_OBJS) -o $(BSAVE_TARGET) $(LDFLAGS)
+
+$(BLOAD_TARGET): $(BLOAD_OBJS)
+
+	$(LD) $(BLOAD_OBJS) -o $(BLOAD_TARGET) $(LDFLAGS)
 
 $(TCONS_TARGET): $(TCONS_OBJS)
 
@@ -76,6 +88,8 @@ $(MMGC_TARGET): $(MMGC_OBJS)
 
 	$(LD) $(MMGC_OBJS) -o $(MMGC_TARGET) $(CONS_LDFLAGS)
 	
+bsave.o bload.o: binio.h
+
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
 
@@ -92,4 +106,6 @@ clean:
 	rm -f $(MMGC_TARGET)
 	rm -f $(FASTCONS_TARGET)
 	rm -f $(TCONS_TARGET)
+	rm -f $(BSAVE_TARGET)
+	rm -f $(BLOAD_TARGET)
 

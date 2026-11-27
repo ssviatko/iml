@@ -40,6 +40,25 @@ tconsole connects with IO_CMD_CLIENTALIVE byte = 1, which tells the server's IO
 driver to send every console character as an IO_CMD_CONCHAR ($F903) message. The
 X11 consoles connect with byte = 0 and get no such messages.
 
+--- Utilities ---
+
+bsave - Save a block of shared memory to a file, while a server is running.
+bload - Load a file into shared memory at an address, while a server is running.
+
+usage: ./bsave --address <addr> --length <len> filename
+       ./bload --address <addr> filename
+
+Addresses and lengths are decimal, or hex with a $ prefix. Quote hex values in
+the shell so it doesn't expand the $ (e.g. --address '$10000'). Short forms -a
+and -l also work. The block must fit inside the 2MB shared memory segment. Like
+the other programs, run them from the IML directory (they find shared memory
+through the "token" file). They attach to the existing segment and never create
+one, so if no server is running they just say so and exit. bload writes straight
+into memory, bypassing the soft switches and the ROM write protection.
+
+example: ./bsave -a '$1c0000' -l 1024 vectors.bin
+         ./bload -a '$10000' prog.bin
+
 --- Server programs ---
 
 65816 - This is my 65816 emulator. It loads up a ROM file called "e4.o" at
