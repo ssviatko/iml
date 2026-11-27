@@ -2,7 +2,7 @@
 ;
 ; Assemble with vasm (Motorola syntax):
 ;   vasmm68k_mot -Fbin -m68000 -opt-brajmp -DBASE=<address> -o basic.bin basic.s
-; BASE is the next $1000 boundary above the end of the monitor; the Makefile works it out
+; BASE is the next $100 boundary above the end of the monitor; the Makefile works it out
 ; from the size of mrom.bin, and m68k.c loads basic.bin there.
 ;
 ; Entry points: BASE+0 cold start (clears everything), BASE+4 warm start (keeps the program
@@ -22,7 +22,7 @@
 ; Every other register is scratch: a routine can change D0-D7/A0-A4 unless it says it doesn't.
 
 	ifnd BASE
-BASE	equ	$1c3000
+BASE	equ	$1c2a00
 	endif
 
 ; ---------------------------------------------------------------- hardware
@@ -78,7 +78,7 @@ STKLIMIT	equ	$3000		; expressions nested deeper than this: FORMULA TOO COMPLEX
 DEF_LOMEM	equ	$10000
 DEF_HIMEM	equ	$16ffff
 RAMTOP		equ	$180000		; video memory starts here
-MAGIC		equ	'IMLE'		; (changes when the layout of the block does)
+MAGIC		equ	'IMLF'		; (changes when the layout of the block does)
 
 ; ---------------------------------------------------------------- internal variables (at LOMEM, A6)
 
@@ -159,6 +159,10 @@ D_RFROM		equ	1864		; from this old line,
 D_RSTEP		equ	1868		; step
 D_LBLCNT	equ	1872		; .w labels in the cache
 D_LBLOK		equ	1874		; .b 0 = no cache, 1 = all labels in it, 2 = too many for it
+D_STMTSP	equ	1876		; the stack pointer each statement starts with
+D_TMPBASE	equ	1880		; temporary strings start here (0 = at VARBOT)
+D_GCFLOOR	equ	1884		; garbage collection leaves the heap below this alone (0 = none)
+D_CALLFR	equ	1888		; the innermost multi-line FN/PROC call's frame (0 = none)
 D_CRUNCH	equ	768		; 512 bytes: crunched program line
 D_DIRBUF	equ	1280		; a direct command as a line: length, $ffff, text, then a zero word
 D_CSTBOT	equ	2048		; control stack
@@ -215,6 +219,7 @@ F_FOR		equ	1
 F_GOSUB		equ	2
 F_WHILE		equ	3
 F_REPEAT	equ	4
+F_CALL		equ	5		; a multi-line FN/PROC is running (RETURN, NEXT, FOR stop here)
 FR_TYPE		equ	0		; .w
 FR_KIND		equ	2		; .w FOR: variable kind
 FR_VAR		equ	4		; FOR: variable address
@@ -271,6 +276,9 @@ E_UP		equ	23		; unprintable error (ERROR n with a number BASIC doesn't use)
 E_ID		equ	24		; illegal direct
 E_UL		equ	25		; undefined label
 E_AN		equ	26		; array not dimensioned
+E_DF		equ	27		; DEF without END FN/END PROC
+E_EF		equ	28		; END FN without RETURN
+E_EP		equ	29		; END PROC without PROC
 
 ; ---------------------------------------------------------------- tokens
 
@@ -338,22 +346,23 @@ TK_ERROR	equ	$bc
 TK_ELSEIF	equ	$bd
 TK_LABELS	equ	$be
 TK_ARRAYS	equ	$bf
-TK_LASTST	equ	$bf		; last statement token
-TK_THEN		equ	$c0		; other keywords
-TK_TO		equ	$c1
-TK_STEP		equ	$c2
-TK_AND		equ	$c3
-TK_OR		equ	$c4
-TK_XOR		equ	$c5
-TK_NOT		equ	$c6
-TK_MOD		equ	$c7
-TK_TAB		equ	$c8
-TK_SPC		equ	$c9
-TK_USING	equ	$ca
-TK_FN		equ	$cb
-TK_FIRSTFN	equ	$cc		; functions, in the order of fntab
+TK_PROC		equ	$c0
+TK_LASTST	equ	$c0		; last statement token
+TK_THEN		equ	$c1		; other keywords
+TK_TO		equ	$c2
+TK_STEP		equ	$c3
+TK_AND		equ	$c4
+TK_OR		equ	$c5
+TK_XOR		equ	$c6
+TK_NOT		equ	$c7
+TK_MOD		equ	$c8
+TK_TAB		equ	$c9
+TK_SPC		equ	$ca
+TK_USING	equ	$cb
+TK_FN		equ	$cc
+TK_FIRSTFN	equ	$cd		; functions, in the order of fntab
 TK_MID		equ	TK_FIRSTFN+27
-TK_LASTFN	equ	$f3
+TK_LASTFN	equ	$f6
 
 ; ---------------------------------------------------------------- macros
 
@@ -499,10 +508,12 @@ fre:
 
 ready:
 	lea STACKTOP,sp
+	bsr toplevel
 	bsr col0
 	PRINTS <"Ready",13>
 main:
 	lea STACKTOP,sp
+	bsr toplevel
 	move.l D_VARBOT(a6),D_TMPPTR(a6)
 	bsr inputline
 	bmi main			; Ctrl-Z
@@ -546,6 +557,15 @@ main:
 	bsr clear_all
 	clr.l D_CONTPTR(a6)
 	bra main
+
+; back at the top level: no FN/PROC is running
+toplevel:
+	move.l #STACKTOP,D_STMTSP(a6)
+	clr.l D_TMPBASE(a6)
+	clr.l D_GCFLOOR(a6)
+	clr.l D_CALLFR(a6)
+	clr.l D_FNFRAME(a6)
+	rts
 
 ; parse a line number at A5 into D0 (0-4294967294). keeps D2-D7
 linenum:
@@ -857,8 +877,24 @@ st_arrays:
 	move.l d6,d1
 	bsr pint
 	PRINTS " elements, "
+	moveq #0,d0			; bytes: elements * size + the header
+	move.b 4(a4),d0
+	and.w #$7f,d0
+	lea ksize(pc),a0
+	moveq #0,d1
+	move.b (a0,d0.w),d1
+	move.l d6,d0
+	bsr mul32lo
+	move.l a4,a0
+	bsr vardata
+	move.w (a1),d1
+	lsl.w #2,d1
+	addq.w #2,d1
+	add.l d1,d0
+	move.l a1,d1
+	sub.l a4,d1
+	add.l d0,d1
 	moveq #0,d0
-	move.l (a4),d1			; the whole entry
 	bsr pint
 	PRINTS <" bytes",13>
 	bsr brkkey
@@ -1425,10 +1461,10 @@ crunch:
 	bsr findkw
 	tst.b d0
 	bne .kw
-	; FNname: the FN keyword, then the name
+	; FNname / PROCname: the FN or PROC keyword, then the name
 	lea D_WORD(a6),a2
 	cmp.b #'F',(a2)
-	bne .name
+	bne .pr
 	cmp.b #'N',1(a2)
 	bne .name
 	move.b 2(a2),d0
@@ -1436,6 +1472,21 @@ crunch:
 	bcs .name
 	move.b #TK_FN,(a1)+
 	addq.l #2,a2
+	bra .nl
+.pr:
+	cmp.b #'P',(a2)
+	bne .name
+	cmp.b #'R',1(a2)
+	bne .name
+	cmp.b #'O',2(a2)
+	bne .name
+	cmp.b #'C',3(a2)
+	bne .name
+	move.b 4(a2),d0
+	bsr isalpha
+	bcs .name
+	move.b #TK_PROC,(a1)+
+	addq.l #4,a2
 	bra .nl
 .kw:
 	move.b d0,(a1)+
@@ -1548,17 +1599,17 @@ kwtab:
 	dc.b "RANDOMIZE",0,"TRON",0,"TROFF",0,"LINE",0,"'",0,"LOMEM",0,"HIMEM",0
 	dc.b "GR",0,"TEXT",0,"GRCLS",0,"PLOT",0,"GRCOLOR",0,"RECTANGLE",0,"CIRCLE",0
 	dc.b "FILLRECTANGLE",0,"FILLCIRCLE",0
-	dc.b "DEF",0,"SWAP",0,"RENUM",0,"RESUME",0,"ERROR",0,"ELSEIF",0,"LABELS",0,"ARRAYS",0
-	; $c0
+	dc.b "DEF",0,"SWAP",0,"RENUM",0,"RESUME",0,"ERROR",0,"ELSEIF",0,"LABELS",0,"ARRAYS",0,"PROC",0
+	; $c1
 	dc.b "THEN",0,"TO",0,"STEP",0,"AND",0,"OR",0,"XOR",0,"NOT",0,"MOD",0,"TAB",0,"SPC",0
 	dc.b "USING",0,"FN",0
-	; $cc: functions
+	; $cd: functions
 	dc.b "SGN",0,"INT",0,"FIX",0,"ABS",0,"SQR",0,"RND",0,"LOG",0,"LN",0
 	dc.b "LOG10",0,"EXP",0,"SIN",0,"COS",0,"TAN",0,"ATN",0,"ASN",0,"ACS",0
 	dc.b "PI",0,"ROOT",0,"PEEK",0,"FRE",0,"LEN",0,"ASC",0,"VAL",0,"CHR$",0
 	dc.b "STR$",0,"LEFT$",0,"RIGHT$",0,"MID$",0,"HEX$",0,"DEC",0,"INSTR",0
 	dc.b "STRING$",0,"SPACE$",0,"UCASE$",0,"LCASE$",0,"INKEY$",0,"POS",0,"CINT",0
-	dc.b "ERR",0,"ERL",0
+	dc.b "ERR",0,"ERL",0,"RNDBYTE",0,"IRND",0
 	dc.b 0
 	even
 
@@ -1688,14 +1739,21 @@ st_delete:
 
 ; start the statement at A5 (or the ':' or end of line before it)
 newstmt:
-	lea STACKTOP,sp
+	move.l D_STMTSP(a6),sp		; (STACKTOP, or the base of an FN/PROC call)
 	tst.b IO_KEYQ_SIZE		; Ctrl-Z? (even behind keys typed ahead)
 	beq .nb
 	move.b #BRKKEY,IO_KEYQ_FIND
 	tst.b IO_KEYQ_FOUND
 	bne do_break
 .nb:
-	move.l D_VARBOT(a6),D_TMPPTR(a6)
+	move.l D_VARBOT(a6),d0		; temporaries start again (below the caller's, in a call)
+	move.l D_TMPBASE(a6),d1
+	beq .tb
+	cmp.l d0,d1
+	bcc .tb
+	move.l d1,d0
+.tb:
+	move.l d0,D_TMPPTR(a6)
 	; low on space and some of the heap is dead: compact it now, while no temporary
 	; string can be pointing into it
 	tst.l D_GARBAGE(a6)
@@ -1715,7 +1773,6 @@ newstmt:
 	beq nextline
 	lea -1(a5),a0
 	move.l a0,D_STMT(a6)
-	clr.l D_FNFRAME(a6)
 	tst.b d0
 	bpl ns_let
 	cmp.b #TK_MID,d0
@@ -1764,7 +1821,7 @@ stmttab:
 	dc.l st_case,st_endsw,st_else,st_endif,st_call,st_monitor,st_monitor,st_delete
 	dc.l st_randomize,st_tron,st_troff,st_line,st_rem,st_lomem,st_himem
 	dc.l st_gr,st_text,st_grcls,st_plot,st_grcolor,st_rect,st_circle,st_fillrect,st_fillcircle
-	dc.l st_def,st_swap,st_renum,st_resume,st_error,st_elseif,st_labels,st_arrays
+	dc.l st_def,st_swap,st_renum,st_resume,st_error,st_elseif,st_labels,st_arrays,st_proc
 
 ; the end of a line: go on to the next one
 nextline:
@@ -1776,8 +1833,11 @@ nextline:
 	beq .end
 	bsr enterline
 	bra newstmt
-.direct:
 .end:
+	tst.l D_CALLFR(a6)		; the end of the program in an FN/PROC body
+	beq .direct
+	ERROR E_DF
+.direct:
 	jmp ready
 
 ; make A0 the current line, A5 its start
@@ -1812,7 +1872,10 @@ goline:
 
 error:
 	lea STACKTOP,sp
-	clr.l D_FNFRAME(a6)
+	move.l D_CALLFR(a6),d2		; inside an FN/PROC body: not trapped
+	move.l d2,-(sp)
+	bsr toplevel
+	move.l (sp)+,d2
 	cmp.w #E_UP,d0
 	beq .num
 	lea gwnum(pc),a0
@@ -1828,6 +1891,8 @@ error:
 	clr.l D_ERRLINE(a6)
 	bra .show			; direct commands aren't trapped
 .p:
+	tst.l d2
+	bne .show
 	tst.b D_ONERRF(a6)
 	beq .show
 	tst.b D_INERR(a6)
@@ -1895,17 +1960,29 @@ errmsgs:
 	dc.b "UNTIL without REPEAT",0,"WHILE without WEND",0,"IF without ENDIF",0
 	dc.b "SWITCH without ENDSWITCH",0,"Line too long",0,"Undefined function",0
 	dc.b "RESUME without",0,"Unprintable",0,"Illegal direct",0,"Undefined label",0,"Array not dimensioned",0
+	dc.b "DEF without END",0,"END FN without RETURN",0,"END PROC without PROC",0
 	even
 
 ; the error numbers ERR gives (the GW-BASIC numbers where there is one), by error
 gwnum:
-	dc.b 2,7,8,13,6,11,5,1,3,4,9,10,15,17,16,30,31,29,32,33,23,18,20,0,12,8,35
+	dc.b 2,7,8,13,6,11,5,1,3,4,9,10,15,17,16,30,31,29,32,33,23,18,20,0,12,8,35,36,37,38
 	even
 
 ; Ctrl-Z: stop, remembering where for CONT
 do_break:
 	bsr textback
 	bsr col0
+	tst.l D_CALLFR(a6)
+	beq .top
+	bsr toplevel			; stopped inside an FN/PROC: no CONT
+	lea D_CSTTOP(a6),a0
+	move.l a0,D_CSP(a6)
+	PRINTS "Break"
+	bsr inline
+	bsr crlf
+	clr.l D_CONTPTR(a6)
+	jmp ready
+.top:
 	move.l a5,D_CONTPTR(a6)
 	move.l D_CURLIN(a6),a0
 	move.l a0,D_CONTLIN(a6)
@@ -1921,8 +1998,43 @@ do_break:
 ; ---------------------------------------------------------------- simple statements
 
 st_end:
+	bsr peek
+	cmp.b #TK_PROC,d0
+	beq .proc
+	cmp.b #TK_FN,d0
+	beq .fn
 	clr.l D_CONTPTR(a6)
 	jmp ready
+.proc:
+	addq.l #1,a5
+	move.l D_CALLFR(a6),d0
+	beq .ep
+	move.l d0,a0
+	cmp.w #2,FN_TYPE(a0)
+	bne .ep
+	bra endcall
+.fn:
+	ERROR E_EF			; an FN has to end with RETURN value
+.ep:
+	ERROR E_EP
+
+; the end of a multi-line FN/PROC: drop its control stack, back to ucall
+endcall:
+	move.l D_CSP(a6),a0
+	lea D_CSTTOP(a6),a1
+.l:
+	cmpa.l a1,a0
+	bcc .r
+	cmp.w #F_CALL,FR_TYPE(a0)
+	beq .f
+	lea FRAME(a0),a0
+	bra .l
+.f:
+	lea FRAME(a0),a0
+	move.l a0,D_CSP(a6)
+.r:
+	move.l D_STMTSP(a6),sp
+	rts
 
 st_stop:
 	bra do_break
@@ -2109,6 +2221,20 @@ pushframe:
 	ERROR E_OM
 
 st_return:
+	bsr peek			; RETURN value: the end of an FN
+	beq .g
+	cmp.b #':',d0
+	beq .g
+	cmp.b #TK_ELSE,d0
+	beq .g
+	move.l D_CALLFR(a6),d0
+	beq .rg
+	move.l d0,a0
+	cmp.w #1,FN_TYPE(a0)
+	bne .rg
+	bsr eval
+	bra endcall
+.g:
 	move.l D_CSP(a6),a0
 	lea D_CSTTOP(a6),a1
 .l:
@@ -2116,6 +2242,8 @@ st_return:
 	bcc .rg
 	cmp.w #F_GOSUB,FR_TYPE(a0)
 	beq .f
+	cmp.w #F_CALL,FR_TYPE(a0)
+	beq .rg
 	lea FRAME(a0),a0
 	bra .l
 .f:
@@ -2685,6 +2813,8 @@ st_for:
 .fl:
 	cmpa.l a1,a0
 	bcc .push
+	cmp.w #F_CALL,FR_TYPE(a0)
+	beq .push
 	cmp.w #F_FOR,FR_TYPE(a0)
 	bne .fn
 	cmp.l FR_VAR(a0),d1
@@ -2747,6 +2877,8 @@ st_next:
 	beq .found
 .skip:
 	cmp.w #F_GOSUB,FR_TYPE(a2)
+	beq .nf
+	cmp.w #F_CALL,FR_TYPE(a2)
 	beq .nf
 	lea FRAME(a2),a2
 	bra .l
@@ -3500,11 +3632,16 @@ newvar:
 	bsr .room
 	bcs .om
 .ok:
-	move.l D_VARBOT(a6),a0
+	; the new entry goes below any temporary strings still in use (an FN body making a
+	; variable while the caller is half way through an expression); its size then covers
+	; them too, so the table can still be walked
+	move.l D_TMPPTR(a6),a0
 	suba.l d0,a0
+	move.l D_VARBOT(a6),d1
+	sub.l a0,d1
 	move.l a0,D_VARBOT(a6)
 	move.l a0,D_TMPPTR(a6)
-	move.l d0,(a0)
+	move.l d1,(a0)
 	move.b d7,4(a0)
 	move.w D_NAMELEN(a6),d0
 	move.b d0,5(a0)
@@ -3529,7 +3666,7 @@ newvar:
 .om:
 	ERROR E_OM
 .room:					; carry set if D0 bytes don't fit below the variables
-	move.l D_VARBOT(a6),d1
+	move.l D_TMPPTR(a6),d1
 	sub.l D_STRTOP(a6),d1
 	sub.l #256,d1
 	bcs .rr
@@ -4100,7 +4237,7 @@ fntab:
 	dc.l fn_log10,fn_exp,fn_sin,fn_cos,fn_tan,fn_atn,fn_asn,fn_acs
 	dc.l fn_pi,fn_root,fn_peek,fn_fre,fn_len,fn_asc,fn_val,fn_chr
 	dc.l fn_str,fn_left,fn_right,fn_mid,fn_hex,fn_dec,fn_instr
-	dc.l fn_string,fn_space,fn_ucase,fn_lcase,fn_inkey,fn_pos,fn_cint,fn_err,fn_erl
+	dc.l fn_string,fn_space,fn_ucase,fn_lcase,fn_inkey,fn_pos,fn_cint,fn_err,fn_erl,fn_rndbyte,fn_irnd
 
 ; ---------------------------------------------------------------- operators
 
@@ -4778,19 +4915,51 @@ ellipse:
 	exg d2,d4
 	rts
 
-; ---------------------------------------------------------------- DEF FN
+; ---------------------------------------------------------------- DEF FN, DEF PROC
 
-; DEF FNname[(param, ...)] = expression     (in a program)
+; an FN/PROC call's frame on the stack: the parameters (laid out like variables), then
+; what the call has to put back
+FN_TYPE		equ	FN_SIZE+0	; .w 1 FN, 2 PROC
+FN_MULTI	equ	FN_SIZE+2	; .w a multi-line body
+FN_LINE		equ	FN_SIZE+4	; the DEF's line
+FN_SCURL	equ	FN_SIZE+8	; saved: D_CURLIN
+FN_SSTMT	equ	FN_SIZE+12	; D_STMT
+FN_SSP		equ	FN_SIZE+16	; D_STMTSP
+FN_STMPB	equ	FN_SIZE+20	; D_TMPBASE
+FN_SGCF		equ	FN_SIZE+24	; D_GCFLOOR
+FN_SCALL	equ	FN_SIZE+28	; D_CALLFR
+FN_SSLIF	equ	FN_SIZE+32	; .b D_SLIF
+FN_SAVE1	equ	FN_SIZE+36	; D_FORVAR..D_NAME (72-127)
+FN_SAVE2	equ	FN_SAVE1+56	; D_SWVAL..D_FORSTEP (192-239)
+FN_SAVE3	equ	FN_SAVE2+48	; PRINT USING (1816-1859)
+FN_XSIZE	equ	FN_SAVE3+44
+K_PROC		equ	5		; the kind of a PROC definition ($40 + 5)
+
+; DEF FNname[(param, ...)] = expression            one line
+; DEF FNname[(param, ...)] ... RETURN value ... END FN
+; DEF PROCname[(param, ...)] ... END PROC
 st_def:
 	move.l D_CURLIN(a6),a0
 	cmp.l #DIRECT,LNUM(a0)
 	beq .id
 	bsr peek
+	move.l #TK_FN,d6
 	cmp.b #TK_FN,d0
+	beq .ok
+	move.l #TK_PROC,d6
+	cmp.b #TK_PROC,d0
 	bne .sn
+.ok:
 	addq.l #1,a5
+	move.w d6,-(sp)
 	bsr getname
+	move.w (sp)+,d6
+	cmp.w #TK_PROC,d6
+	bne .k
+	moveq #K_PROC,d7
+.k:
 	or.b #$40,d7
+	move.w d6,-(sp)
 	bsr findvar
 	move.l a0,d0
 	beq .new
@@ -4800,30 +4969,192 @@ st_def:
 	moveq #8,d6
 	bsr newvar
 .set:
-	move.l a5,(a1)			; the parameters, then = expression
+	move.w (sp)+,d6
+	move.l a5,(a1)			; the parameters, then = expression or the body
 	move.l D_CURLIN(a6),4(a1)
-	move.l a5,a0
+	; past the parameters
+	bsr peek
+	cmp.b #'(',d0
+	bne .np
+.pp:
+	move.b (a5)+,d0
+	beq .sn
+	cmp.b #')',d0
+	bne .pp
+.np:
+	bsr peek
+	cmp.b #'=',d0
+	bne .multi
+	cmp.w #TK_PROC,d6
+	beq .sn
+	move.l a5,a0			; one line: nothing to run here
 	bsr skipstmt
 	move.l a0,a5
 	rts
+.multi:
+	; running into a multi-line definition: go past its END FN / END PROC
+	move.l a5,a0
+	move.l D_CURLIN(a6),a1
+	moveq #0,d5			; block IF depth
+	bsr skipstmt
+.l:
+	bsr nextstmt
+	bmi .df
+	bsr peeka0
+	cmp.b #TK_IF,d0
+	beq .if
+	cmp.b #TK_ENDIF,d0
+	beq .endif
+	cmp.b #TK_END,d0
+	bne .n
+	tst.l d5
+	bne .n
+	move.l a0,a2
+	addq.l #1,a2
+.e:
+	cmp.b #' ',(a2)+
+	beq .e
+	cmp.b -1(a2),d6
+	bne .n
+	move.l a2,a5			; found: carry on after it
+	move.l a1,D_CURLIN(a6)
+	clr.b D_SLIF(a6)
+	bra after_stmt
+.if:
+	bsr isblockif
+	bne .ie
+	addq.l #1,d5
+.ie:
+	bsr skipeol
+	bra .l
+.endif:
+	tst.l d5
+	beq .n
+	subq.l #1,d5
+.n:
+	bsr skipstmt
+	bra .l
+.df:
+	ERROR E_DF
 .sn:
 	ERROR E_SN
 .id:
 	ERROR E_ID
 
+; the definition of FN/PROC D_NAME of kind D7 ($40 set) -> A1 = its data (pointer to the
+; parameters, line). If it hasn't been DEFined yet, it's looked for in the program
+udef:
+	bsr findvar
+	move.l a0,d0
+	beq .look
+	bra vardata
+.look:
+	movem.l d6-d7,-(sp)
+	move.l #TK_FN,d6
+	cmp.b #$40+K_PROC,d7
+	bne .t
+	move.l #TK_PROC,d6
+.t:
+	lea D_SIZE(a6),a1
+.l:
+	tst.w (a1)
+	beq .uf
+	lea LH(a1),a0
+	bsr peeka0
+	cmp.b #TK_DEF,d0
+	bne .nx
+	addq.l #1,a0
+	bsr peeka0
+	cmp.b d6,d0
+	bne .nx
+	addq.l #1,a0
+	bsr peeka0
+	; the same name?
+	lea D_NAME(a6),a2
+	move.w D_NAMELEN(a6),d1
+	subq.w #1,d1
+.c:
+	cmpm.b (a0)+,(a2)+
+	bne .nx
+	dbra d1,.c
+	move.b (a0),d0			; the name has to end here
+	bsr isalpha
+	bcc .nx
+	bsr isdigit
+	bcc .nx
+	; and have the same type
+	moveq #K_FLT,d1
+	cmp.b #'$',d0
+	bne .s1
+	moveq #K_STR,d1
+.s1:
+	cmp.b #'%',d0
+	bne .s2
+	moveq #K_INT,d1
+.s2:
+	cmp.b #'&',d0
+	bne .s3
+	moveq #K_LONG,d1
+.s3:
+	cmp.b #K_FLT,d1
+	beq .s4
+	addq.l #1,a0			; past the suffix
+.s4:
+	cmp.w #TK_PROC,d6
+	bne .s5
+	cmp.b #K_FLT,d1			; a PROC name has no suffix
+	bne .nx
+	moveq #K_PROC,d1
+.s5:
+	or.b #$40,d1
+	cmp.b d1,d7
+	bne .nx
+	; found: remember it
+	movem.l a0-a1,-(sp)
+	moveq #8,d6
+	bsr newvar
+	movem.l (sp)+,a0/a2
+	move.l a0,(a1)
+	move.l a2,4(a1)
+	movem.l (sp)+,d6-d7
+	rts
+.nx:
+	adda.w (a1),a1
+	bra .l
+.uf:
+	movem.l (sp)+,d6-d7
+	ERROR E_UF
+
 ; FNname[(arg, ...)]: a user function
 fn_user:
 	bsr getname
 	or.b #$40,d7
-	bsr findvar
-	move.l a0,d0
-	beq .uf
-	bsr vardata
-	lea -FN_SIZE(sp),sp
+	moveq #1,d5
+	bra ucall
+
+; PROCname[(arg, ...)]: run a procedure
+st_proc:
+	bsr getname
+	cmp.b #K_FLT,d7			; no suffix
+	bne .sn
+	moveq #$40+K_PROC,d7
+	moveq #2,d5
+	bra ucall
+.sn:
+	ERROR E_SN
+
+; call FN/PROC D_NAME (kind D7, $40 set; D5 = 1 FN, 2 PROC), A5 at its arguments
+ucall:
+	move.w d5,-(sp)
+	bsr udef			; -> A1
+	move.w (sp)+,d5
+	lea -FN_XSIZE(sp),sp
+	move.w d5,FN_TYPE(sp)
 	clr.w FN_CNT(sp)
 	and.w #$3f,d7
 	move.w d7,FN_KIND(sp)
 	move.l a5,FN_CALLER(sp)
+	move.l 4(a1),FN_LINE(sp)
 	move.l (a1),a5			; the definition
 	; the parameter names
 	bsr peek
@@ -4856,7 +5187,17 @@ fn_user:
 	cmp.b #')',d0
 	bne .sn
 .np:
-	EXPECT '='
+	clr.w FN_MULTI(sp)
+	bsr peek
+	cmp.b #'=',d0
+	bne .mul
+	cmp.w #2,FN_TYPE(sp)
+	beq .sn
+	addq.l #1,a5
+	bra .ex
+.mul:
+	move.w #1,FN_MULTI(sp)		; the body starts after the DEF statement
+.ex:
 	move.l a5,FN_EXPR(sp)
 	; the arguments, worked out where the function is used
 	move.l FN_CALLER(sp),a5
@@ -4875,6 +5216,8 @@ fn_user:
 	bsr vardata			; A1 = the parameter's data
 	moveq #0,d7
 	move.b 4(a0),d7
+	clr.l (a1)			; (a fresh parameter: nothing to free)
+	clr.l 4(a1)
 	cmp.w #K_STR,d7
 	bne .an
 	cmp.w #T_STR,D_VA(a6)
@@ -4896,21 +5239,103 @@ fn_user:
 .ae:
 	EXPECT ')'
 .go:
-	; run the definition with the parameters in scope
 	move.l D_FNFRAME(a6),FN_PREV(sp)
 	move.l sp,D_FNFRAME(a6)
 	move.l a5,FN_CALLER(sp)
+	tst.w FN_MULTI(sp)
+	bne .body
+	; one line: the expression
 	move.l FN_EXPR(sp),a5
 	bsr eval
 	bsr peek			; the definition has to end there
 	beq .end
 	cmp.b #':',d0
 	bne .sn
+	bra .end
+.body:
+	; run the body like a program, until RETURN value or END PROC
+	move.l D_CURLIN(a6),FN_SCURL(sp)
+	move.l D_STMT(a6),FN_SSTMT(sp)
+	move.l D_STMTSP(a6),FN_SSP(sp)
+	move.l D_TMPBASE(a6),FN_STMPB(sp)
+	move.l D_GCFLOOR(a6),FN_SGCF(sp)
+	move.l D_CALLFR(a6),FN_SCALL(sp)
+	move.b D_SLIF(a6),FN_SSLIF(sp)
+	lea 72(a6),a0
+	lea FN_SAVE1(sp),a1
+	moveq #56/2-1,d0
+.s1:
+	move.w (a0)+,(a1)+
+	dbra d0,.s1
+	lea D_SWVAL(a6),a0
+	lea FN_SAVE2(sp),a1
+	moveq #48/2-1,d0
+.s2:
+	move.w (a0)+,(a1)+
+	dbra d0,.s2
+	lea D_UFMT(a6),a0
+	lea FN_SAVE3(sp),a1
+	moveq #44/2-1,d0
+.s3:
+	move.w (a0)+,(a1)+
+	dbra d0,.s3
+	bsr pushframe
+	move.w #F_CALL,FR_TYPE(a0)
+	move.l sp,D_CALLFR(a6)
+	move.l D_TMPPTR(a6),D_TMPBASE(a6)	; the caller's temporaries stay put
+	move.l D_STRTOP(a6),D_GCFLOOR(a6)	; and so do the strings it can see
+	move.l FN_LINE(sp),D_CURLIN(a6)
+	move.l FN_EXPR(sp),a5
+	clr.b D_SLIF(a6)
+	bsr .run			; comes back at RETURN value / END PROC
+	move.l FN_SCURL(sp),D_CURLIN(a6)
+	move.l FN_SSTMT(sp),D_STMT(a6)
+	move.l FN_SSP(sp),D_STMTSP(a6)
+	move.l FN_STMPB(sp),D_TMPBASE(a6)
+	move.l FN_SGCF(sp),D_GCFLOOR(a6)
+	move.l FN_SCALL(sp),D_CALLFR(a6)
+	move.b FN_SSLIF(sp),D_SLIF(a6)
+	lea FN_SAVE1(sp),a0
+	lea 72(a6),a1
+	moveq #56/2-1,d0
+.r1:
+	move.w (a0)+,(a1)+
+	dbra d0,.r1
+	lea FN_SAVE2(sp),a0
+	lea D_SWVAL(a6),a1
+	moveq #48/2-1,d0
+.r2:
+	move.w (a0)+,(a1)+
+	dbra d0,.r2
+	lea FN_SAVE3(sp),a0
+	lea D_UFMT(a6),a1
+	moveq #44/2-1,d0
+.r3:
+	move.w (a0)+,(a1)+
+	dbra d0,.r3
+	; string parameters given new values in the body own heap blocks: let them go
+	move.w FN_CNT(sp),d3
+	lea FN_ENT(sp),a0
+	bra .fe
+.fp:
+	cmp.b #K_STR,4(a0)
+	bne .fx
+	move.l a0,-(sp)
+	bsr vardata
+	bsr freestr
+	move.l (sp)+,a0
+.fx:
+	lea FN_ESIZE(a0),a0
+.fe:
+	dbra d3,.fp
 .end:
 	move.l FN_PREV(sp),D_FNFRAME(a6)
 	move.l FN_CALLER(sp),a5
 	move.w FN_KIND(sp),d7
-	lea FN_SIZE(sp),sp
+	move.w FN_TYPE(sp),d5
+	lea FN_XSIZE(sp),sp
+	cmp.w #2,d5
+	beq .rts			; a PROC gives nothing back
 	; the result as the function's type
 	cmp.w #K_STR,d7
 	bne .rn
@@ -4925,16 +5350,17 @@ fn_user:
 	beq toflt
 	bsr toint
 	cmp.w #K_INT,d7
-	bne .r
+	bne .rts
 	move.l d1,d0			; 32 bits
 	smi d0
 	ext.w d0
 	ext.l d0
 	bra setint
-.r:
+.rts:
 	rts
-.uf:
-	ERROR E_UF
+.run:
+	move.l sp,D_STMTSP(a6)		; each statement in the body starts from here
+	bra newstmt
 .sn:
 	ERROR E_SN
 .tm:
@@ -5138,7 +5564,7 @@ st_error:
 	cmp.b (a0,d0.w),d1
 	beq .e
 	addq.w #1,d0
-	cmp.w #E_AN+1,d0
+	cmp.w #E_EP+1,d0
 	bcs .l
 	move.l d1,D_ERRNUM(a6)
 	moveq #E_UP,d0
@@ -5206,10 +5632,10 @@ st_using:
 	st D_UNL(a6)
 	bra .item
 .fin:
-	tst.b D_UNL(a6)
-	bne .r
 	moveq #0,d0			; the text after the last field
 	bsr ufield
+	tst.b D_UNL(a6)
+	bne .r
 	bsr crlf
 .r:
 	rts
@@ -6706,6 +7132,12 @@ strassign:
 freestr:
 	move.l (a1),d2
 	beq .r
+	btst #0,d2			; only a heap block can be let go of (a parameter can
+	bne .r				; point at program text or a temporary string)
+	cmp.l D_STRBOT(a6),d2
+	bcs .r
+	cmp.l D_STRTOP(a6),d2
+	bcc .r
 	move.l d2,a2
 	subq.l #8,a2
 	cmpa.l (a2),a1
@@ -6723,7 +7155,11 @@ freestr:
 ; block's owner still points at it. D_GCROOT, if set, is one more string pointer to update
 gc:
 	movem.l d0-d7/a0-a4,-(sp)
-	move.l D_STRBOT(a6),a0		; from
+	move.l D_GCFLOOR(a6),d0		; in an FN/PROC call: only what the call made
+	bne .fl
+	move.l D_STRBOT(a6),d0
+.fl:
+	move.l d0,a0			; from
 	move.l a0,a1			; to
 	move.l D_STRTOP(a6),a2
 .l:
@@ -7054,6 +7490,49 @@ fn_rnd:
 	move.b #XA,FP_ILOAD
 	move.b #X,FP_DIV
 	bra fresult
+
+; RNDBYTE or RNDBYTE(): a random byte, 0-255
+fn_rndbyte:
+	bsr peek
+	cmp.b #'(',d0
+	bne .g
+	addq.l #1,a5
+	EXPECT ')'
+.g:
+	move.b d0,IO_RANDBYTE
+	moveq #0,d1
+	move.b IO_RANDBYTE,d1
+	moveq #0,d0
+	bra setint
+
+; IRND(limit): a random integer from 0 to limit-1 (limit 1 or more, up to 64 bits)
+fn_irnd:
+	bsr pnum
+	lea D_VA(a6),a0
+	bsr toint
+	tst.l d0
+	bmi fcerr
+	bne .ok
+	tst.l d1
+	beq fcerr
+.ok:
+	move.l d0,d2			; the limit
+	move.l d1,d3
+	moveq #7,d4			; 64 random bits, top bit cleared (so it's positive)
+.b:
+	move.b d0,IO_RANDBYTE
+	lsl.l #8,d0
+	move.l d1,d5
+	rol.l #8,d5
+	move.b d5,d0
+	lsl.l #8,d1
+	move.b IO_RANDBYTE,d1
+	dbra d4,.b
+	bclr #31,d0
+	bsr divs64			; the remainder
+	move.l d2,d0
+	move.l d3,d1
+	bra setint
 
 ; ROOT(x, n): the nth root of x (an odd root of a negative number is negative)
 fn_root:

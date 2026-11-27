@@ -186,15 +186,47 @@ COLOR(foreground [, background])
 CONT
     Carry on after Ctrl-Z or STOP.
 DEF FNname[(param, ...)] = expression
-    Define a function, in a program (not as a direct command). The name has a type like a
-    variable (FNA, FNA%, FNA&, FNA$), and the result is converted to it. Up to 8
-    parameters; they are local to the function, so they don't change variables with the
-    same names. Other variables in the expression are the program's own. A function can
-    use other functions. Redefining it replaces the old definition.
+    Define a one line function. The name has a type like a variable (FNA, FNA%, FNA&,
+    FNA$), and the result is converted to it. Up to 8 parameters; they are local to the
+    function, so they don't change variables with the same names. Other variables are the
+    program's own. A function can use other functions.
       10 DEF FNSQ(X) = X*X
       20 DEF FNHYP(A, B) = SQR(FNSQ(A) + FNSQ(B))
-      30 DEF FNNAME$(F$, L$) = F$ + " " + L$
-      40 PRINT FNHYP(3, 4); FNNAME$("Ada", "Lovelace")
+      30 PRINT FNHYP(3, 4)
+DEF FNname[(param, ...)]   ...   RETURN value   ...   END FN
+    A function over several lines: with nothing after the parameters, the lines up to
+    END FN are its body, run like a little program each time the function is used.
+    RETURN value ends it and gives the result; reaching END FN without a RETURN is an
+    error. Inside, plain RETURN (no value) is still GOSUB's RETURN, so subroutines work.
+      100 DEF FNFACT(N)
+      110   IF N <= 1 THEN RETURN 1
+      120   RETURN N * FNFACT(N - 1)
+      130 END FN
+DEF PROCname[(param, ...)]   ...   END PROC
+    A procedure: like a multi-line function, but used as a statement, PROCname(args), and
+    giving nothing back. END PROC ends it, and can also be used early inside an IF block
+    (IF ... THEN END PROC, or on its own line between IF and ENDIF). A PROC name has no
+    type suffix.
+      200 DEF PROCGREET(NAME$)
+      210   PRINT "Hello, "; NAME$
+      220 END PROC
+      ...
+      20 PROCGREET("Bob")
+    Things to know about functions and procedures:
+    - Definitions can go anywhere in the program, before or after the code that uses
+      them; the first use finds the DEF. If the program runs into a DEF on its way, it
+      skips over the body to the matching END FN / END PROC (an END FN or END PROC between
+      IF and ENDIF in the body is an early exit, not the end).
+    - Parameters are local and can be changed inside; the caller's variables with the
+      same names aren't affected. Every other variable is shared with the program (one
+      first used inside a body becomes an ordinary program variable).
+    - They can call each other and themselves (recursion), about 75 calls deep before
+      "Formula too complex".
+    - An error inside a body stops the program (ON ERROR doesn't trap it), and after
+      Ctrl-Z inside a body, CONT isn't possible.
+    - Don't GOTO out of a body: end it with RETURN value or END PROC.
+    - DEF is for programs, not direct commands; a function or procedure can be used from
+      a direct command once the program is in memory: PRINT FNFACT(10), PROCGREET("Ada").
 DATA item, item, ...
     Values for READ: numbers, or text (in quotes if it has commas, colons or spaces at
     either end).
@@ -207,7 +239,7 @@ DIM name(size [, size ...]) [, ...]
 ELSE, ELSEIF, ENDIF
     See IF.
 END
-    End the program.
+    End the program. (END FN and END PROC end a function or procedure: see DEF.)
 ERROR n
     Cause error number n (1-255), as if it had happened: an ON ERROR handler sees it in
     ERR. Numbers BASIC doesn't use print as "?Unprintable n error".
@@ -252,6 +284,8 @@ MID$(var$, start [, n]) = string
     Replace characters in a string variable, from position start (1 = the first), n of
     them at most (or as many as the new string has). The variable's length never
     changes: S$="HELLO WORLD": MID$(S$,7)="THERE" makes "HELLO THERE".
+PROCname[(args)]
+    Run a procedure (see DEF).
 LOCATE(column, row)
 LOCATE(row)
     Move the text cursor. Columns and rows start at 0 (0-79 and 0-33 in 80 columns, 0-39
@@ -268,7 +302,8 @@ ON expr GOSUB line, line, ...
     nothing happens.
 ON ERROR GOTO line
     From now on, an error in the program goes to that line instead of stopping (errors
-    in direct commands are never trapped). ERR is the error's number and ERL its line.
+    in direct commands and inside FN/PROC bodies are never trapped). ERR is the error's
+    number and ERL its line.
     The handler finishes with RESUME. An error inside the handler stops the program as
     usual. ON ERROR GOTO 0 turns trapping off (inside a handler, it stops with the error
     being handled). RUN, CLEAR and editing the program turn it off too.
@@ -311,7 +346,7 @@ RESUME line
     End an ON ERROR handler: run the statement that failed again, carry on with the
     statement after it, or go to a line.
 RETURN
-    See GOSUB.
+    See GOSUB. RETURN value ends a multi-line function (see DEF).
 RUN [line]
     Clear the variables and run the program (from the start, or from that line).
 STOP
@@ -354,7 +389,9 @@ Numbers:
   LOG(x), LN(x) natural logarithm
   LOG10(x)      base 10 logarithm
   PI            3.14159265358979324
+  IRND(n)       a random integer from 0 to n-1 (n from 1 up to 64 bits): IRND(6)+1 is a die
   RND, RND(x)   a random number from 0 up to (not including) 1
+  RNDBYTE()     a random byte, 0-255 (the parentheses can be left out)
   ROOT(x, n)    the nth root of x: ROOT(27,3) = 3, ROOT(-8,3) = -2
   SGN(x)        -1, 0 or 1
   SIN(x)        sine (x in radians)
@@ -394,7 +431,7 @@ Errors (for ON ERROR handlers):
 
 User functions:
 
-  FNname[(args)]     a function made with DEF FN
+  FNname[(args)]     a function made with DEF FN (one line or several)
 
 Machine and memory:
 
@@ -503,6 +540,9 @@ Errors
     4  ?Out of DATA
     9  ?Bad subscript                 an array index out of range or the wrong number of them
    35  ?Array not dimensioned         an array used before DIM made it
+   36  ?DEF without END               no END FN / END PROC after a multi-line DEF
+   37  ?END FN without RETURN         a function's body reached END FN
+   38  ?END PROC without PROC         END PROC outside a procedure
    10  ?Redimensioned array           DIM of an array that already exists
    15  ?String too long               a string over 65535 characters
    17  ?Can't continue                CONT when there's nothing to continue
@@ -514,7 +554,7 @@ Errors
    32  ?IF without ENDIF
    33  ?SWITCH without ENDSWITCH
    23  ?Line too long                 a program line over 500 bytes once stored
-   18  ?Undefined function            FN of a function that hasn't been defined
+   18  ?Undefined function            FNname or PROCname with no DEF for it in the program
    20  ?RESUME without error          RESUME outside an error handler
    12  ?Illegal direct                DEF FN as a direct command
     8  ?Undefined label               a jump to a *label no line starts with

@@ -71,9 +71,9 @@ int main(int argc, char **argv)
 	printf("read $%lx bytes.\n", l_romsize);
 	fclose(mrom);
 
-	// BASIC goes at the next $1000 boundary above the monitor (where the monitor's B and W
+	// BASIC goes at the next $100 boundary above the monitor (where the monitor's B and W
 	// commands expect it). basic.bin says where it was assembled for, at offset 16
-	uint32_t l_basic = M68K_ROM_BASE + ((l_romsize + 0xfff) & ~0xfff);
+	uint32_t l_basic = M68K_ROM_BASE + ((l_romsize + 0xff) & ~0xff);
 	FILE *brom;
 	if ((brom = fopen("basic.bin", "r")) == NULL) {
 		fprintf(stderr, "m68k: no basic.bin, so no BASIC.\n");

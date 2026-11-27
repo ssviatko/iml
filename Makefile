@@ -72,7 +72,7 @@ $(Z80_TARGET): $(Z80_OBJS)
 $(M68K_TARGET): $(M68K_OBJS) mrom.s basic.s
 
 	$(VASM) -quiet -Fbin -m68000 -L mrom.lst -o mrom.bin mrom.s
-	$(VASM) -quiet -Fbin -m68000 -opt-brajmp -DBASE=$$(( 0x1c0000 + (($$(stat -c %s mrom.bin) + 0xfff) & ~0xfff) )) -L basic.lst -o basic.bin basic.s
+	$(VASM) -quiet -Fbin -m68000 -opt-brajmp -DBASE=$$(( 0x1c0000 + (($$(stat -c %s mrom.bin) + 0xff) & ~0xff) )) -L basic.lst -o basic.bin basic.s
 	$(LD) $(M68K_OBJS) -o $(M68K_TARGET) $(LDFLAGS)
 
 $(RV_TARGET): $(RV_OBJS)

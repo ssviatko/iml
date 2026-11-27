@@ -29,7 +29,7 @@
 ;   $180000-$1bfbff  video buffer
 ;   $1bfc00-$1bffff  soft switches
 ;   $1c0000-$1fffff  ROM (write protected): this vector table, then the monitor at $1c0400,
-;                    then BASIC at the next $1000 boundary after the monitor
+;                    then BASIC at the next $100 boundary after the monitor
 ;
 ; Any exception other than TRAP #15 prints the exception and the registers and
 ; returns to the monitor. TRAP #15 is a system call, function number in D0.B:
@@ -2765,6 +2765,6 @@ itab:
 
 ; ---------------------------------------------------------------- end
 
-; BASIC (basic.bin) is loaded at the next $1000 boundary after the monitor
+; BASIC (basic.bin) is loaded at the next $100 boundary after the monitor
 romend:
-BASIC		equ	(romend+$fff)&$fffff000
+BASIC		equ	(romend+$ff)&$ffffff00

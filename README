@@ -107,8 +107,8 @@ Apple II style mini-assembler; type ? for its commands. It is built with vasm
 name), override with "make VASM=vasmm68k_mot" if yours is called differently.
 All numbers are hex, so a TRAP is "TRAP #$F" or "TRAP #0F".
 
-BASIC (basic.s, built into basic.bin by the same make) is loaded at the next $1000
-boundary after the monitor ($1C3000 at the moment); the Makefile works the address
+BASIC (basic.s, built into basic.bin by the same make) is loaded at the next $100
+boundary after the monitor ($1C2A00 at the moment); the Makefile works the address
 out from the size of mrom.bin, and m68k checks that basic.bin was built for it. In
 the monitor, B starts BASIC (cold start) and W goes back to it keeping the program
 (warm start); MONITOR in BASIC returns to the monitor. See BASIC_README for the
