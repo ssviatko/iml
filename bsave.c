@@ -2,7 +2,7 @@
 //
 // bsave --address <addr> --length <len> filename
 //
-// addr and len are 24 bit values, decimal or hex with a $ prefix (quote it in the shell: '$1c0000').
+// addr and len are 24 bit values, decimal, or hex with an h suffix (e.g. 1c0000h).
 
 #include <getopt.h>
 #include <unistd.h>
@@ -19,7 +19,7 @@ static struct option g_options[] = {
 static void usage(void)
 {
 	fprintf(stderr, "usage: bsave --address <addr> --length <len> filename\n"
-		"       addr and len are decimal, or hex with a $ prefix (e.g. '$1c0000')\n");
+		"       addr and len are decimal, or hex with an h suffix (e.g. 1c0000h)\n");
 }
 
 int main(int argc, char **argv)
@@ -32,14 +32,14 @@ int main(int argc, char **argv)
 		switch (opt) {
 			case 'a':
 				if (binio_parse(optarg, &address) < 0) {
-					fprintf(stderr, "bsave: bad address '%s' (must be 0 to $ffffff)\n", optarg);
+					fprintf(stderr, "bsave: bad address '%s' (must be 0 to ffffffh)\n", optarg);
 					return 1;
 				}
 				have_address = 1;
 				break;
 			case 'l':
 				if (binio_parse(optarg, &length) < 0) {
-					fprintf(stderr, "bsave: bad length '%s' (must be 1 to $ffffff)\n", optarg);
+					fprintf(stderr, "bsave: bad length '%s' (must be 1 to ffffffh)\n", optarg);
 					return 1;
 				}
 				have_length = 1;
@@ -59,7 +59,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	if ((uint64_t)address + length > BINIO_MAX_ADDRESS) {
-		fprintf(stderr, "bsave: $%06x + $%06x runs past the end of the 16MB address space\n", address, length);
+		fprintf(stderr, "bsave: %06xh + %06xh runs past the end of the 16MB address space\n", address, length);
 		return 1;
 	}
 
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 	if (!mem)
 		return 1;
 	if ((uint64_t)address + length > size) {
-		fprintf(stderr, "bsave: $%06x-$%06x is outside shared memory ($000000-$%06x)\n",
+		fprintf(stderr, "bsave: %06xh-%06xh is outside shared memory (000000h-%06xh)\n",
 			address, address + length - 1, size - 1);
 		shmdt(mem);
 		return 1;
@@ -90,6 +90,6 @@ int main(int argc, char **argv)
 		unlink(filename); // don't leave a partial file
 		return 1;
 	}
-	printf("bsave: saved $%06x bytes from $%06x-$%06x to %s\n", length, address, address + length - 1, filename);
+	printf("bsave: saved %06xh bytes from %06xh-%06xh to %s\n", length, address, address + length - 1, filename);
 	return 0;
 }

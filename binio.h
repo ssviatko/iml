@@ -13,23 +13,28 @@
 
 #define BINIO_MAX_ADDRESS 0x1000000 // 24 bit address space (16MB)
 
-// parse a 24 bit value: "$hex" or decimal. Returns 0 if ok, -1 on a bad or out of range value
+// parse a 24 bit value: hex with an h or H suffix (1c0000h), or decimal. Returns 0 if ok,
+// -1 on a bad or out of range value
 static int binio_parse(const char *a_str, uint32_t *a_value)
 {
+	char digits[32];
+	size_t len = strlen(a_str);
 	int base = 10;
-	const char *p = a_str;
-	char *end;
 
-	if (*p == '$') {
+	if ((len > 0) && ((a_str[len - 1] == 'h') || (a_str[len - 1] == 'H'))) {
 		base = 16;
-		++p;
+		--len;
 	}
-	// strtoul would accept a sign, leading spaces and (in base 16) a 0x prefix; we want digits only
-	if ((*p == 0) || !((base == 16) ? strchr("0123456789abcdefABCDEF", *p) : strchr("0123456789", *p)))
+	if ((len == 0) || (len >= sizeof(digits)))
+		return -1;
+	memcpy(digits, a_str, len);
+	digits[len] = 0;
+	// digits only: strtoul would also take a sign, leading spaces and (in base 16) a 0x prefix
+	if (strspn(digits, (base == 16) ? "0123456789abcdefABCDEF" : "0123456789") != len)
 		return -1;
 	errno = 0;
-	unsigned long v = strtoul(p, &end, base);
-	if ((errno != 0) || (*end != 0) || (v >= BINIO_MAX_ADDRESS))
+	unsigned long v = strtoul(digits, NULL, base);
+	if ((errno != 0) || (v >= BINIO_MAX_ADDRESS))
 		return -1;
 	*a_value = (uint32_t)v;
 	return 0;

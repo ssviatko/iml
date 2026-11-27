@@ -2,7 +2,7 @@
 //
 // bload --address <addr> filename
 //
-// addr is a 24 bit value, decimal or hex with a $ prefix (quote it in the shell: '$10000').
+// addr is a 24 bit value, decimal, or hex with an h suffix (e.g. 10000h).
 
 #include <getopt.h>
 #include <sys/stat.h>
@@ -18,7 +18,7 @@ static struct option g_options[] = {
 static void usage(void)
 {
 	fprintf(stderr, "usage: bload --address <addr> filename\n"
-		"       addr is decimal, or hex with a $ prefix (e.g. '$10000')\n");
+		"       addr is decimal, or hex with an h suffix (e.g. 10000h)\n");
 }
 
 int main(int argc, char **argv)
@@ -31,7 +31,7 @@ int main(int argc, char **argv)
 		switch (opt) {
 			case 'a':
 				if (binio_parse(optarg, &address) < 0) {
-					fprintf(stderr, "bload: bad address '%s' (must be 0 to $ffffff)\n", optarg);
+					fprintf(stderr, "bload: bad address '%s' (must be 0 to ffffffh)\n", optarg);
 					return 1;
 				}
 				have_address = 1;
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	if ((uint64_t)address + (uint64_t)st.st_size > BINIO_MAX_ADDRESS) {
-		fprintf(stderr, "bload: %s ($%llx bytes) at $%06x runs past the end of the 16MB address space\n",
+		fprintf(stderr, "bload: %s (%llxh bytes) at %06xh runs past the end of the 16MB address space\n",
 			filename, (unsigned long long)st.st_size, address);
 		fclose(f);
 		return 1;
@@ -83,7 +83,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	if ((uint64_t)address + length > size) {
-		fprintf(stderr, "bload: $%06x-$%06x is outside shared memory ($000000-$%06x)\n",
+		fprintf(stderr, "bload: %06xh-%06xh is outside shared memory (000000h-%06xh)\n",
 			address, address + length - 1, size - 1);
 		fclose(f);
 		shmdt(mem);
@@ -110,6 +110,6 @@ int main(int argc, char **argv)
 	memcpy(mem + address, buf, length);
 	free(buf);
 	shmdt(mem);
-	printf("bload: loaded $%06x bytes from %s to $%06x-$%06x\n", length, filename, address, address + length - 1);
+	printf("bload: loaded %06xh bytes from %s to %06xh-%06xh\n", length, filename, address, address + length - 1);
 	return 0;
 }

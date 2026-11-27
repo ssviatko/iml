@@ -48,16 +48,15 @@ bload - Load a file into shared memory at an address, while a server is running.
 usage: ./bsave --address <addr> --length <len> filename
        ./bload --address <addr> filename
 
-Addresses and lengths are decimal, or hex with a $ prefix. Quote hex values in
-the shell so it doesn't expand the $ (e.g. --address '$10000'). Short forms -a
-and -l also work. The block must fit inside the 2MB shared memory segment. Like
-the other programs, run them from the IML directory (they find shared memory
-through the "token" file). They attach to the existing segment and never create
+Addresses and lengths are decimal, or hex with an h or H suffix (e.g. 1c0000h).
+Short forms -a and -l also work. The block must fit inside the 2MB shared memory
+segment. Like the other programs, run them from the IML directory (they find
+shared memory through the "token" file). They attach to the existing segment and never create
 one, so if no server is running they just say so and exit. bload writes straight
 into memory, bypassing the soft switches and the ROM write protection.
 
-example: ./bsave -a '$1c0000' -l 1024 vectors.bin
-         ./bload -a '$10000' prog.bin
+example: ./bsave -a 1c0000h -l 1024 vectors.bin
+         ./bload -a 10000h prog.bin
 
 --- Server programs ---
 
