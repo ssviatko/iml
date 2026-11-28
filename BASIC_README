@@ -444,6 +444,32 @@ Machine and memory:
   POS(x)             the column the cursor is in (0 is the first)
 
 
+Time
+----
+
+TIMEGET reads the clock. After it, these built-in variables describe that moment (they
+don't change until the next TIMEGET, so they always fit together):
+
+  TIME$        the date and time in ISO 8601 form: "2026-11-27T17:43:36.311"
+  TIMEYEAR     the year, e.g. 2026
+  TIMEMONTH    the month, 0-11 (0 = January)
+  TIMEDOM      the day of the month, 1-31
+  TIMEDOW      the day of the week, 0-6 (0 = Sunday)
+  TIMEHOUR     0-23
+  TIMEMINUTE   0-59
+  TIMESECOND   0-59
+  TIMEMS       milliseconds, 0-999
+  TIMEEPOCH    seconds since 1970-01-01 00:00 UTC (a 64 bit integer)
+
+All but TIMEEPOCH are local time. When the machine starts, the clock has been read once,
+so use TIMEGET before reading the time.
+
+  10 TIMEGET: T0 = TIMEEPOCH * 1000 + TIMEMS
+  20 FOR I = 1 TO 100000: NEXT
+  30 TIMEGET: PRINT "That took"; TIMEEPOCH * 1000 + TIMEMS - T0; "ms"
+  40 PRINT "Today is "; MID$(TIME$, 1, 10)
+
+
 PRINT USING formats
 -------------------
 

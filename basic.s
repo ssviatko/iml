@@ -41,6 +41,16 @@ IO_CON_CURSORH	equ	IO+$14
 IO_CON_CURSORV	equ	IO+$15
 IO_VIDMODE	equ	IO+$20
 IO_RANDBYTE	equ	IO+$21
+IO_CLOCK_EPOCH	equ	IO+$a0		; 8 bytes, little endian: seconds since 1970 (UTC)
+IO_CLOCK_MS	equ	IO+$a8		; 2 bytes: milliseconds
+IO_CLOCK_HOUR	equ	IO+$aa
+IO_CLOCK_MINUTE	equ	IO+$ab
+IO_CLOCK_SECOND	equ	IO+$ac
+IO_CLOCK_MONTH	equ	IO+$ad		; 0-11
+IO_CLOCK_DOM	equ	IO+$ae
+IO_CLOCK_YEAR	equ	IO+$af		; 2 bytes
+IO_CLOCK_DOW	equ	IO+$b1		; 0-6, Sunday = 0
+IO_CLOCK_UPDATE	equ	IO+$b2		; write: read the clock into the above
 
 FP_INIT		equ	IO+$40		; FP commands: bit 6 = 0 FACC / 1 FARG, $20 = 80 bit
 FP_MUL		equ	IO+$42
@@ -361,6 +371,11 @@ TK_SPC		equ	$ca
 TK_USING	equ	$cb
 TK_FN		equ	$cc
 TK_FIRSTFN	equ	$cd		; functions, in the order of fntab
+TK_EXT		equ	$ff		; a two byte token: $ff, then TX_... (1-31, so it never
+					; looks like another token, a quote, a colon or an end of line)
+TX_TIMEGET	equ	1		; the statement
+TX_FIRSTFN	equ	2		; then functions, in the order of fntab2
+TX_LASTFN	equ	11
 TK_MID		equ	TK_FIRSTFN+27
 TK_LASTFN	equ	$f6
 
@@ -1459,7 +1474,7 @@ crunch:
 .we:
 	clr.b (a2)
 	bsr findkw
-	tst.b d0
+	tst.w d0
 	bne .kw
 	; FNname / PROCname: the FN or PROC keyword, then the name
 	lea D_WORD(a6),a2
@@ -1489,6 +1504,12 @@ crunch:
 	addq.l #4,a2
 	bra .nl
 .kw:
+	cmp.w #TK_EXT*256,d0
+	bcs .k1
+	move.b #TK_EXT,(a1)+		; a two byte token
+	move.b d0,(a1)+
+	bra .l
+.k1:
 	move.b d0,(a1)+
 	cmp.b #TK_REM,d0
 	beq .raw
@@ -1547,9 +1568,19 @@ findkw:
 	movem.l a0/a2/d1,-(sp)
 	lea kwtab(pc),a0
 	move.w #$80,d1
+	bsr .find
+	bne .r
+	lea kwtab2(pc),a0
+	move.w #TK_EXT*256+1,d1		; two byte tokens
+	bsr .find
+.r:
+	movem.l (sp)+,a0/a2/d1
+	rts
+; look in table A0 (numbered from D1): D0 = the token, Z clear if found
+.find:
 .l:
 	tst.b (a0)
-	beq .no			; end of the table
+	beq .no				; end of the table
 	lea D_WORD(a6),a2
 .c:
 	move.b (a0)+,d0
@@ -1558,7 +1589,7 @@ findkw:
 	tst.b d0
 	bne .c
 	move.w d1,d0
-	bra .r
+	rts
 .skip:
 	tst.b d0
 	beq .n
@@ -1570,8 +1601,6 @@ findkw:
 	bra .l
 .no:
 	moveq #0,d0
-.r:
-	movem.l (sp)+,a0/a2/d1
 	rts
 
 ; print keyword D0 (a token)
@@ -1588,6 +1617,29 @@ putkw:
 	bsr puts
 	movem.l (sp)+,d0-d1/a0
 	rts
+
+; print two byte keyword D0 (the TX_ number). keeps all registers
+putkwx:
+	movem.l d0-d1/a0,-(sp)
+	lea kwtab2(pc),a0
+	and.w #$1f,d0
+	subq.w #1,d0
+	bra .f
+.s:
+	tst.b (a0)+
+	bne .s
+.f:
+	dbra d0,.s
+	bsr puts
+	movem.l (sp)+,d0-d1/a0
+	rts
+
+; the keywords with two byte tokens ($ff, then 1, 2, ...)
+kwtab2:
+	dc.b "TIMEGET",0,"TIME$",0,"TIMEYEAR",0,"TIMEMONTH",0,"TIMEDOM",0,"TIMEDOW",0
+	dc.b "TIMEHOUR",0,"TIMEMINUTE",0,"TIMESECOND",0,"TIMEMS",0,"TIMEEPOCH",0
+	dc.b 0
+	even
 
 ; the keywords in token order (from $80). A word is a keyword only if it matches exactly
 kwtab:
@@ -1680,6 +1732,12 @@ listline:
 	bne .c
 	tst.b d0
 	bpl .c
+	cmp.b #TK_EXT,d0
+	bne .k
+	move.b (a1)+,d0
+	bsr putkwx
+	bra .l
+.k:
 	bsr putkw
 	cmp.b #TK_REM,d0
 	beq .raw
@@ -1780,6 +1838,14 @@ newstmt:
 	bsr st_midset
 	bra after_stmt
 .nm:
+	cmp.b #TK_EXT,d0
+	bne .nx
+	move.b (a5)+,d0			; a two byte token: only TIMEGET is a statement
+	cmp.b #TX_TIMEGET,d0
+	bne ns_sn
+	bsr st_timeget
+	bra after_stmt
+.nx:
 	cmp.b #TK_LASTST,d0
 	bhi ns_sn
 	and.w #$7f,d0
@@ -4161,7 +4227,7 @@ primary:
 	cmp.b #TK_FIRSTFN,d0
 	bcs .kw
 	cmp.b #TK_LASTFN,d0
-	bhi .sn
+	bhi .ext
 	addq.l #1,a5
 	sub.b #TK_FIRSTFN,d0
 	and.w #$ff,d0
@@ -4231,6 +4297,28 @@ primary:
 .zero:
 	lea D_VZERO(a6),a1		; a variable that doesn't exist yet reads as 0 or ""
 	bra loadvar
+
+; a two byte token in an expression
+.ext:
+	cmp.b #TK_EXT,d0
+	bne .sn
+	addq.l #1,a5
+	moveq #0,d0
+	move.b (a5)+,d0
+	cmp.b #TX_FIRSTFN,d0
+	bcs .sn
+	cmp.b #TX_LASTFN,d0
+	bhi .sn
+	sub.b #TX_FIRSTFN,d0
+	add.w d0,d0
+	add.w d0,d0
+	lea fntab2(pc),a0
+	move.l (a0,d0.w),a0
+	jmp (a0)
+
+fntab2:
+	dc.l fn_time,fn_tyear,fn_tmonth,fn_tdom,fn_tdow,fn_thour,fn_tminute,fn_tsecond
+	dc.l fn_tms,fn_tepoch
 
 fntab:
 	dc.l fn_sgn,fn_int,fn_fix,fn_abs,fn_sqr,fn_rnd,fn_log,fn_log
@@ -7490,6 +7578,133 @@ fn_rnd:
 	move.b #XA,FP_ILOAD
 	move.b #X,FP_DIV
 	bra fresult
+
+; ---------------------------------------------------------------- time
+
+; TIMEGET: read the clock. TIME$ and the TIME... variables all describe that moment
+st_timeget:
+	move.b d0,IO_CLOCK_UPDATE
+	rts
+
+; a clock byte at A0 -> VA
+tbyte:
+	moveq #0,d1
+	move.b (a0),d1
+	moveq #0,d0
+	bra setint
+; a 16 bit little endian clock value at A0 -> D1
+tword:
+	moveq #0,d1
+	move.b 1(a0),d1
+	lsl.w #8,d1
+	move.b (a0),d1
+	rts
+
+fn_tyear:
+	lea IO_CLOCK_YEAR,a0
+	bsr tword
+	moveq #0,d0
+	bra setint
+fn_tms:
+	lea IO_CLOCK_MS,a0
+	bsr tword
+	moveq #0,d0
+	bra setint
+fn_tmonth:
+	lea IO_CLOCK_MONTH,a0
+	bra tbyte
+fn_tdom:
+	lea IO_CLOCK_DOM,a0
+	bra tbyte
+fn_tdow:
+	lea IO_CLOCK_DOW,a0
+	bra tbyte
+fn_thour:
+	lea IO_CLOCK_HOUR,a0
+	bra tbyte
+fn_tminute:
+	lea IO_CLOCK_MINUTE,a0
+	bra tbyte
+fn_tsecond:
+	lea IO_CLOCK_SECOND,a0
+	bra tbyte
+fn_tepoch:
+	lea IO_CLOCK_EPOCH+8,a0		; 8 bytes, little endian
+	moveq #3,d2
+.h:
+	lsl.l #8,d0
+	move.b -(a0),d0
+	dbra d2,.h
+	moveq #3,d2
+.l:
+	lsl.l #8,d1
+	move.b -(a0),d1
+	dbra d2,.l
+	bra setint
+
+; D1.W as D2 decimal digits (with leading zeros, more digits if it needs them) at A1
+tdec:
+	movem.l d0-d3/a0,-(sp)
+	lea D_WORK+8(a6),a0
+	moveq #0,d3			; digits
+	and.l #$ffff,d1
+.l:
+	divu #10,d1
+	swap d1
+	add.b #'0',d1
+	move.b d1,-(a0)
+	clr.w d1
+	swap d1
+	addq.w #1,d3
+	tst.w d1
+	bne .l
+.z:
+	cmp.w d2,d3
+	bcc .c
+	move.b #'0',-(a0)
+	addq.w #1,d3
+	bra .z
+.c:
+	move.b (a0)+,(a1)+
+	subq.w #1,d3
+	bne .c
+	movem.l (sp)+,d0-d3/a0
+	rts
+
+; TIME$: the time in ISO 8601 form, YYYY-MM-DDTHH:MM:SS.mmm (local time)
+fn_time:
+	lea D_NUMBUF(a6),a1
+	lea IO_CLOCK_YEAR,a0
+	bsr tword
+	moveq #4,d2
+	bsr tdec
+	move.b #'-',(a1)+
+	moveq #0,d1
+	move.b IO_CLOCK_MONTH,d1
+	addq.w #1,d1
+	moveq #2,d2
+	bsr tdec
+	move.b #'-',(a1)+
+	move.b IO_CLOCK_DOM,d1
+	bsr tdec
+	move.b #'T',(a1)+
+	move.b IO_CLOCK_HOUR,d1
+	bsr tdec
+	move.b #':',(a1)+
+	move.b IO_CLOCK_MINUTE,d1
+	bsr tdec
+	move.b #':',(a1)+
+	move.b IO_CLOCK_SECOND,d1
+	bsr tdec
+	move.b #'.',(a1)+
+	lea IO_CLOCK_MS,a0
+	bsr tword
+	moveq #3,d2
+	bsr tdec
+	move.l a1,d0
+	lea D_NUMBUF(a6),a0
+	sub.l a0,d0
+	bra copystr
 
 ; RNDBYTE or RNDBYTE(): a random byte, 0-255
 fn_rndbyte:

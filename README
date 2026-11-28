@@ -164,6 +164,21 @@ IO_CON_CURSORV = 0x1bfc15 - (read/write) - Vertizontal cursor position
 IO_CON_CURSOR = 0x1bfc16 - (read/write) - High bit set determines if cursor is visible
 IO_CON_CR = 0x1bfc17 - (write any value) - Prints a carriage return
 IO_VIDMODE = 0x1bfc20 - (read/write) - Console video mode
+IO_RANDBYTE = 0x1bfc21 - (write any value, then read) - A random byte
+
+Clock (write IO_CLOCK_UPDATE, then read the others: they all describe the same moment,
+in local time; numbers are little endian):
+
+IO_CLOCK_EPOCH = 0x1bfca0-0x1bfca7 - Seconds since 1970-01-01 00:00 UTC (64 bits)
+IO_CLOCK_MS = 0x1bfca8-0x1bfca9 - Milliseconds within the second (0-999)
+IO_CLOCK_HOUR = 0x1bfcaa - Hour (0-23)
+IO_CLOCK_MINUTE = 0x1bfcab - Minute (0-59)
+IO_CLOCK_SECOND = 0x1bfcac - Second (0-59)
+IO_CLOCK_MONTH = 0x1bfcad - Month (0-11)
+IO_CLOCK_DOM = 0x1bfcae - Day of the month (1-31)
+IO_CLOCK_YEAR = 0x1bfcaf-0x1bfcb0 - Year (0-65535)
+IO_CLOCK_DOW = 0x1bfcb1 - Day of the week (0-6, Sunday = 0)
+IO_CLOCK_UPDATE = 0x1bfcb2 - (write any value) - Read the clock into the registers above
 
 Floating point: FACC (0x1bfce0) and FARG (0x1bfcf0) are the two registers, FPINT
 (0x1bfcd8) is a 64 bit integer (little endian), FPASCII (0x1bfcc0) is a text buffer

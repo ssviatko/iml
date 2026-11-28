@@ -143,6 +143,32 @@ void mem_driver_startup()
 	g_shm_ptr[IOSTART + IO_CON_CURSOR] = 0; // cursor off
 	g_shm_ptr[IOSTART + IO_CON_CURSORH] = 0;
 	g_shm_ptr[IOSTART + IO_CON_CURSORV] = 0; // cursor at top left corner
+	clock_update(); // the clock registers hold something sensible from the start
+}
+
+// read the clock into the IO_CLOCK registers (all little endian)
+void clock_update(void)
+{
+	struct timespec l_ts;
+	struct tm l_tm;
+	clock_gettime(CLOCK_REALTIME, &l_ts);
+	time_t l_secs = l_ts.tv_sec;
+	localtime_r(&l_secs, &l_tm);
+	uint64_t l_epoch = (uint64_t)(int64_t)l_ts.tv_sec;
+	for (int i = 0; i < 8; ++i)
+		g_shm_ptr[IOSTART + IO_CLOCK_EPOCH + i] = (l_epoch >> (i * 8)) & 0xff;
+	unsigned int l_ms = l_ts.tv_nsec / 1000000;
+	g_shm_ptr[IOSTART + IO_CLOCK_MS] = l_ms & 0xff;
+	g_shm_ptr[IOSTART + IO_CLOCK_MS + 1] = l_ms >> 8;
+	g_shm_ptr[IOSTART + IO_CLOCK_HOUR] = l_tm.tm_hour;
+	g_shm_ptr[IOSTART + IO_CLOCK_MINUTE] = l_tm.tm_min;
+	g_shm_ptr[IOSTART + IO_CLOCK_SECOND] = l_tm.tm_sec;
+	g_shm_ptr[IOSTART + IO_CLOCK_MONTH] = l_tm.tm_mon;
+	g_shm_ptr[IOSTART + IO_CLOCK_DOM] = l_tm.tm_mday;
+	unsigned int l_year = l_tm.tm_year + 1900;
+	g_shm_ptr[IOSTART + IO_CLOCK_YEAR] = l_year & 0xff;
+	g_shm_ptr[IOSTART + IO_CLOCK_YEAR + 1] = (l_year >> 8) & 0xff;
+	g_shm_ptr[IOSTART + IO_CLOCK_DOW] = l_tm.tm_wday;
 }
 
 void mem_driver_shutdown()
@@ -245,6 +271,8 @@ static void mem_write_phys(uint32_t a_address, uint8_t a_byte)
 		g_window[2] = a_byte;
 	} else if (a_address == IOSTART + IO_Z80_WINDOW_C) {
 		g_window[3] = a_byte;
+	} else if (a_address == IOSTART + IO_CLOCK_UPDATE) {
+		clock_update();
 	} else if (a_address == IOSTART + IO_RANDBYTE) {
 		// implement the random byte feature right here
 		a_byte = rand() % 256;

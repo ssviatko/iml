@@ -82,6 +82,19 @@ const static uint32_t IO_CON_CR = 0x17;
 const static uint32_t IO_VIDMODE = 0x20;
 const static uint32_t IO_RANDBYTE = 0x21;
 
+// Clock (all little endian). Write any value to IO_CLOCK_UPDATE, then read the rest: they
+// all describe the same moment. Local time; months 0-11, days of the week 0-6 (Sunday = 0)
+const static uint32_t IO_CLOCK_EPOCH = 0xa0;	// 8 bytes: seconds since 1970-01-01 00:00 UTC
+const static uint32_t IO_CLOCK_MS = 0xa8;	// 2 bytes: milliseconds within the second
+const static uint32_t IO_CLOCK_HOUR = 0xaa;	// 0-23
+const static uint32_t IO_CLOCK_MINUTE = 0xab;	// 0-59
+const static uint32_t IO_CLOCK_SECOND = 0xac;	// 0-59 (60 for a leap second)
+const static uint32_t IO_CLOCK_MONTH = 0xad;	// 0-11
+const static uint32_t IO_CLOCK_DOM = 0xae;	// 1-31
+const static uint32_t IO_CLOCK_YEAR = 0xaf;	// 2 bytes: 0-65535
+const static uint32_t IO_CLOCK_DOW = 0xb1;	// 0-6, Sunday = 0
+const static uint32_t IO_CLOCK_UPDATE = 0xb2;	// (write any value) read the clock into the above
+
 // Memory window shadowing (applies to every CPU). Writing a byte N to one of these soft switches
 // shadows the 8192 byte section N of the 2MB address space (physical N*0x2000) into the
 // corresponding window in low memory: reads and writes of the window go to the upper memory.
@@ -203,6 +216,7 @@ void m68k_mem_write16(uint32_t a_address, uint16_t a_word);
 void m68k_mem_write32(uint32_t a_address, uint32_t a_long);
 
 // floating point support
+void clock_update(void);
 void fp_init_constant(uint8_t a_byte);
 void fp_to_ascii(uint8_t a_byte);
 void fp_multiply(uint8_t a_byte);
