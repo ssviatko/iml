@@ -1701,6 +1701,7 @@ st_list:
 	bsr range
 	move.l d6,d0
 	bsr findline
+	bsr pgstart
 .l:
 	tst.w (a0)
 	beq .done
@@ -1708,11 +1709,81 @@ st_list:
 	cmp.l d7,d0
 	bhi .done
 	bsr listline
+	bsr linelen			; the rows it took (a long line wraps)
+	moveq #80,d1
+	cmp.b #9,IO_VIDMODE
+	beq .w
+	moveq #40,d1
+.w:
+	divu d1,d0
+	and.l #$ffff,d0
+	addq.l #1,d0
+	bsr pgrows			; a full screen: wait for space
+	bmi .done
 	adda.w (a0),a0
 	bsr brkkey
 	beq .l
 .done:
 	jmp ready
+
+; how many characters LIST prints for line A0 -> D0. keeps everything else
+linelen:
+	movem.l d1-d3/a0-a2,-(sp)
+	move.l a0,a2
+	moveq #0,d0
+	move.l LNUM(a2),d1
+	bsr itoa			; the number
+	moveq #1,d3			; and the space after it
+.n:
+	tst.b (a0)+
+	beq .t
+	addq.l #1,d3
+	bra .n
+.t:
+	lea LH(a2),a1
+	moveq #0,d2			; in quotes
+.l:
+	move.b (a1)+,d0
+	beq .e
+	cmp.b #'"',d0
+	bne .q
+	not.b d2
+.q:
+	tst.b d2
+	bne .one
+	tst.b d0
+	bpl .one
+	cmp.b #TK_EXT,d0
+	bne .kw
+	move.b (a1)+,d0
+	bsr kwname2
+	bra .kl
+.kw:
+	move.b d0,d1
+	bsr kwname
+.kl:
+	tst.b (a0)+
+	beq .kd
+	addq.l #1,d3
+	bra .kl
+.kd:
+	cmp.b #TK_REM,d1
+	beq .raw
+	cmp.b #TK_APOS,d1
+	beq .raw
+	bra .l
+.raw:
+	tst.b (a1)+
+	beq .e
+	addq.l #1,d3
+	bra .raw
+.one:
+	addq.l #1,d3
+	bra .l
+.e:
+	move.l d3,d0
+	movem.l (sp)+,d1-d3/a0-a2
+	rts
 
 ; print line A0 (number, a space, the text). keeps A0
 listline:
@@ -8530,11 +8601,9 @@ pgstart:
 pager:
 	move.l a0,a2
 	moveq #79,d5			; the width we fill (one less than the screen's)
-	moveq #33,d6			; rows before a pause
 	cmp.b #9,IO_VIDMODE
 	beq .line
 	moveq #39,d5
-	moveq #16,d6
 .line:
 	tst.b (a2)
 	beq .done
@@ -8631,15 +8700,29 @@ pager:
 ; a new line, and a pause when the screen is full. N set if the reader wants to stop
 .nl:
 	bsr crlf
-	addq.w #1,D_PGROW(a6)
-	cmp.w D_PGROW(a6),d6
-	bhi .nok
+	moveq #1,d0
+	bra pgrows
+
+; D0 more rows have been printed: pause if that fills the screen. N set (D0 = -1) if
+; the reader wants to stop. keeps D1-D7/A1-A6
+pgrows:
+	add.w d0,D_PGROW(a6)
+	moveq #33,d0			; rows before a pause
+	cmp.b #9,IO_VIDMODE
+	beq .h
+	moveq #16,d0
+.h:
+	cmp.w D_PGROW(a6),d0
+	bhi pg_ok
 	clr.w D_PGROW(a6)
-	lea .more(pc),a0
+; "-- press space for more --": N set (D0 = -1) if a key other than space was pressed
+pgpause:
+	move.l a0,-(sp)
+	lea pg_more(pc),a0
 	bsr puts
 	bsr getkey
 	move.l d0,-(sp)
-	lea .more(pc),a0		; rub the prompt out
+	lea pg_more(pc),a0		; rub the prompt out
 .rub:
 	tst.b (a0)+
 	beq .rd
@@ -8647,15 +8730,16 @@ pager:
 	bra .rub
 .rd:
 	move.l (sp)+,d0
+	move.l (sp)+,a0
 	cmp.b #' ',d0
-	bne .no
-.nok:
+	bne pg_no
+pg_ok:
 	moveq #0,d0
 	rts
-.no:
+pg_no:
 	moveq #-1,d0
 	rts
-.more:
+pg_more:
 	dc.b "-- press space for more --",0
 	even
 
@@ -8791,7 +8875,7 @@ helptab:
 	dc.b "LIST",0,0
 	dc.b "LIST [from-to]",10
 	dc.b "List the program, or part of it: LIST 100, LIST 100-200, LIST -50, LIST 300-",10
-	dc.b "Ctrl-Z stops it.",10
+	dc.b "It stops after each screenful: space for more, any other key (or Ctrl-Z) stops.",10
 	dc.b 0
 	dc.b "CLEAR",0,0
 	dc.b "CLEAR",10

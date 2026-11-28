@@ -306,7 +306,9 @@ LET var = expression
 LINE INPUT ["prompt";] var$
     Read a whole line (commas and quotes included) into a string variable.
 LIST [from-to]
-    List the program, or part of it (like DELETE). Ctrl-Z stops it.
+    List the program, or part of it (like DELETE). A long listing stops after
+    each screenful with "-- press space for more --": space goes on, any other
+    key stops. Ctrl-Z stops it too.
 MID$(var$, start [, n]) = string
     Replace characters in a string variable, from position start (1 = the
     first), n of them at most (or as many as the new string has). The
