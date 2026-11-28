@@ -173,6 +173,7 @@ D_STMTSP	equ	1876		; the stack pointer each statement starts with
 D_TMPBASE	equ	1880		; temporary strings start here (0 = at VARBOT)
 D_GCFLOOR	equ	1884		; garbage collection leaves the heap below this alone (0 = none)
 D_CALLFR	equ	1888		; the innermost multi-line FN/PROC call's frame (0 = none)
+D_PGROW		equ	1892		; .w HELP's pager: rows since the last pause
 D_CRUNCH	equ	768		; 512 bytes: crunched program line
 D_DIRBUF	equ	1280		; a direct command as a line: length, $ffff, text, then a zero word
 D_CSTBOT	equ	2048		; control stack
@@ -376,6 +377,7 @@ TK_EXT		equ	$ff		; a two byte token: $ff, then TX_... (1-31, so it never
 TX_TIMEGET	equ	1		; the statement
 TX_FIRSTFN	equ	2		; then functions, in the order of fntab2
 TX_LASTFN	equ	11
+TX_HELP		equ	12		; a statement
 TK_MID		equ	TK_FIRSTFN+27
 TK_LASTFN	equ	$f6
 
@@ -1638,6 +1640,7 @@ putkwx:
 kwtab2:
 	dc.b "TIMEGET",0,"TIME$",0,"TIMEYEAR",0,"TIMEMONTH",0,"TIMEDOM",0,"TIMEDOW",0
 	dc.b "TIMEHOUR",0,"TIMEMINUTE",0,"TIMESECOND",0,"TIMEMS",0,"TIMEEPOCH",0
+	dc.b "HELP",0
 	dc.b 0
 	even
 
@@ -1840,7 +1843,12 @@ newstmt:
 .nm:
 	cmp.b #TK_EXT,d0
 	bne .nx
-	move.b (a5)+,d0			; a two byte token: only TIMEGET is a statement
+	move.b (a5)+,d0			; a two byte token: TIMEGET and HELP are statements
+	cmp.b #TX_HELP,d0
+	bne .tg
+	bsr st_help
+	bra after_stmt
+.tg:
 	cmp.b #TX_TIMEGET,d0
 	bne ns_sn
 	bsr st_timeget
@@ -8323,6 +8331,741 @@ fn_inkey:
 	bsr mkstr
 	move.b d2,(a0)
 	rts
+
+; ---------------------------------------------------------------- HELP
+
+; HELP              the manual (BASIC_README, built in), a screen at a time
+; HELP keyword      a few lines about a keyword (HELP KEYWORDS lists them)
+; HELP VARIABLES    types and limits; HELP OPERATORS
+st_help:
+	bsr textback			; (in a graphics mode the text wouldn't show)
+	bsr pgstart
+	bsr peek
+	beq .manual
+	cmp.b #':',d0
+	beq .manual
+	cmp.b #TK_ELSE,d0
+	beq .manual
+	; the topic: a keyword (a token) or a word
+	lea D_WORD(a6),a1
+	tst.b d0
+	bpl .word
+	addq.l #1,a5
+	cmp.b #TK_EXT,d0
+	bne .tk
+	move.b (a5)+,d0
+	bsr kwname2
+	bra .cp
+.tk:
+	bsr kwname
+.cp:
+	move.b (a0)+,(a1)+
+	bne .cp
+	bra .find
+.word:
+	move.b (a5),d0
+	cmp.b #'$',d0
+	beq .wc
+	cmp.b #'%',d0
+	beq .wc
+	cmp.b #'&',d0
+	beq .wc
+	bsr islabel
+	bcs .we
+.wc:
+	cmp.b #'a',d0
+	bcs .wu
+	cmp.b #'z'+1,d0
+	bcc .wu
+	sub.b #$20,d0
+.wu:
+	move.b d0,(a1)+
+	addq.l #1,a5
+	lea D_WORD+40(a6),a0
+	cmpa.l a0,a1
+	bcs .word
+.we:
+	clr.b (a1)
+.find:
+	move.l a5,a0			; whatever else is on the statement (HELP FNX: FN)
+	bsr skipstmt
+	move.l a0,a5
+	lea D_WORD(a6),a0
+	tst.b (a0)
+	beq .none
+	lea .kws(pc),a1
+	bsr strsame
+	beq .list
+	; the help table: names, an empty name, the text
+	lea helptab(pc),a2
+.l:
+	tst.b (a2)
+	beq .none			; the end of the table
+	moveq #0,d3			; matched
+.n:
+	tst.b (a2)
+	beq .ne
+	lea D_WORD(a6),a0
+	move.l a2,a1
+	bsr strsame
+	bne .ns
+	moveq #1,d3
+.ns:
+	tst.b (a2)+
+	bne .ns
+	bra .n
+.ne:
+	addq.l #1,a2			; the text
+	tst.l d3
+	bne .show
+.st:
+	tst.b (a2)+
+	bne .st
+	bra .l
+.show:
+	move.l a2,a0
+	bra pager
+.manual:
+	lea manual,a0
+	bra pager
+.none:
+	PRINTS "No help for "
+	lea D_WORD(a6),a0
+	bsr puts
+	PRINTS <". HELP KEYWORDS lists what there is, HELP the manual.",13>
+	rts
+.list:
+	; HELP KEYWORDS: every name in the help table, in columns
+	PRINTS <"HELP is there for these (HELP name):",13>
+	lea helptab(pc),a2
+	moveq #0,d4			; column
+	moveq #66,d7			; the last column a name can start in
+	cmp.b #9,IO_VIDMODE
+	beq .ll
+	moveq #26,d7
+.ll:
+	tst.b (a2)
+	beq .le
+.ln:
+	tst.b (a2)
+	beq .lt
+	move.l a2,a0
+	cmp.w d7,d4			; a new row?
+	bls .lp
+	bsr crlf
+	moveq #0,d4
+.lp:
+	bsr puts
+.lsk:
+	addq.w #1,d4
+	tst.b (a2)+
+	bne .lsk
+.lpad:
+	moveq #13,d0			; to the next 13 column stop
+	move.w d4,d1
+	ext.l d1
+	divu d0,d1
+	swap d1
+	tst.w d1
+	beq .ln
+	bsr space
+	addq.w #1,d4
+	bra .lpad
+.lt:
+	addq.l #1,a2			; skip the text
+.lts:
+	tst.b (a2)+
+	bne .lts
+	bra .ll
+.le:
+	bsr crlf
+	rts
+.kws:
+	dc.b "KEYWORDS",0
+	even
+
+; are the zero terminated strings at A0 and A1 the same? Z set if so. keeps A2
+strsame:
+.l:
+	move.b (a0)+,d0
+	cmp.b (a1)+,d0
+	bne .r
+	tst.b d0
+	bne .l
+.r:
+	rts
+
+; the name of token D0 -> A0
+kwname:
+	lea kwtab(pc),a0
+	and.w #$7f,d0
+	bra .f
+.s:
+	tst.b (a0)+
+	bne .s
+.f:
+	dbra d0,.s
+	rts
+; the name of two byte token D0 (the TX_ number) -> A0
+kwname2:
+	lea kwtab2(pc),a0
+	and.w #$1f,d0
+	subq.w #1,d0
+	bra .f
+.s:
+	tst.b (a0)+
+	bne .s
+.f:
+	dbra d0,.s
+	rts
+
+; the pager: start counting rows (D_PGROW) for a new piece of text
+pgstart:
+	clr.w D_PGROW(a6)
+	rts
+
+; print the text at A0 (lines end with 10, the text with 0), word wrapped to the screen
+; width (a long line's next lines keep its indent), stopping every screenful for a key:
+; space goes on, anything else stops
+pager:
+	move.l a0,a2
+	moveq #79,d5			; the width we fill (one less than the screen's)
+	moveq #33,d6			; rows before a pause
+	cmp.b #9,IO_VIDMODE
+	beq .line
+	moveq #39,d5
+	moveq #16,d6
+.line:
+	tst.b (a2)
+	beq .done
+	; the indent
+	moveq #0,d4
+.in:
+	cmp.b #' ',(a2)
+	bne .ie
+	addq.l #1,a2
+	addq.w #1,d4
+	bra .in
+.ie:
+	move.w d5,d0
+	lsr.w #1,d0
+	cmp.w d0,d4			; at most half the width
+	bls .is
+	move.w d0,d4
+.is:
+	move.w d4,d3			; column
+	bsr .indent
+.w:
+	; spaces before the next word
+	moveq #0,d1
+.sp:
+	cmp.b #' ',(a2)
+	bne .wl
+	addq.l #1,a2
+	addq.w #1,d1
+	bra .sp
+.wl:
+	; the word's length
+	move.l a2,a0
+	moveq #0,d2
+.wlc:
+	move.b (a0)+,d0
+	beq .wle
+	cmp.b #10,d0
+	beq .wle
+	cmp.b #' ',d0
+	beq .wle
+	addq.w #1,d2
+	bra .wlc
+.wle:
+	tst.w d2
+	beq .eol			; the end of the line
+	move.w d3,d0
+	add.w d1,d0
+	add.w d2,d0
+	cmp.w d5,d0
+	bls .fit
+	cmp.w d4,d3			; doesn't fit: on the next line (unless it's the first word)
+	beq .fit
+	bsr .nl
+	bmi .stop
+	move.w d4,d3
+	bsr .indent
+	moveq #0,d1
+.fit:
+	add.w d1,d3
+.fs:
+	subq.w #1,d1
+	bmi .fw
+	bsr space
+	bra .fs
+.fw:
+	add.w d2,d3
+.fc:
+	move.b (a2)+,d0
+	bsr putc
+	subq.w #1,d2
+	bne .fc
+	bra .w
+.eol:
+	cmp.b #10,(a2)
+	bne .el
+	addq.l #1,a2
+.el:
+	bsr .nl
+	bmi .stop
+	bra .line
+.done:
+.stop:
+	rts
+; the indent: D4 spaces
+.indent:
+	move.w d4,d0
+.ii:
+	subq.w #1,d0
+	bmi .ir
+	bsr space
+	bra .ii
+.ir:
+	rts
+; a new line, and a pause when the screen is full. N set if the reader wants to stop
+.nl:
+	bsr crlf
+	addq.w #1,D_PGROW(a6)
+	cmp.w D_PGROW(a6),d6
+	bhi .nok
+	clr.w D_PGROW(a6)
+	lea .more(pc),a0
+	bsr puts
+	bsr getkey
+	move.l d0,-(sp)
+	lea .more(pc),a0		; rub the prompt out
+.rub:
+	tst.b (a0)+
+	beq .rd
+	PRINTS <8," ",8>
+	bra .rub
+.rd:
+	move.l (sp)+,d0
+	cmp.b #' ',d0
+	bne .no
+.nok:
+	moveq #0,d0
+	rts
+.no:
+	moveq #-1,d0
+	rts
+.more:
+	dc.b "-- press space for more --",0
+	even
+
+; HELPTAB (made by a script: each entry is its names, each with a zero, an empty name,
+; then the text with a zero; the table ends with an empty name)
+helptab:
+	dc.b "VARIABLES",0,0
+	dc.b "VARIABLES",10
+	dc.b "Names start with a letter, then letters and digits (up to 32 characters, all",10
+	dc.b "significant). The last character gives the type:",10
+	dc.b "  A$  string, up to 65535 characters",10
+	dc.b "  A   floating point, 80 bit (about 19 digits, 1E-4951 to 1E+4932)",10
+	dc.b "  A&  64 bit integer (-9223372036854775808 to 9223372036854775807)",10
+	dc.b "  A%  32 bit integer (-2147483648 to 2147483647)",10
+	dc.b "A, A$, A& and A% are different variables. An unset variable is 0 or ",34,34,".",10
+	dc.b "Floats stored in integers are rounded; 64 bit values stored in 32 bits keep",10
+	dc.b "the low 32 bits. Integer arithmetic is 64 bit and wraps around.",10
+	dc.b "Arrays: DIM first (up to 8 dimensions, indexes from 0, up to 16,777,215",10
+	dc.b "elements). Using an array without DIM is ",34,"Array not dimensioned",34,".",10
+	dc.b "RUN, CLEAR, NEW and editing the program clear all variables.",10
+	dc.b "Memory: everything is between LOMEM and HIMEM ($10000-$16FFFF), about 1.4MB.",10
+	dc.b "Strings and arrays share it; FRE(0) shows what's free. ARRAYS lists arrays.",10
+	dc.b 0
+	dc.b "OPERATORS",0,0
+	dc.b "OPERATORS, highest priority first:",10
+	dc.b "  ^             power (2^10 = 1024)",10
+	dc.b "  -             negation (-2^2 = -4)",10
+	dc.b "  * /           multiply, divide (/ always gives a float)",10
+	dc.b "  ",92,"             integer divide (7",92,"2 = 3)",10
+	dc.b "  MOD           remainder (-7 MOD 3 = -1)",10
+	dc.b "  + -           add, subtract (+ also joins strings)",10
+	dc.b "  = <> < > <= >=  compare (true -1, false 0); strings compare too",10
+	dc.b "  NOT, AND, OR, XOR   bitwise on 64 bit integers",10
+	dc.b 0
+	dc.b "KEYWORDS",0,0
+	dc.b 0
+	dc.b "END",0,0
+	dc.b "END                    end the program",10
+	dc.b "END FN / END PROC      the end of a multi-line function or procedure (see DEF)",10
+	dc.b 0
+	dc.b "FOR",0,"TO",0,"STEP",0,"NEXT",0,0
+	dc.b "FOR var = start TO end [STEP step] ... NEXT [var [, var]]",10
+	dc.b "A counted loop; it always runs at least once. NEXT with no name ends the",10
+	dc.b "innermost loop.   FOR I = 10 TO 1 STEP -1: PRINT I: NEXT",10
+	dc.b 0
+	dc.b "DATA",0,0
+	dc.b "DATA item, item, ...",10
+	dc.b "Values for READ: numbers or text (",34,"quoted",34," if it has commas or colons).",10
+	dc.b 0
+	dc.b "INPUT",0,0
+	dc.b "INPUT [",34,"prompt",34,";] var [, var ...]",10
+	dc.b "Read values typed at the keyboard, separated by commas. With ; after the",10
+	dc.b "prompt a ",34,"? ",34," is shown; with a comma it isn't. Bad input: ",34,"?Redo from start",34,".",10
+	dc.b 0
+	dc.b "DIM",0,0
+	dc.b "DIM name(size [, size ...]) [, ...]",10
+	dc.b "Make arrays: DIM A(10), B$(5,5), CUBE%(9,9,9). Indexes start at 0, so A(10)",10
+	dc.b "has 11 elements. Up to 8 dimensions and 16,777,215 elements. See ARRAYS.",10
+	dc.b 0
+	dc.b "READ",0,0
+	dc.b "READ var [, var ...]",10
+	dc.b "Take the next values from the DATA statements. See RESTORE.",10
+	dc.b 0
+	dc.b "LET",0,0
+	dc.b "[LET] var = expression",10
+	dc.b "Assignment; LET can be left out.   LET A = 1: B$ = ",34,"x",34,10
+	dc.b 0
+	dc.b "GOTO",0,0
+	dc.b "GOTO line   or   GOTO *label",10
+	dc.b "Jump to a line.",10
+	dc.b 0
+	dc.b "RUN",0,0
+	dc.b "RUN [line]",10
+	dc.b "Clear the variables and run the program (from the start or from that line).",10
+	dc.b 0
+	dc.b "IF",0,"THEN",0,0
+	dc.b "IF cond THEN statements [ELSE statements]    (one line)",10
+	dc.b "IF cond THEN line [ELSE line]   or   IF cond GOTO line",10
+	dc.b "IF cond THEN       (nothing after THEN: a block)",10
+	dc.b "  ...",10
+	dc.b "ELSEIF cond [THEN]",10
+	dc.b "  ...",10
+	dc.b "ELSE",10
+	dc.b "  ...",10
+	dc.b "ENDIF",10
+	dc.b 0
+	dc.b "ELSE",0,"ELSEIF",0,"ENDIF",0,0
+	dc.b "ELSE, ELSEIF and ENDIF belong to IF: see HELP IF.",10
+	dc.b 0
+	dc.b "RESTORE",0,0
+	dc.b "RESTORE [line]",10
+	dc.b "READ starts again from the first DATA statement (or the first from that line).",10
+	dc.b 0
+	dc.b "GOSUB",0,"RETURN",0,0
+	dc.b "GOSUB line ... RETURN",10
+	dc.b "Call a subroutine; RETURN goes back to just after the GOSUB.",10
+	dc.b "RETURN value ends a multi-line function (see DEF).",10
+	dc.b 0
+	dc.b "REM",0,"'",0,0
+	dc.b "REM text   or   ' text",10
+	dc.b "A comment; the rest of the line is ignored.",10
+	dc.b 0
+	dc.b "STOP",0,0
+	dc.b "STOP",10
+	dc.b "Stop the program as if Ctrl-Z had been pressed; CONT carries on.",10
+	dc.b 0
+	dc.b "ON",0,0
+	dc.b "ON expr GOTO line, line, ...   /   ON expr GOSUB line, line, ...",10
+	dc.b "Go to the first line if expr is 1, the second if 2, ... Out of range: nothing.",10
+	dc.b "ON ERROR GOTO line: see HELP ERROR.",10
+	dc.b 0
+	dc.b "POKE",0,0
+	dc.b "POKE address, byte",10
+	dc.b "Store a byte (0-255) at a 24 bit address.   POKE &H20000, 65",10
+	dc.b 0
+	dc.b "PRINT",0,"?",0,0
+	dc.b "PRINT [items]   (? is short for PRINT)",10
+	dc.b "; prints the next item right after, , moves to the next 14 column zone, a",10
+	dc.b "; or , at the end stops the new line. TAB(n) and SPC(n) move along.",10
+	dc.b "PRINT USING format$; items: see HELP USING.",10
+	dc.b 0
+	dc.b "USING",0,0
+	dc.b "PRINT USING format$; item [; item ...]",10
+	dc.b "  ###.##  digits and the point      ,  thousands commas",10
+	dc.b "  + or -  sign                      $$ ** **$  dollar / star fill",10
+	dc.b "  ^^^^    exponent                  !  ",92,"  ",92,"  &  strings, _ a literal",10
+	dc.b "PRINT USING ",34,"Total: $$#,###.##",34,"; T",10
+	dc.b 0
+	dc.b "CONT",0,0
+	dc.b "CONT",10
+	dc.b "Carry on after Ctrl-Z or STOP.",10
+	dc.b 0
+	dc.b "LIST",0,0
+	dc.b "LIST [from-to]",10
+	dc.b "List the program, or part of it: LIST 100, LIST 100-200, LIST -50, LIST 300-",10
+	dc.b "Ctrl-Z stops it.",10
+	dc.b 0
+	dc.b "CLEAR",0,0
+	dc.b "CLEAR",10
+	dc.b "Forget all variables and arrays, the FOR/GOSUB stack and the READ position.",10
+	dc.b 0
+	dc.b "NEW",0,0
+	dc.b "NEW",10
+	dc.b "Erase the program and the variables.",10
+	dc.b 0
+	dc.b "CLS",0,0
+	dc.b "CLS",10
+	dc.b "Clear the text screen.",10
+	dc.b 0
+	dc.b "LOCATE",0,0
+	dc.b "LOCATE(column, row)   or   LOCATE(row)",10
+	dc.b "Move the text cursor (from 0: columns 0-79, rows 0-33 in 80 columns).",10
+	dc.b 0
+	dc.b "COLOR",0,0
+	dc.b "COLOR(foreground [, background])",10
+	dc.b "Text colors, 0-15.",10
+	dc.b 0
+	dc.b "WHILE",0,"WEND",0,0
+	dc.b "WHILE cond ... WEND",10
+	dc.b "A loop that runs while cond is true (maybe not at all).",10
+	dc.b 0
+	dc.b "REPEAT",0,"UNTIL",0,0
+	dc.b "REPEAT ... UNTIL cond",10
+	dc.b "A loop that runs until cond is true (at least once).",10
+	dc.b 0
+	dc.b "SWITCH",0,"CASE",0,"DEFAULT",0,"ENDSWITCH",0,0
+	dc.b "SWITCH expr",10
+	dc.b "CASE value [, value ...]",10
+	dc.b "  ...",10
+	dc.b "DEFAULT",10
+	dc.b "  ...",10
+	dc.b "ENDSWITCH",10
+	dc.b "Runs the statements after the first matching CASE (or DEFAULT), up to the",10
+	dc.b "next CASE/DEFAULT/ENDSWITCH. Numbers or strings.",10
+	dc.b 0
+	dc.b "CALL",0,0
+	dc.b "CALL address [, d0, d1, ...]      call machine code (return with RTS)",10
+	dc.b "X% = CALL(address [, d0, ...])    the same, giving back D0",10
+	dc.b 0
+	dc.b "MONITOR",0,"BYE",0,0
+	dc.b "MONITOR (or BYE)",10
+	dc.b "Go back to the 68000 monitor; W there comes back with everything kept.",10
+	dc.b 0
+	dc.b "DELETE",0,0
+	dc.b "DELETE from-to",10
+	dc.b "Delete program lines: DELETE 100, DELETE 100-200, DELETE -50, DELETE 300-",10
+	dc.b 0
+	dc.b "RANDOMIZE",0,0
+	dc.b "RANDOMIZE [n]",10
+	dc.b "Accepted, but not needed: the random numbers come from the machine.",10
+	dc.b 0
+	dc.b "TRON",0,"TROFF",0,0
+	dc.b "TRON / TROFF",10
+	dc.b "Trace on and off: each line number is shown in [brackets] as it runs.",10
+	dc.b 0
+	dc.b "LINE",0,0
+	dc.b "LINE(x1, y1, x2, y2 [, color])   draw a line (see HELP GR)",10
+	dc.b "LINE INPUT [",34,"prompt",34,";] var$      read a whole line into a string",10
+	dc.b 0
+	dc.b "LOMEM",0,"HIMEM",0,0
+	dc.b "LOMEM address / HIMEM address",10
+	dc.b "LOMEM switches to (or makes) the BASIC memory block there; HIMEM sets its top",10
+	dc.b "(clears the variables). As functions they give the current values.",10
+	dc.b "Defaults: $10000-$16FFFF. The block can be saved with bsave and loaded with",10
+	dc.b "bload, then W in the monitor.",10
+	dc.b 0
+	dc.b "GR",0,"TEXT",0,0
+	dc.b "GR(mode): graphics, cleared. 0/1/2: 120x68, 240x136, 480x272 in 16 colors;",10
+	dc.b "4/5/6: the same sizes in 4096 colors ($RGB).",10
+	dc.b "TEXT(8) or TEXT(9): back to 40 or 80 column text.",10
+	dc.b "Drawing: GRCLS, GRCOLOR, PLOT, LINE, RECTANGLE, FILLRECTANGLE, CIRCLE,",10
+	dc.b "FILLCIRCLE.",10
+	dc.b 0
+	dc.b "GRCLS",0,0
+	dc.b "GRCLS",10
+	dc.b "Clear the graphics screen to black.",10
+	dc.b 0
+	dc.b "GRCOLOR",0,0
+	dc.b "GRCOLOR(color)",10
+	dc.b "The color used when a drawing command doesn't give one.",10
+	dc.b 0
+	dc.b "PLOT",0,0
+	dc.b "PLOT(x, y [, color])",10
+	dc.b "Set one pixel. (0,0) is the top left.",10
+	dc.b 0
+	dc.b "RECTANGLE",0,"FILLRECTANGLE",0,0
+	dc.b "RECTANGLE(x1, y1, x2, y2 [, color])  /  FILLRECTANGLE(...)",10
+	dc.b "A rectangle with these opposite corners, outlined or filled.",10
+	dc.b 0
+	dc.b "CIRCLE",0,"FILLCIRCLE",0,0
+	dc.b "CIRCLE(x1, y1, x2, y2 [, color])  /  FILLCIRCLE(...)",10
+	dc.b "The circle (or ellipse) that fits in that rectangle, up to 512 pixels across.",10
+	dc.b 0
+	dc.b "DEF",0,"FN",0,0
+	dc.b "DEF FNname(params) = expr            a one line function",10
+	dc.b "DEF FNname(params) ... RETURN value ... END FN      over several lines",10
+	dc.b "Use it as FNname(args). Parameters are local. Example:",10
+	dc.b "  100 DEF FNSQ(X) = X * X",10
+	dc.b 0
+	dc.b "PROC",0,0
+	dc.b "DEF PROCname(params) ... END PROC    a procedure",10
+	dc.b "PROCname(args)                       run it (it gives nothing back)",10
+	dc.b "END PROC can be used early inside an IF block.",10
+	dc.b 0
+	dc.b "SWAP",0,0
+	dc.b "SWAP var, var",10
+	dc.b "Exchange two variables (or array elements) of the same type.",10
+	dc.b 0
+	dc.b "RENUM",0,0
+	dc.b "RENUM [new [, from [, step]]]",10
+	dc.b "Renumber the lines (defaults 10, all, 10) and the GOTO/GOSUB/THEN/ELSE/ON/",10
+	dc.b "RESTORE/RUN/RESUME line numbers that go with them. Labels don't change.",10
+	dc.b 0
+	dc.b "RESUME",0,0
+	dc.b "RESUME / RESUME NEXT / RESUME line",10
+	dc.b "End an ON ERROR handler: retry the statement, go on after it, or go to a line.",10
+	dc.b 0
+	dc.b "ERROR",0,"ERR",0,"ERL",0,0
+	dc.b "ON ERROR GOTO line   send errors to a handler (ON ERROR GOTO 0: off)",10
+	dc.b "ERR, ERL             the error number and its line",10
+	dc.b "ERROR n              cause error n",10
+	dc.b "RESUME               end the handler (see HELP RESUME)",10
+	dc.b 0
+	dc.b "LABELS",0,0
+	dc.b "LABELS",10
+	dc.b "List the *labels and their lines. A line starting with *name can be used",10
+	dc.b "instead of a line number: GOTO *LOOP, GOSUB *DRAW.",10
+	dc.b 0
+	dc.b "ARRAYS",0,0
+	dc.b "ARRAYS",10
+	dc.b "List the arrays: their dimensions, elements and bytes.",10
+	dc.b 0
+	dc.b "AND",0,"OR",0,"XOR",0,"NOT",0,0
+	dc.b "AND, OR, XOR, NOT",10
+	dc.b "Bitwise on 64 bit integers, and logical with comparisons (true is -1).",10
+	dc.b "  IF A > 0 AND B > 0 THEN ...      PRINT 5 OR 2      (7)",10
+	dc.b 0
+	dc.b "MOD",0,0
+	dc.b "a MOD b    the remainder of a ",92," b, with the sign of a:  -7 MOD 3 = -1",10
+	dc.b 0
+	dc.b "TAB",0,"SPC",0,0
+	dc.b "TAB(n) / SPC(n)   in PRINT: move to column n (0 = the first) / print n spaces",10
+	dc.b 0
+	dc.b "SGN",0,0
+	dc.b "SGN(x)     -1, 0 or 1",10
+	dc.b 0
+	dc.b "INT",0,0
+	dc.b "INT(x)     the largest integer not above x: INT(-3.2) = -4",10
+	dc.b "INT(s$)    a string as a number (0 if it isn't one)",10
+	dc.b 0
+	dc.b "FIX",0,0
+	dc.b "FIX(x)     the integer part, toward zero: FIX(-3.7) = -3",10
+	dc.b 0
+	dc.b "CINT",0,0
+	dc.b "CINT(x)    rounded to the nearest integer: CINT(2.5) = 3",10
+	dc.b 0
+	dc.b "ABS",0,0
+	dc.b "ABS(x)     absolute value",10
+	dc.b 0
+	dc.b "SQR",0,0
+	dc.b "SQR(x)     square root",10
+	dc.b 0
+	dc.b "ROOT",0,0
+	dc.b "ROOT(x, n)   the nth root: ROOT(27, 3) = 3, ROOT(-8, 3) = -2",10
+	dc.b 0
+	dc.b "RND",0,0
+	dc.b "RND or RND(x)   a random number, 0 <= r < 1",10
+	dc.b 0
+	dc.b "IRND",0,0
+	dc.b "IRND(n)    a random integer from 0 to n-1:  IRND(6) + 1 is a die",10
+	dc.b 0
+	dc.b "RNDBYTE",0,0
+	dc.b "RNDBYTE()  a random byte, 0-255",10
+	dc.b 0
+	dc.b "LOG",0,"LN",0,0
+	dc.b "LOG(x), LN(x)   natural logarithm",10
+	dc.b 0
+	dc.b "LOG10",0,0
+	dc.b "LOG10(x)   base 10 logarithm",10
+	dc.b 0
+	dc.b "EXP",0,0
+	dc.b "EXP(x)     e to the power x",10
+	dc.b 0
+	dc.b "SIN",0,"COS",0,"TAN",0,0
+	dc.b "SIN(x), COS(x), TAN(x)   x in radians",10
+	dc.b 0
+	dc.b "ATN",0,"ASN",0,"ACS",0,0
+	dc.b "ATN(x), ASN(x), ACS(x)   arctangent, arcsine, arccosine (radians)",10
+	dc.b 0
+	dc.b "PI",0,0
+	dc.b "PI         3.14159265358979324",10
+	dc.b 0
+	dc.b "PEEK",0,0
+	dc.b "PEEK(address)   the byte at a 24 bit address",10
+	dc.b 0
+	dc.b "FRE",0,0
+	dc.b "FRE(0)     free memory in bytes",10
+	dc.b 0
+	dc.b "POS",0,0
+	dc.b "POS(0)     the cursor's column (0 = the first)",10
+	dc.b 0
+	dc.b "LEN",0,0
+	dc.b "LEN(s$)    the length of a string",10
+	dc.b 0
+	dc.b "ASC",0,0
+	dc.b "ASC(s$)    the code of the first character",10
+	dc.b 0
+	dc.b "VAL",0,0
+	dc.b "VAL(s$)    the number at the start of s$ (0 if none): VAL(",34,"3.5kg",34,") = 3.5",10
+	dc.b 0
+	dc.b "CHR$",0,0
+	dc.b "CHR$(n)    the character with code n (0-255)",10
+	dc.b 0
+	dc.b "STR$",0,0
+	dc.b "STR$(n)    a number as a string, as PRINT shows it: STR$(12) = ",34," 12",34,10
+	dc.b 0
+	dc.b "LEFT$",0,0
+	dc.b "LEFT$(s$, n)    the first n characters",10
+	dc.b 0
+	dc.b "RIGHT$",0,0
+	dc.b "RIGHT$(s$, n)   the last n characters",10
+	dc.b 0
+	dc.b "MID$",0,0
+	dc.b "MID$(s$, start [, n])         n characters from position start (1 = the first)",10
+	dc.b "MID$(var$, start [, n]) = x$  as a statement: replace characters in var$",10
+	dc.b 0
+	dc.b "HEX$",0,0
+	dc.b "HEX$(n)    n in hex: HEX$(255) = ",34,"FF",34," (negative: 64 bit two's complement)",10
+	dc.b 0
+	dc.b "DEC",0,0
+	dc.b "DEC(s$)    a hex string's value: DEC(",34,"FF",34,") = 255 ($, 0x, &H or h allowed)",10
+	dc.b 0
+	dc.b "INSTR",0,0
+	dc.b "INSTR([start,] s$, find$)   where find$ is in s$ (1 = the first), or 0",10
+	dc.b 0
+	dc.b "STRING$",0,0
+	dc.b "STRING$(n, c)   n copies of a character (a code or a string)",10
+	dc.b 0
+	dc.b "SPACE$",0,0
+	dc.b "SPACE$(n)  n spaces",10
+	dc.b 0
+	dc.b "UCASE$",0,"LCASE$",0,0
+	dc.b "UCASE$(s$), LCASE$(s$)   upper / lower case",10
+	dc.b 0
+	dc.b "INKEY$",0,0
+	dc.b "INKEY$     the key waiting, or ",34,34," (it doesn't wait)",10
+	dc.b 0
+	dc.b "TIMEGET",0,"TIME$",0,"TIMEYEAR",0,"TIMEMONTH",0,"TIMEDOM",0,"TIMEDOW",0,"TIMEHOUR",0,"TIMEMINUTE",0,"TIMESECOND",0,"TIMEMS",0,"TIMEEPOCH",0,0
+	dc.b "TIMEGET reads the clock; then (all from that moment, local time):",10
+	dc.b "  TIME$  ",34,"2026-11-27T17:43:36.311",34,"    TIMEYEAR   TIMEMONTH (0-11)",10
+	dc.b "  TIMEDOM (1-31)   TIMEDOW (0-6, 0 = Sunday)   TIMEHOUR   TIMEMINUTE",10
+	dc.b "  TIMESECOND   TIMEMS (0-999)   TIMEEPOCH (seconds since 1970, UTC)",10
+	dc.b "For timing use TIMEEPOCH * 1000 + TIMEMS (TIMEMS alone starts again each",10
+	dc.b "second).",10
+	dc.b 0
+	dc.b "HELP",0,0
+	dc.b "HELP            the whole manual (space for more, any other key stops)",10
+	dc.b "HELP keyword    help on one keyword:  HELP PRINT, HELP MID$",10
+	dc.b "HELP VARIABLES  types and limits     HELP OPERATORS    HELP KEYWORDS",10
+	dc.b 0
+	dc.b 0
+	even
+; HELPTAB end
+
+
+; the manual (BASIC_README), as it is, ending with a zero
+manual:
+	incbin "BASIC_README"
+	dc.b 0
+	even
 
 	dc.b "END OF BASIC"
 	even

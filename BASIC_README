@@ -1,10 +1,10 @@
 IML BASIC 68000
 ===============
 
-A Microsoft-style BASIC for the IML 68000 machine, with 64 bit integers, 80 bit floating
-point, long strings, structured statements (block IF, WHILE, REPEAT, SWITCH) and graphics.
-It lives in ROM just above the 68000 monitor (basic.s, assembled to basic.bin and loaded
-by m68k).
+A Microsoft-style BASIC for the IML 68000 machine, with 64 bit integers, 80 bit
+floating point, long strings, structured statements (block IF, WHILE, REPEAT,
+SWITCH) and graphics. It lives in ROM just above the 68000 monitor (basic.s,
+assembled to basic.bin and loaded by m68k).
 
 
 Starting and stopping
@@ -12,40 +12,50 @@ Starting and stopping
 
 From the monitor:
 
-  B        cold start: a new, empty BASIC (also sets LOMEM/HIMEM back to their defaults)
-  W        warm start: back into BASIC with the program and variables as they were
+  B        cold start: a new, empty BASIC (also sets LOMEM/HIMEM back to their
+           defaults)
+  W        warm start: back into BASIC with the program and variables as they
+           were
 
-In BASIC, MONITOR (or BYE) goes back to the monitor, leaving everything in memory, so W
-returns to it. After a Ctrl-Alt-End reset, W also gets the program back.
+In BASIC, MONITOR (or BYE) goes back to the monitor, leaving everything in
+memory, so W returns to it. After a Ctrl-Alt-End reset, W also gets the program
+back.
 
-Ctrl-Z stops a running program ("Break in 120"); CONT carries on from there. (It's
-Ctrl-Z rather than Ctrl-C because Ctrl-C quits tconsole.)
+Ctrl-Z stops a running program ("Break in 120"); CONT carries on from there.
+(It's Ctrl-Z rather than Ctrl-C because Ctrl-C quits tconsole.)
+
+HELP shows this manual, which is built into the ROM, a screen at a time (space
+for the next screen, any other key stops). HELP keyword gives a few lines about
+one keyword (HELP PRINT, HELP MID$), HELP VARIABLES sums up the types and
+limits, HELP OPERATORS the operators, and HELP KEYWORDS lists everything there
+is help for.
 
 
 Entering programs
 -----------------
 
-A line that starts with a number is stored in the program; one without a number is run
-straight away. Typing just a line number deletes that line. Line numbers are 32 bits:
-anything from 0 to 4294967294 can be used (RENUM tidies them up).
+A line that starts with a number is stored in the program; one without a number
+is run straight away. Typing just a line number deletes that line. Line numbers
+are 32 bits: anything from 0 to 4294967294 can be used (RENUM tidies them up).
 
   10 PRINT "HELLO"
   20 GOTO 10
   RUN
 
-Labels: a line can start with *name, and *name can then be used anywhere a line number
-can: GOTO, GOSUB, THEN, ELSE, IF ... GOTO, ON ... GOTO/GOSUB, RESTORE, RUN, RESUME and
-ON ERROR GOTO. Names are letters, digits and _, and upper and lower case are the same
-(they are listed in upper case). The label must be the first thing on its line; it can
-be alone or followed by a colon and statements. If two lines have the same label, the
-first one counts. RENUM leaves labels alone, so they're a good way to keep jumps readable.
-LABELS lists them.
+Labels: a line can start with *name, and *name can then be used anywhere a line
+number can: GOTO, GOSUB, THEN, ELSE, IF ... GOTO, ON ... GOTO/GOSUB, RESTORE,
+RUN, RESUME and ON ERROR GOTO. Names are letters, digits and _, and upper and
+lower case are the same (they are listed in upper case). The label must be the
+first thing on its line; it can be alone or followed by a colon and statements.
+If two lines have the same label, the first one counts. RENUM leaves labels
+alone, so they're a good way to keep jumps readable. LABELS lists them.
 
-The first jump to a label builds a cache of all the labels and the lines they're on (in
-BASIC's own memory at LOMEM, room for 512 labels), so later jumps don't have to look
-through the program. Any change to the program, and RUN or CLEAR, drops the cache and
-the next label jump builds it again. A program with more than 512 labels still works:
-the ones that don't fit in the cache are found by looking through the program.
+The first jump to a label builds a cache of all the labels and the lines
+they're on (in BASIC's own memory at LOMEM, room for 512 labels), so later
+jumps don't have to look through the program. Any change to the program, and
+RUN or CLEAR, drops the cache and the next label jump builds it again. A
+program with more than 512 labels still works: the ones that don't fit in the
+cache are found by looking through the program.
 
   10 *Start: INPUT "Number"; N
   20 IF N < 0 THEN *Done
@@ -53,45 +63,50 @@ the ones that don't fit in the cache are found by looking through the program.
   40 *Square: PRINT N * N: RETURN
   50 *Done: PRINT "Bye"
 
-Several statements can go on a line, separated by colons. Keywords and names are made
-upper case. Keywords are whole words, so put spaces between keywords and names:
-FOR I=1 TO 10 (not FORI=1TO10), GOTO 100 (not GOTO100). ? is short for PRINT and ' is
-short for REM. A name that starts with FN followed by a letter is a user function (see
-DEF FN), so ordinary variables can't start that way.
+Several statements can go on a line, separated by colons. Keywords and names
+are made upper case. Keywords are whole words, so put spaces between keywords
+and names: FOR I=1 TO 10 (not FORI=1TO10), GOTO 100 (not GOTO100). ? is short
+for PRINT and ' is short for REM. A name that starts with FN followed by a
+letter is a user function (see DEF FN), so ordinary variables can't start that
+way.
 
 
 Memory, LOMEM and HIMEM
 -----------------------
 
-Everything BASIC keeps is in one block of memory from LOMEM to HIMEM (by default
-$010000-$16FFFF, 1.4 MB):
+Everything BASIC keeps is in one block of memory from LOMEM to HIMEM (by
+default $010000-$16FFFF, 1.4 MB):
 
-  LOMEM          BASIC's own variables, buffers, the FOR/GOSUB/WHILE/REPEAT stack and
-                 the label cache (16K)
+  LOMEM          BASIC's own variables, buffers, the FOR/GOSUB/WHILE/REPEAT
+                 stack and the label cache (16K)
   then           the program, growing up
   then           strings, growing up
   ...            free
   HIMEM          the variable table, growing down from HIMEM
 
-Because it is all in that block, the block can be saved and loaded back with the bsave
-and bload utilities (with a server running):
+Because it is all in that block, the block can be saved and loaded back with
+the bsave and bload utilities (with a server running):
 
-  bsave --address 10000h --length 160000h myprog.img     (the whole default block)
-  bload --address 10000h myprog.img                      (then W in the monitor)
+  bsave --address 10000h --length 160000h myprog.img     (the whole default
+      block)
+  bload --address 10000h myprog.img                      (then W in the
+      monitor)
 
-LOMEM address   Switch to the BASIC block at that address. If there isn't one there, a new
-                empty one is made, with the current HIMEM (or $16FFFF if the current HIMEM
-                is below the new block). This way several programs can sit in memory at
-                once. LOMEM must be even and at least $10000.
-HIMEM address   Set the top of the current block (the last byte the variables can use).
-                Clears the variables.
+LOMEM address   Switch to the BASIC block at that address. If there isn't one
+                there, a new empty one is made, with the current HIMEM (or
+                $16FFFF if the current HIMEM is below the new block). This way
+                several programs can sit in memory at once. LOMEM must be even
+                and at least $10000.
+HIMEM address   Set the top of the current block (the last byte the variables
+                can use). Clears the variables.
 LOMEM, HIMEM    As functions, give the current values: PRINT LOMEM; HIMEM
 
-When keeping two programs, lower the first one's HIMEM below the second one's LOMEM so
-their variables don't overlap:
+When keeping two programs, lower the first one's HIMEM below the second one's
+LOMEM so their variables don't overlap:
 
   HIMEM &H0FFFFF            (first program: $10000-$FFFFF)
-  LOMEM &H100000            (a new block for the second program, $100000-$16FFFF)
+  LOMEM &H100000            (a new block for the second program,
+                            $100000-$16FFFF)
   LOMEM &H10000             (back to the first one)
 
 FRE(0) gives the free memory.
@@ -100,28 +115,30 @@ FRE(0) gives the free memory.
 Variables
 ---------
 
-Names start with a letter, then letters and digits (up to 32 characters, all of them
-significant). The last character says the type:
+Names start with a letter, then letters and digits (up to 32 characters, all of
+them significant). The last character says the type:
 
   A$     string, up to 65535 characters (one byte each)
-  A      floating point, 80 bit Intel extended precision (about 19 digits, 1E-4951 to
-         1E+4932), worked out by the machine's floating point unit
+  A      floating point, 80 bit Intel extended precision (about 19 digits,
+         1E-4951 to 1E+4932), worked out by the machine's floating point unit
   A&     64 bit integer (-9223372036854775808 to 9223372036854775807)
   A%     32 bit integer
 
-A, A$, A& and A% are four different variables. A variable that hasn't been set is 0 (or
-"" for a string).
+A, A$, A& and A% are four different variables. A variable that hasn't been set
+is 0 (or "" for a string).
 
-Numbers convert between the types as needed. A float stored in an integer variable is
-rounded (halves away from zero); a 64 bit value stored in a 32 bit variable keeps its low
-32 bits. Integer arithmetic is 64 bit and wraps around; it never overflows into a float.
+Numbers convert between the types as needed. A float stored in an integer
+variable is rounded (halves away from zero); a 64 bit value stored in a 32 bit
+variable keeps its low 32 bits. Integer arithmetic is 64 bit and wraps around;
+it never overflows into a float.
 
-Arrays: DIM A(10), B$(5,5), CUBE(9,19,29) (up to 8 dimensions). Indexes start at 0, so
-A(10) has 11 elements, and an array can have up to 16,777,215 elements in all. An array
-has to be made with DIM before it's used: using one that hasn't been gives "?Array not
-dimensioned error" (so a misspelt array name is caught where it happens). Like other
-variables, arrays are cleared by RUN, CLEAR, NEW and by changing the program, so DIM
-them in the program itself. ARRAYS lists the arrays there are.
+Arrays: DIM A(10), B$(5,5), CUBE(9,19,29) (up to 8 dimensions). Indexes start
+at 0, so A(10) has 11 elements, and an array can have up to 16,777,215 elements
+in all. An array has to be made with DIM before it's used: using one that
+hasn't been gives "?Array not dimensioned error" (so a misspelt array name is
+caught where it happens). Like other variables, arrays are cleared by RUN,
+CLEAR, NEW and by changing the program, so DIM them in the program itself.
+ARRAYS lists the arrays there are.
 
   10 DIM GRID%(9,9,9)             (a 10 x 10 x 10 cube of 32 bit integers)
   20 GRID%(1,2,3) = 42
@@ -136,9 +153,9 @@ Numbers
   &HFE           hexadecimal, up to 64 bits (16 digits): PRINT &HFE prints 254
   0FEh  102080h  hexadecimal with an h after it (it has to start with a digit)
 
-PRINT shows integers in full and floats with up to 18 significant digits (3.5, 0.3,
-1.5E+20). Positive numbers get a space in front (where a minus sign would go) and every
-number gets a space after it, as in Microsoft BASIC.
+PRINT shows integers in full and floats with up to 18 significant digits (3.5,
+0.3, 1.5E+20). Positive numbers get a space in front (where a minus sign would
+go) and every number gets a space after it, as in Microsoft BASIC.
 
 
 Operators
@@ -150,35 +167,35 @@ From highest to lowest priority:
   -                  negation (-2^2 = -4)
   * /                multiply, divide (/ always gives a float: 7/2 = 3.5)
   \                  integer divide (7\2 = 3, rounding toward zero)
-  MOD                remainder (it has the sign of the left side: -7 MOD 3 = -1)
+  MOD                remainder (it has the sign of the left side: -7 MOD 3 =
+                     -1)
   + -                add, subtract; + also joins strings
   = <> < > <= >=     compare numbers or strings; true is -1, false is 0
   NOT                bitwise not (64 bits)
-  AND
-  OR
-  XOR
+  AND OR XOR
 
-AND, OR, XOR, NOT, \ and MOD work on integers (floats are rounded first), so they work
-as both logical and bitwise operators: 5 OR 2 = 7, 2>1 AND 3>2 = -1.
+AND, OR, XOR, NOT, \ and MOD work on integers (floats are rounded first), so
+they work as both logical and bitwise operators: 5 OR 2 = 7, 2>1 AND 3>2 = -1.
 
 
 Statements
 ----------
 
 ARRAYS
-    List the arrays, oldest first: the name with the largest index of each dimension (as
-    in the DIM), the number of elements, and the bytes it takes (for a string array,
-    without the strings themselves):
+    List the arrays, oldest first: the name with the largest index of each
+    dimension (as in the DIM), the number of elements, and the bytes it takes
+    (for a string array, without the strings themselves):
       ARY%(100000)            100001 elements, 400020 bytes
       CUBE(9,19,29)           6000 elements, 60024 bytes
 CALL addr [, d0, d1, ...]
-    Call a machine language routine at addr (in supervisor mode; return with RTS). Up to
-    eight more values are put in D0-D7 first. See also the CALL() function.
+    Call a machine language routine at addr (in supervisor mode; return with
+    RTS). Up to eight more values are put in D0-D7 first. See also the CALL()
+    function.
 CASE value [, value ...]
     See SWITCH.
 CLEAR
-    Forget all variables and arrays, the FOR/GOSUB/WHILE/REPEAT stack and the READ
-    position.
+    Forget all variables and arrays, the FOR/GOSUB/WHILE/REPEAT stack and the
+    READ position.
 CLS
     Clear the text screen and put the cursor at the top left.
 COLOR(foreground [, background])
@@ -186,50 +203,55 @@ COLOR(foreground [, background])
 CONT
     Carry on after Ctrl-Z or STOP.
 DEF FNname[(param, ...)] = expression
-    Define a one line function. The name has a type like a variable (FNA, FNA%, FNA&,
-    FNA$), and the result is converted to it. Up to 8 parameters; they are local to the
-    function, so they don't change variables with the same names. Other variables are the
-    program's own. A function can use other functions.
+    Define a one line function. The name has a type like a variable (FNA, FNA%,
+    FNA&, FNA$), and the result is converted to it. Up to 8 parameters; they
+    are local to the function, so they don't change variables with the same
+    names. Other variables are the program's own. A function can use other
+    functions.
       10 DEF FNSQ(X) = X*X
       20 DEF FNHYP(A, B) = SQR(FNSQ(A) + FNSQ(B))
       30 PRINT FNHYP(3, 4)
 DEF FNname[(param, ...)]   ...   RETURN value   ...   END FN
-    A function over several lines: with nothing after the parameters, the lines up to
-    END FN are its body, run like a little program each time the function is used.
-    RETURN value ends it and gives the result; reaching END FN without a RETURN is an
-    error. Inside, plain RETURN (no value) is still GOSUB's RETURN, so subroutines work.
+    A function over several lines: with nothing after the parameters, the lines
+    up to END FN are its body, run like a little program each time the function
+    is used. RETURN value ends it and gives the result; reaching END FN without
+    a RETURN is an error. Inside, plain RETURN (no value) is still GOSUB's
+    RETURN, so subroutines work.
       100 DEF FNFACT(N)
       110   IF N <= 1 THEN RETURN 1
       120   RETURN N * FNFACT(N - 1)
       130 END FN
 DEF PROCname[(param, ...)]   ...   END PROC
-    A procedure: like a multi-line function, but used as a statement, PROCname(args), and
-    giving nothing back. END PROC ends it, and can also be used early inside an IF block
-    (IF ... THEN END PROC, or on its own line between IF and ENDIF). A PROC name has no
-    type suffix.
+    A procedure: like a multi-line function, but used as a statement,
+    PROCname(args), and giving nothing back. END PROC ends it, and can also be
+    used early inside an IF block (IF ... THEN END PROC, or on its own line
+    between IF and ENDIF). A PROC name has no type suffix.
       200 DEF PROCGREET(NAME$)
       210   PRINT "Hello, "; NAME$
       220 END PROC
       ...
       20 PROCGREET("Bob")
     Things to know about functions and procedures:
-    - Definitions can go anywhere in the program, before or after the code that uses
-      them; the first use finds the DEF. If the program runs into a DEF on its way, it
-      skips over the body to the matching END FN / END PROC (an END FN or END PROC between
-      IF and ENDIF in the body is an early exit, not the end).
-    - Parameters are local and can be changed inside; the caller's variables with the
-      same names aren't affected. Every other variable is shared with the program (one
-      first used inside a body becomes an ordinary program variable).
-    - They can call each other and themselves (recursion), about 75 calls deep before
-      "Formula too complex".
-    - An error inside a body stops the program (ON ERROR doesn't trap it), and after
-      Ctrl-Z inside a body, CONT isn't possible.
+    - Definitions can go anywhere in the program, before or after the code that
+      uses them; the first use finds the DEF. If the program runs into a DEF on
+      its way, it skips over the body to the matching END FN / END PROC (an END
+      FN or END PROC between IF and ENDIF in the body is an early exit, not the
+      end).
+    - Parameters are local and can be changed inside; the caller's variables
+      with the same names aren't affected. Every other variable is shared with
+      the program (one first used inside a body becomes an ordinary program
+      variable).
+    - They can call each other and themselves (recursion), about 75 calls deep
+      before "Formula too complex".
+    - An error inside a body stops the program (ON ERROR doesn't trap it), and
+      after Ctrl-Z inside a body, CONT isn't possible.
     - Don't GOTO out of a body: end it with RETURN value or END PROC.
-    - DEF is for programs, not direct commands; a function or procedure can be used from
-      a direct command once the program is in memory: PRINT FNFACT(10), PROCGREET("Ada").
+    - DEF is for programs, not direct commands; a function or procedure can be
+      used from a direct command once the program is in memory: PRINT
+      FNFACT(10), PROCGREET("Ada").
 DATA item, item, ...
-    Values for READ: numbers, or text (in quotes if it has commas, colons or spaces at
-    either end).
+    Values for READ: numbers, or text (in quotes if it has commas, colons or
+    spaces at either end).
 DEFAULT
     See SWITCH.
 DELETE from-to
@@ -239,24 +261,29 @@ DIM name(size [, size ...]) [, ...]
 ELSE, ELSEIF, ENDIF
     See IF.
 END
-    End the program. (END FN and END PROC end a function or procedure: see DEF.)
+    End the program. (END FN and END PROC end a function or procedure: see
+    DEF.)
 ERROR n
-    Cause error number n (1-255), as if it had happened: an ON ERROR handler sees it in
-    ERR. Numbers BASIC doesn't use print as "?Unprintable n error".
+    Cause error number n (1-255), as if it had happened: an ON ERROR handler
+    sees it in ERR. Numbers BASIC doesn't use print as "?Unprintable n error".
 ENDSWITCH
     See SWITCH.
 FOR var = start TO end [STEP step] ... NEXT [var [, var ...]]
-    A counted loop. The variable can be any numeric type. The loop always runs at least
-    once (as on the 8 bit Microsoft BASICs). NEXT without a name ends the innermost loop.
+    A counted loop. The variable can be any numeric type. The loop always runs
+    at least once (as on the 8 bit Microsoft BASICs). NEXT without a name ends
+    the innermost loop.
 GOSUB line ... RETURN
     Call a subroutine; RETURN goes back to just after the GOSUB.
 GOTO line
     Jump to a line.
+HELP [keyword | VARIABLES | OPERATORS | KEYWORDS]
+    The manual, or help on one subject (see "Starting and stopping").
 IF condition THEN statements [ELSE statements]
 IF condition THEN line [ELSE line]
 IF condition GOTO line [ELSE ...]
-    On one line: the statements after THEN run if the condition isn't 0, otherwise the
-    ones after ELSE. IFs can be nested on a line; each ELSE belongs to the nearest IF.
+    On one line: the statements after THEN run if the condition isn't 0,
+    otherwise the ones after ELSE. IFs can be nested on a line; each ELSE
+    belongs to the nearest IF.
 IF condition THEN          (nothing after THEN)
    ...
 [ELSEIF condition [THEN]   (as many as needed, each on a line of its own)
@@ -264,16 +291,16 @@ IF condition THEN          (nothing after THEN)
 [ELSE]                     (on a line of its own)
    ...
 ENDIF
-    A block IF over several lines: the part after the first true condition runs (or
-    ELSE's, if none is true). Blocks can be nested.
+    A block IF over several lines: the part after the first true condition runs
+    (or ELSE's, if none is true). Blocks can be nested.
 INPUT ["prompt";] var [, var ...]
 INPUT ["prompt",] var [, var ...]
-    Read values typed at the keyboard, separated by commas. With ; after the prompt (or
-    no prompt) a "? " is shown; with a comma it isn't. If what's typed doesn't fit,
-    "?Redo from start" asks again.
+    Read values typed at the keyboard, separated by commas. With ; after the
+    prompt (or no prompt) a "? " is shown; with a comma it isn't. If what's
+    typed doesn't fit, "?Redo from start" asks again.
 LABELS
-    List the labels and the lines they're on, in program order. A label that's used
-    again further down is marked "(duplicate: not used)".
+    List the labels and the lines they're on, in program order. A label that's
+    used again further down is marked "(duplicate: not used)".
 LET var = expression
     Assignment; the word LET can be left out.
 LINE INPUT ["prompt";] var$
@@ -281,15 +308,17 @@ LINE INPUT ["prompt";] var$
 LIST [from-to]
     List the program, or part of it (like DELETE). Ctrl-Z stops it.
 MID$(var$, start [, n]) = string
-    Replace characters in a string variable, from position start (1 = the first), n of
-    them at most (or as many as the new string has). The variable's length never
-    changes: S$="HELLO WORLD": MID$(S$,7)="THERE" makes "HELLO THERE".
+    Replace characters in a string variable, from position start (1 = the
+    first), n of them at most (or as many as the new string has). The
+    variable's length never changes: S$="HELLO WORLD": MID$(S$,7)="THERE" makes
+    "HELLO THERE".
 PROCname[(args)]
     Run a procedure (see DEF).
 LOCATE(column, row)
 LOCATE(row)
-    Move the text cursor. Columns and rows start at 0 (0-79 and 0-33 in 80 columns, 0-39
-    and 0-16 in 40). With just a row, the cursor goes to column 0.
+    Move the text cursor. Columns and rows start at 0 (0-79 and 0-33 in 80
+    columns, 0-39 and 0-16 in 40). With just a row, the cursor goes to column
+    0.
 LOMEM address, HIMEM address
     See "Memory, LOMEM and HIMEM".
 MONITOR, BYE
@@ -298,57 +327,60 @@ NEW
     Erase the program and the variables.
 ON expr GOTO line, line, ...
 ON expr GOSUB line, line, ...
-    Go to the first line if expr is 1, the second if it is 2, and so on. Out of range:
-    nothing happens.
+    Go to the first line if expr is 1, the second if it is 2, and so on. Out of
+    range: nothing happens.
 ON ERROR GOTO line
-    From now on, an error in the program goes to that line instead of stopping (errors
-    in direct commands and inside FN/PROC bodies are never trapped). ERR is the error's
-    number and ERL its line.
-    The handler finishes with RESUME. An error inside the handler stops the program as
-    usual. ON ERROR GOTO 0 turns trapping off (inside a handler, it stops with the error
-    being handled). RUN, CLEAR and editing the program turn it off too.
+    From now on, an error in the program goes to that line instead of stopping
+    (errors in direct commands and inside FN/PROC bodies are never trapped).
+    ERR is the error's number and ERL its line. The handler finishes with
+    RESUME. An error inside the handler stops the program as usual. ON ERROR
+    GOTO 0 turns trapping off (inside a handler, it stops with the error being
+    handled). RUN, CLEAR and editing the program turn it off too.
       10 ON ERROR GOTO 1000
       20 INPUT "A number"; N: PRINT 100 / N: END
       1000 PRINT "Error"; ERR; "in line"; ERL: RESUME 20
 POKE addr, value
     Store a byte (0-255) at a 24 bit address.
 PRINT [items]
-    Print expressions. Between items: ; prints the next item right after, , moves to the
-    next 14 column zone. A ; or , at the end stops the new line. TAB(n) moves to column n
-    (0 is the first), SPC(n) prints n spaces.
+    Print expressions. Between items: ; prints the next item right after, ,
+    moves to the next 14 column zone. A ; or , at the end stops the new line.
+    TAB(n) moves to column n (0 is the first), SPC(n) prints n spaces.
 PRINT USING format$; item [; item ...]
-    Print items laid out by a format (see "PRINT USING formats" below). Items can be
-    separated by ; or , (it makes no difference here); a ; or , at the end stops the new
-    line.
+    Print items laid out by a format (see "PRINT USING formats" below). Items
+    can be separated by ; or , (it makes no difference here); a ; or , at the
+    end stops the new line.
 RANDOMIZE [n]
-    Accepted for compatibility; the random numbers come from the machine and need no
-    seed.
+    Accepted for compatibility; the random numbers come from the machine and
+    need no seed.
 READ var [, var ...]
     Take the next values from the DATA statements.
 REM text  or  ' text
     A comment.
 RENUM [new [, from [, step]]]
-    Renumber the program: the lines from line "from" on (default: all of them) get new
-    numbers starting at new (default 10), step apart (default 10). Line numbers after
-    GOTO, GOSUB, THEN, ELSE, ON ... GOTO/GOSUB, ON ERROR GOTO, RESTORE, RUN and RESUME are
-    changed to match; numbers anywhere else (in strings, DATA, REM, or compared with ERL)
-    are not. A reference to a line that doesn't exist is left as it is, with a warning
-    ("Undefined line 9999 in 40"). RENUM refuses (Illegal function call) if the new
-    numbers would run past 4294967294 or come before a line that isn't being renumbered.
+    Renumber the program: the lines from line "from" on (default: all of them)
+    get new numbers starting at new (default 10), step apart (default 10). Line
+    numbers after GOTO, GOSUB, THEN, ELSE, ON ... GOTO/GOSUB, ON ERROR GOTO,
+    RESTORE, RUN and RESUME are changed to match; numbers anywhere else (in
+    strings, DATA, REM, or compared with ERL) are not. A reference to a line
+    that doesn't exist is left as it is, with a warning ("Undefined line 9999
+    in 40"). RENUM refuses (Illegal function call) if the new numbers would run
+    past 4294967294 or come before a line that isn't being renumbered.
     Examples: RENUM, RENUM 1000, RENUM 500,300,5, RENUM ,,1.
 REPEAT ... UNTIL condition
     A loop that runs until the condition is true (always at least once).
 RESTORE [line]
-    READ starts again from the first DATA statement (or the first one from that line).
+    READ starts again from the first DATA statement (or the first one from that
+    line).
 RESUME            (or RESUME 0)
 RESUME NEXT
 RESUME line
-    End an ON ERROR handler: run the statement that failed again, carry on with the
-    statement after it, or go to a line.
+    End an ON ERROR handler: run the statement that failed again, carry on with
+    the statement after it, or go to a line.
 RETURN
     See GOSUB. RETURN value ends a multi-line function (see DEF).
 RUN [line]
-    Clear the variables and run the program (from the start, or from that line).
+    Clear the variables and run the program (from the start, or from that
+    line).
 STOP
     Stop the program as if Ctrl-Z had been pressed (CONT carries on).
 SWAP var, var
@@ -361,12 +393,13 @@ CASE ...
 DEFAULT
     ...
 ENDSWITCH
-    Runs the statements after the first CASE with a value equal to the expression (number
-    or string), up to the next CASE, DEFAULT or ENDSWITCH. Nothing falls through from one
-    case to the next. If no CASE matches, DEFAULT's statements run (if there is a
-    DEFAULT). SWITCHes can be nested.
+    Runs the statements after the first CASE with a value equal to the
+    expression (number or string), up to the next CASE, DEFAULT or ENDSWITCH.
+    Nothing falls through from one case to the next. If no CASE matches,
+    DEFAULT's statements run (if there is a DEFAULT). SWITCHes can be nested.
 TRON, TROFF
-    Trace on and off: while it's on, each line number is printed in [brackets] as it runs.
+    Trace on and off: while it's on, each line number is printed in [brackets]
+    as it runs.
 WHILE condition ... WEND
     A loop that runs while the condition is true (maybe not at all).
 
@@ -384,12 +417,14 @@ Numbers:
   COS(x)        cosine (x in radians)
   EXP(x)        e to the power x
   FIX(x)        integer part (rounding toward zero): FIX(-3.7) = -3
-  INT(x)        the largest integer not above x: INT(-3.2) = -4. Also takes a string:
-                INT("42") = 42; a string that isn't a number gives 0 (INT("4x2") = 0)
+  INT(x)        the largest integer not above x: INT(-3.2) = -4. Also takes a
+                string: INT("42") = 42; a string that isn't a number gives 0
+                (INT("4x2") = 0)
   LOG(x), LN(x) natural logarithm
   LOG10(x)      base 10 logarithm
   PI            3.14159265358979324
-  IRND(n)       a random integer from 0 to n-1 (n from 1 up to 64 bits): IRND(6)+1 is a die
+  IRND(n)       a random integer from 0 to n-1 (n from 1 up to 64 bits):
+                IRND(6)+1 is a die
   RND, RND(x)   a random number from 0 up to (not including) 1
   RNDBYTE()     a random byte, 0-255 (the parentheses can be left out)
   ROOT(x, n)    the nth root of x: ROOT(27,3) = 3, ROOT(-8,3) = -2
@@ -403,11 +438,11 @@ Strings:
 
   ASC(s$)            the code of the first character
   CHR$(n)            the character with code n (0-255)
-  DEC(s$)            the value of a hex string, up to 64 bits: DEC("FF") = 255. A $, 0x
-                     or &H in front or an h after are allowed but not needed. Anything
-                     that isn't hex gives 0
-  HEX$(n)            n in hex, without leading zeros: HEX$(255) = "FF". A negative
-                     number is shown as its 64 bit two's complement:
+  DEC(s$)            the value of a hex string, up to 64 bits: DEC("FF") = 255.
+                     A $, 0x or &H in front or an h after are allowed but not
+                     needed. Anything that isn't hex gives 0
+  HEX$(n)            n in hex, without leading zeros: HEX$(255) = "FF". A
+                     negative number is shown as its 64 bit two's complement:
                      HEX$(-255) = "FFFFFFFFFFFFFF01"
   INKEY$             the key waiting, or "" (doesn't wait)
   INSTR([start,] s$, find$)
@@ -416,13 +451,16 @@ Strings:
   LEFT$(s$, n)       the first n characters
   LEN(s$)            the length
   MID$(s$, start [, n])
-                     n characters (or the rest) from position start (1 = the first)
+                     n characters (or the rest) from position start (1 = the
+                     first)
   RIGHT$(s$, n)      the last n characters
   SPACE$(n)          n spaces
-  STR$(n)            a number as a string, like PRINT shows it: STR$(12) = " 12"
+  STR$(n)            a number as a string, like PRINT shows it: STR$(12) = "
+                     12"
   STRING$(n, c)      n copies of a character (c is a code or a string)
   UCASE$(s$)         upper case
-  VAL(s$)            the number at the start of s$, 0 if there isn't one: VAL("3.5kg") = 3.5
+  VAL(s$)            the number at the start of s$, 0 if there isn't one:
+                     VAL("3.5kg") = 3.5
 
 Errors (for ON ERROR handlers):
 
@@ -436,8 +474,8 @@ User functions:
 Machine and memory:
 
   CALL(addr [, d0, ...])
-                     call machine code (like the CALL statement) and give back D0 as a
-                     32 bit integer: A% = CALL(102080h)
+                     call machine code (like the CALL statement) and give back
+                     D0 as a 32 bit integer: A% = CALL(102080h)
   FRE(x)             free memory in bytes
   HIMEM, LOMEM       the current HIMEM and LOMEM
   PEEK(addr)         the byte at a 24 bit address
@@ -447,8 +485,8 @@ Machine and memory:
 Time
 ----
 
-TIMEGET reads the clock. After it, these built-in variables describe that moment (they
-don't change until the next TIMEGET, so they always fit together):
+TIMEGET reads the clock. After it, these built-in variables describe that
+moment (they don't change until the next TIMEGET, so they always fit together):
 
   TIME$        the date and time in ISO 8601 form: "2026-11-27T17:43:36.311"
   TIMEYEAR     the year, e.g. 2026
@@ -461,8 +499,8 @@ don't change until the next TIMEGET, so they always fit together):
   TIMEMS       milliseconds, 0-999
   TIMEEPOCH    seconds since 1970-01-01 00:00 UTC (a 64 bit integer)
 
-All but TIMEEPOCH are local time. When the machine starts, the clock has been read once,
-so use TIMEGET before reading the time.
+All but TIMEEPOCH are local time. When the machine starts, the clock has been
+read once, so use TIMEGET before reading the time.
 
   10 TIMEGET: T0 = TIMEEPOCH * 1000 + TIMEMS
   20 FOR I = 1 TO 100000: NEXT
@@ -473,9 +511,9 @@ so use TIMEGET before reading the time.
 PRINT USING formats
 -------------------
 
-The format string is printed as it is, except for fields, which are filled in with the
-items one after another. If there are more items than fields, the format starts again
-from the beginning.
+The format string is printed as it is, except for fields, which are filled in
+with the items one after another. If there are more items than fields, the
+format starts again from the beginning.
 
 Numbers:
 
@@ -484,19 +522,23 @@ Numbers:
   ,        before the point: commas between thousands. "#,###,###.##"
   +        at the start or the end: always show the sign (+ or -)
   -        at the end: a - after negative numbers (a space after others)
-  **       at the start: fill the space in front with *  ("**###.##" -> ****12.50)
-  $$       at the start: a $ just in front of the number ("$$###.##" -> "  $12.50")
+  **       at the start: fill the space in front with * ("**###.##" ->
+           ****12.50)
+  $$       at the start: a $ just in front of the number ("$$###.##" ->
+           "  $12.50")
   **$      both
-  ^^^^     at the end: exponent form ("#.##^^^^" -> 1.23E+04); one digit before the point
+  ^^^^     at the end: exponent form ("#.##^^^^" -> 1.23E+04); one digit before
+           the point
 
-The # (and $$, **) positions in front of the point include the room for a minus sign,
-unless the field has a + or a trailing -. A number that doesn't fit is printed in full
-after a % ("##" with 1234 prints %1234).
+The # (and $$, **) positions in front of the point include the room for a minus
+sign, unless the field has a + or a trailing -. A number that doesn't fit is
+printed in full after a % ("##" with 1234 prints %1234).
 
 Strings:
 
   !        the first character
-  \  \     as many characters as the field is wide, counting both \ (padded with spaces)
+  \  \     as many characters as the field is wide, counting both \ (padded
+           with spaces)
   &        the whole string
 
   _        prints the next character as it is (_# prints #)
@@ -518,7 +560,8 @@ TEXT(mode)
 GRCLS
     Clear the graphics screen to black.
 GRCOLOR(c)
-    The color used when a drawing command doesn't give one (at the start: $FFF, white).
+    The color used when a drawing command doesn't give one (at the start: $FFF,
+    white).
 PLOT(x, y [, c])
     Set one pixel.
 LINE(x1, y1, x2, y2 [, c])
@@ -528,17 +571,18 @@ FILLRECTANGLE(x1, y1, x2, y2 [, c])
     A rectangle with these opposite corners, outlined or filled.
 CIRCLE(x1, y1, x2, y2 [, c])
 FILLCIRCLE(x1, y1, x2, y2 [, c])
-    The circle that fits in that rectangle (an ellipse if it isn't square), outlined or
-    filled. It can be at most 512 pixels wide and high.
+    The circle that fits in that rectangle (an ellipse if it isn't square),
+    outlined or filled. It can be at most 512 pixels wide and high.
 
-Colors: 0-15 in modes 0-2 (the standard 16 color palette); in modes 4-6 a 12 bit $RGB
-value, 4 bits each of red, green and blue ($F00 is red, $0F0 green, $00F blue, $FFF
-white). Coordinates start at 0,0 in the top left corner; anything off the screen is
-simply not drawn. The parentheses around the arguments can be left out (PLOT 10,20).
+Colors: 0-15 in modes 0-2 (the standard 16 color palette); in modes 4-6 a 12
+bit $RGB value, 4 bits each of red, green and blue ($F00 is red, $0F0 green,
+$00F blue, $FFF white). Coordinates start at 0,0 in the top left corner;
+anything off the screen is simply not drawn. The parentheses around the
+arguments can be left out (PLOT 10,20).
 
-Text doesn't show in a graphics mode. When a program ends normally the picture stays on
-the screen (type TEXT(9) to get the text back); an error or Ctrl-Z switches to text mode
-9 by itself so that the message can be seen.
+Text doesn't show in a graphics mode. When a program ends normally the picture
+stays on the screen (type TEXT(9) to get the text back); an error or Ctrl-Z
+switches to text mode 9 by itself so that the message can be seen.
 
   10 GR(6)
   20 FOR R=10 TO 130 STEP 10
@@ -553,38 +597,45 @@ Errors
 
   ERR  message
     2  ?Syntax error                  something can't be understood
-    7  ?Out of memory                 no room for the program, variables or strings, or
-                                      too many FOR/GOSUB/WHILE/REPEAT levels (about 150)
-    8  ?Undefined line                GOTO, GOSUB, RUN, RESTORE, RESUME or ON ERROR to a
-                                      line that isn't there
-   13  ?Type mismatch                 a string where a number belongs or the other way round
-    6  ?Overflow                      a number too big (for its type, or at all)
+    7  ?Out of memory                 no room for the program, variables or
+                                      strings, or too many
+                                      FOR/GOSUB/WHILE/REPEAT levels (about 150)
+    8  ?Undefined line                GOTO, GOSUB, RUN, RESTORE, RESUME or ON
+                                      ERROR to a line that isn't there
+   13  ?Type mismatch                 a string where a number belongs or the
+                                      other way round
+    6  ?Overflow                      a number too big (for its type, or at
+                                      all)
    11  ?Division by zero
-    5  ?Illegal function call         a value out of range for a statement or function
+    5  ?Illegal function call         a value out of range for a statement or
+                                      function
     1  ?NEXT without FOR
     3  ?RETURN without GOSUB
     4  ?Out of DATA
-    9  ?Bad subscript                 an array index out of range or the wrong number of them
+    9  ?Bad subscript                 an array index out of range or the wrong
+                                      number of them
    35  ?Array not dimensioned         an array used before DIM made it
-   36  ?DEF without END               no END FN / END PROC after a multi-line DEF
+   36  ?DEF without END               no END FN / END PROC after a multi-line
+                                      DEF
    37  ?END FN without RETURN         a function's body reached END FN
    38  ?END PROC without PROC         END PROC outside a procedure
    10  ?Redimensioned array           DIM of an array that already exists
    15  ?String too long               a string over 65535 characters
    17  ?Can't continue                CONT when there's nothing to continue
-   16  ?Formula too complex           an expression nested too deeply (or an FN that
-                                      calls itself without end)
+   16  ?Formula too complex           an expression nested too deeply (or an FN
+                                      that calls itself without end)
    30  ?WEND without WHILE
    31  ?UNTIL without REPEAT
    29  ?WHILE without WEND
    32  ?IF without ENDIF
    33  ?SWITCH without ENDSWITCH
    23  ?Line too long                 a program line over 500 bytes once stored
-   18  ?Undefined function            FNname or PROCname with no DEF for it in the program
+   18  ?Undefined function            FNname or PROCname with no DEF for it in
+                                      the program
    20  ?RESUME without error          RESUME outside an error handler
    12  ?Illegal direct                DEF FN as a direct command
     8  ?Undefined label               a jump to a *label no line starts with
        ?Unprintable n error           ERROR n with a number BASIC doesn't use
 
-The numbers are GW-BASIC's where it has the same error. In a program, the line number
-follows the message: "?Division by zero error in 120".
+The numbers are GW-BASIC's where it has the same error. In a program, the line
+number follows the message: "?Division by zero error in 120".
